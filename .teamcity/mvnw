@@ -79,12 +79,13 @@ if [ -z "$M2_HOME" ] ; then
   # need this for relative symlinks
   while [ -h "$PRG" ] ; do
     ls=$( ls -ld "$PRG" )
-    link=$( expr "$ls" : '.*-> \(.*\)$' )
-    if expr "$link" : '/.*' > /dev/null; then
-      PRG="$link"
-    else
-      PRG="$( dirname "$PRG" )/$link"
-    fi
+    link=${ls#*' -> '}
+    case $link in
+     /*)
+      PRG="$link" ;;
+     *)
+      PRG="$( dirname "$PRG" )/$link" ;;
+    esac
   done
 
   saveddir=$( pwd )
@@ -118,10 +119,10 @@ fi
 
 if [ -z "$JAVA_HOME" ]; then
   javaExecutable="$( which javac )"
-  if [ -n "$javaExecutable" ] && ! [ "$( expr "$javaExecutable" : '\([^ ]*\)' )" = "no" ]; then
+  if [ -n "$javaExecutable" ] && ! [ "${javaExecutable%%' '*}" = "no" ]; then
     # readlink(1) is not available as standard on Solaris 10.
     readLink=$( which readlink )
-    if [ ! $( expr "$readLink" : '\([^ ]*\)' ) = "no" ]; then
+    if ! [ "${readLink%%' '*}" = "no" ]; then
       if $darwin ; then
         javaHome="$( dirname "$javaExecutable" )"
         javaExecutable="$( cd "$javaHome" && pwd -P )/javac"
@@ -129,7 +130,7 @@ if [ -z "$JAVA_HOME" ]; then
         javaExecutable="$( readlink -f "$javaExecutable" )"
       fi
       javaHome="$( dirname "$javaExecutable" )"
-      javaHome=$( expr "$javaHome" : '\(.*\)/bin' )
+      javaHome=${javaHome%/bin}
       JAVA_HOME="$javaHome"
       export JAVA_HOME
     fi
