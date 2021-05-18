@@ -145,14 +145,16 @@ if "$cygwin" || "$msys" ; then
     done
 fi
 
-# Escape application args
-save () {
-    for i do printf %s\\n "$i" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/' \\\\/" ; done
-    echo " "
-}
-APP_ARGS=$( save "$@" )
+# Collect all arguments for the java command;
+#   * $DEFAULT_JVM_OPTS, $JAVA_OPTS, and $GRADLE_OPTS can contain fragments of
+#     shell script including quotes and variable substitutions, so put them in
+#     double quotes to make sure that they get re-expanded; and
+#   * put everything else in single quotes, so that it's not re-expanded.
 
-# Collect all arguments for the java command, following the shell quoting and substitution rules
-eval set -- $DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS "\"-Dorg.gradle.appname=$APP_BASE_NAME\"" -classpath "\"$CLASSPATH\"" org.gradle.wrapper.GradleWrapperMain "$APP_ARGS"
+eval set -- "$DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS" \
+          ' "-Dorg.gradle.appname=$APP_BASE_NAME" ' \
+          ' -classpath "$CLASSPATH" ' \
+          ' org.gradle.wrapper.GradleWrapperMain ' \
+          ' "$@" '
 
 exec "$JAVACMD" "$@"

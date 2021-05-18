@@ -145,10 +145,17 @@ if "\$cygwin" || "\$msys" ; then
     done
 fi
 
-ARGV=("\$@")
-eval set -- \$DEFAULT_JVM_OPTS
+# Collect all arguments for the java command;
+#   * \$DEFAULT_JVM_OPTS, \$JAVA_OPTS, and \$${optsEnvironmentVar} can contain fragments of
+#     shell script including quotes and variable substitutions, so put them in
+#     double quotes to make sure that they get re-expanded; and
+#   * put everything else in single quotes, so that it's not re-expanded.
 
-IFS=\$'\n' read -rd '' -a JAVA_OPTS_ARR <<< "\$(echo \$JAVA_OPTS | xargs -n1)"
-IFS=\$'\n' read -rd '' -a ${optsEnvironmentVar}_ARR <<< "\$(echo \$${optsEnvironmentVar} | xargs -n1)"
+eval set -- "\$DEFAULT_JVM_OPTS \$JAVA_OPTS \$${optsEnvironmentVar}" \\
+          ' <% if ( appNameSystemProperty ) { %>"-D${appNameSystemProperty}=\$APP_BASE_NAME" <% } %> ' \\
+          ' -classpath "\$CLASSPATH" ' \\
+          ' <% if ( mainClassName.startsWith('--module ') ) { %>--module-path "\$MODULE_PATH" <% } %> ' \\
+          ' ${mainClassName} '\\
+          ' "\$@" '
 
-exec "\$JAVACMD" "\$@" "\${JAVA_OPTS_ARR[@]}" "\${${optsEnvironmentVar}_ARR[@]}" <% if ( appNameSystemProperty ) { %>"-D${appNameSystemProperty}=\$APP_BASE_NAME" <% } %>-classpath "\$CLASSPATH" <% if ( mainClassName.startsWith('--module ') ) { %>--module-path "\$MODULE_PATH" <% } %>${mainClassName} "\${ARGV[@]}"
+exec "\$JAVACMD" "\$@"
