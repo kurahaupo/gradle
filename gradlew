@@ -113,10 +113,16 @@ if ! "$cygwin" && ! "$darwin" && ! "$nonstop" ; then
     fi
 fi
 
-# For Darwin, add options to specify how the application appears in the dock
-if $darwin; then
-    GRADLE_OPTS="$GRADLE_OPTS \"-Xdock:name=$APP_NAME\" \"-Xdock:icon=$APP_HOME/media/gradle.icns\""
-fi
+# Collect all arguments for the java command, stacking in reverse order:
+#   * args from the command line
+#   * the main class name
+#   * -classpath
+#   * -D...appname settings
+#   * --module-path (only if needed)
+#   * -Xdock:... settings (for Darwin)
+#   * DEFAULT_JVM_OPTS, JAVA_OPTS, and GRADLE_OPTS environment variables.
+#     These can contain fragments of shell script including quotes and variable
+#     substitutions, so use eval to re-expand them.
 
 # For Cygwin or MSYS, switch paths to Windows format before running java
 if "$cygwin" || "$msys" ; then
@@ -128,33 +134,40 @@ if "$cygwin" || "$msys" ; then
     # Now convert the arguments - kludge to limit ourselves to /bin/sh
     for arg do
         if
-            case $arg in #(
+            case $arg in                                #(
               -*)   false ;;                            # don't mess with options #(
               /?*)  t=${arg#/} t=/${t%%/*}              # looks like a POSIX filepath
-                    [ -d "$t" ] ;; #(
+                    [ -d "$t" ] ;;                      #(
               *)    [ -n "$GRADLE_CYGPATTERN" ] &&      # TODO: choose: list, glob, or regex?
                     echo "$arg" | egrep -q "$GRADLE_CYGPATTERN"
             esac
         then
             arg=$( cygpath --path --ignore --mixed "$arg" )
         fi
-        # Roll the args around exactly as many times as the number of args.
-        # NB: "$@" above was expanded and captured before the loop began.
-        shift
-        set -- "$@" "$arg"
+        # Roll the args list around exactly as many times as the number of
+        # args, so each arg winds up back in the position where it started, but
+        # possibly modified.
+        #
+        # NB: a `for` loop captures its iteration list before it begins, so
+        # changing the positional parameters here affects neither the number of
+        # iterations, nor the values presented in `arg`.
+        shift                   # remove old arg
+        set -- "$@" "$arg"      # push replacement arg
     done
 fi
 
-# Collect all arguments for the java command;
-#   * $DEFAULT_JVM_OPTS, $JAVA_OPTS, and $GRADLE_OPTS can contain fragments of
-#     shell script including quotes and variable substitutions, so put them in
-#     double quotes to make sure that they get re-expanded; and
-#   * put everything else in single quotes, so that it's not re-expanded.
+set --  -Dorg.gradle.appname="$APP_BASE_NAME" \
+        -classpath "$CLASSPATH" \
+        org.gradle.wrapper.GradleWrapperMain \
+        "$@"
 
-eval set -- "$DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS" \
-          ' "-Dorg.gradle.appname=$APP_BASE_NAME" ' \
-          ' -classpath "$CLASSPATH" ' \
-          ' org.gradle.wrapper.GradleWrapperMain ' \
-          ' "$@" '
+# For Darwin, add options to specify how the application appears in the dock
+if $darwin; then
+    set -- "-Xdock:name=$APP_NAME" \
+           "-Xdock:icon=$APP_HOME/media/gradle.icns" "$@"
+fi
+
+# TODO: get rid of eval
+eval set -- "$DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS" '"$@"'
 
 exec "$JAVACMD" "$@"
