@@ -17,9 +17,74 @@
 #
 
 ##############################################################################
-##
-##  Gradle start up script for POSIX
-##
+#
+#   Gradle start up script for POSIX.
+#
+#   You're probably reading this because you're a Unix/Linux person and have
+#   been instructed to run "gradlew" to install or build a project that's of
+#   interest to you. (At least, that's how I wound up reading this script.)
+#
+#   Here's some stuff you need to know:
+#
+#   (1) You need a POSIX-compliant shell to run this script. If your /bin/sh is
+#       noncompliant, but you have some other compliant shell such as ksh or
+#       bash, then to run this script, type that shell name before the whole
+#       command line, like:
+#
+#           ksh gradlew
+#
+#       Even if you have a compliant shell, Java is fussy about $PWD, so you
+#       might as well cd to the directory containing gradlew and run it as
+#
+#           ./gradlew
+#
+#       Any arguments you include on the command line will be passed through to
+#       Java after the classname, to be available as parameters to main().
+#
+#   (2) This script is generated from the Groovy template file
+#       subprojects/plugins/src/main/resources/org/gradle/api/internal/plugins/unixStartScript.txt
+#       within the Gradle project, so that's where you need to submit any
+#       patches.
+#
+#       Gradle is a meta-build system used by the project that you're building
+#       or installing. It's like autoconf but for projects that are written in
+#       Java and related languages. It's also used to build parts of the Gradle
+#       project itself.
+#
+#       Gradle is mostly written in Java and Groovy, but there are wrapper
+#       scripts for various environments, including this one for POSIX shells.
+#
+#       You can find Gradle at https://github.com/gradle/gradle/.
+#
+#   (3) This script targets any POSIX shell, not just Bash or Ksh.
+#
+#       It makes use of these POSIX shell features:
+#         * functions;
+#         * various expansions, including «$var», «${var}», «${var:-default}»,
+#           «${var#prefix}», «${var%suffix}», and «$( cmd )»;
+#         * compound commands having a testable exit status, especially «case»;
+#         * various built-in commands including «command», «set», and «ulimit».
+#
+#       However arrays are NOT available, except for "\$@".
+#
+#       The traditional practice of packing multiple parameters into a
+#       space-separated string is a well documented source of bugs and security
+#       problems, so this is avoided.
+#
+#       Instead, this script progressively modifies "$@", which is eventually
+#       passed to Java.
+#
+#       The is special handling for the inherited environment variables
+#       DEFAULT_JVM_OPTS, JAVA_OPTS, and ${optsEnvironmentVar}; see the in-line
+#       comments for details.
+#
+#       There are tweaks for specific operating systems such as AIX, CygWin,
+#       Darwin, MinGW, and NonStop.
+#
+#       If submitting patches, please make sure that this script (as output by
+#       the template generator) still passes shellcheck
+#       (https://shellcheck.net)
+#
 ##############################################################################
 
 # Attempt to set APP_HOME
