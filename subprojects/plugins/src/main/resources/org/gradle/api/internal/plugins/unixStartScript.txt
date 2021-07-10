@@ -207,15 +207,14 @@ fi
 
 # Increase the maximum file descriptors if we can.
 if ! "\$cygwin" && ! "\$darwin" && ! "\$nonstop" ; then
-    if MAX_FD_LIMIT=\$( ulimit -H -n ) ; then
-        case \$MAX_FD in #(
-          max*) MAX_FD=\$MAX_FD_LIMIT
-        esac
+    case \$MAX_FD in #(
+      max*) MAX_FD=\$( ulimit -H -n ) ||
+                warn "Could not query maximum file descriptor limit"
+    esac
+    if [ -n "\$MAX_FD" ] ; then
         if ! ulimit -n "\$MAX_FD" ; then
             warn "Could not set maximum file descriptor limit: \$MAX_FD"
         fi
-    else
-        warn "Could not query maximum file descriptor limit: \$MAX_FD_LIMIT"
     fi
 fi
 
