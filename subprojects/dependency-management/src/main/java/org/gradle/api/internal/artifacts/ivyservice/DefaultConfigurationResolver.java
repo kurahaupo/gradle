@@ -142,7 +142,11 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
     public void resolveGraph(ConfigurationInternal configuration, ResolverResults results) {
         List<ResolutionAwareRepository> resolutionAwareRepositories = getRepositories();
 
-        System.out.println("-> resolve " + configuration + " using repos: " + resolutionAwareRepositories);
+        if (System.getProperty("org.gradle.trace.repos") != null) {
+            System.out.println("-> resolve " + configuration + " using repos: " + resolutionAwareRepositories);
+            System.out.println("$M2_HOME = " + System.getenv("M2_HOME"));
+            System.out.println("maven.repo.local = " + System.getProperty("maven.repo.local"));
+        }
 
         StoreSet stores = storeFactory.createStoreSet();
 

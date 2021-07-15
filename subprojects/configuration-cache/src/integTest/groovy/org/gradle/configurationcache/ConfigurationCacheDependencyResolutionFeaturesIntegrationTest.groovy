@@ -34,6 +34,11 @@ class ConfigurationCacheDependencyResolutionFeaturesIntegrationTest extends Abst
     def setup() {
         // So that dependency resolution results from previous tests do not interfere
         executer.requireOwnGradleUserHomeDir()
+        System.setProperty("org.gradle.trace.repos", "true")
+    }
+
+    def cleanup() {
+        System.clearProperty("org.gradle.trace.repos")
     }
 
     def "does not invalidate configuration cache entry when dynamic version information has not expired"() {
