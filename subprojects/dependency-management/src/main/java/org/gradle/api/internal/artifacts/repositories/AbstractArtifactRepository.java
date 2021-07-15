@@ -80,6 +80,11 @@ public abstract class AbstractArtifactRepository implements ArtifactRepositoryIn
     }
 
     @Override
+    public String toString() {
+        return getDisplayName();
+    }
+
+    @Override
     public String getDisplayName() {
         return getName();
     }

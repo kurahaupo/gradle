@@ -141,6 +141,9 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
     @Override
     public void resolveGraph(ConfigurationInternal configuration, ResolverResults results) {
         List<ResolutionAwareRepository> resolutionAwareRepositories = getRepositories();
+
+        System.out.println("-> resolve " + configuration + " using repos: " + resolutionAwareRepositories);
+
         StoreSet stores = storeFactory.createStoreSet();
 
         BinaryStore oldModelStore = stores.nextBinaryStore();
