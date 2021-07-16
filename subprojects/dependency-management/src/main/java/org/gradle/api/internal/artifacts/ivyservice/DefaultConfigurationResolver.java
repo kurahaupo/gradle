@@ -146,7 +146,7 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
             System.out.println("-> resolve " + configuration + " using repos: " + resolutionAwareRepositories);
             System.out.println("$M2_HOME = " + System.getenv("M2_HOME"));
             System.out.println("maven.repo.local = " + System.getProperty("maven.repo.local"));
-            System.out.println("change 2");
+            System.out.println("change 3");
         }
 
         StoreSet stores = storeFactory.createStoreSet();
