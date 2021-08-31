@@ -20,6 +20,7 @@ class SmokeTests(model: CIBuildModel, stage: Stage, testJava: JvmCategory, task:
         timeout = 120,
         notQuick = true,
         extraParameters = buildScanTag("SmokeTests") +
+            " -DenableTestDistribution=%enableTestDistribution%" +
             " -PtestJavaVersion=${testJava.version.major}" +
             " -PtestJavaVendor=${testJava.vendor.name}" +
             " -Porg.gradle.java.installations.auto-download=false"
