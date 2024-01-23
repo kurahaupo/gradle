@@ -147,10 +147,10 @@ case "\$( uname )" in                #(
   NONSTOP* )        nonstop=true ;;
 esac
 
-CLASSPATH=$classpath
-<% if ( mainClassName.startsWith('--module ') ) { %>
-MODULE_PATH=$modulePath
-<% } %>
+CLASSPATH=$classpath<%
+if ( mainClassName.startsWith('--module ') ) { %>
+MODULE_PATH=$modulePath<%
+} %>
 
 # Determine the Java command to use to start the JVM.
 if [ -n "\$JAVA_HOME" ] ; then
@@ -207,8 +207,10 @@ fi
 # For Cygwin or MSYS, switch paths to Windows format before running java
 if "\$cygwin" || "\$msys" ; then
     APP_HOME=\$( cygpath --path --mixed "\$APP_HOME" )
-    CLASSPATH=\$( cygpath --path --mixed "\$CLASSPATH" )
-<% if ( mainClassName.startsWith('--module ') ) { %>    MODULE_PATH=\$( cygpath --path --mixed "\$MODULE_PATH" )<% } %>
+    CLASSPATH=\$( cygpath --path --mixed "\$CLASSPATH" )<%
+if ( mainClassName.startsWith('--module ') ) { %>
+    MODULE_PATH=\$( cygpath --path --mixed "\$MODULE_PATH" )<%
+} %>
     JAVACMD=\$( cygpath --unix "\$JAVACMD" )
 
     # Now convert the arguments - kludge to limit ourselves to /bin/sh
@@ -248,13 +250,15 @@ DEFAULT_JVM_OPTS=${defaultJvmOpts}
 #   * For example: A user cannot expect \${Hostname} to be expanded, as it is an environment variable and will be
 #     treated as '\${Hostname}' itself on the command line.
 
-set -- \\
-<% if ( appNameSystemProperty ) {
-     %>        "-D${appNameSystemProperty}=\$APP_BASE_NAME" \\
-<% } %>        -classpath "\$CLASSPATH" \\
-<% if ( mainClassName.startsWith('--module ') ) {
-     %>        --module-path "\$MODULE_PATH" \\
-<% } %>        ${mainClassName} \\
+set -- \\<%
+if ( appNameSystemProperty ) { %>
+        "-D${appNameSystemProperty}=\$APP_BASE_NAME" \\<%
+} %>
+        -classpath "\$CLASSPATH" \\<%
+if ( mainClassName.startsWith('--module ') ) { %>
+        --module-path "\$MODULE_PATH" \\<%
+} %>
+        ${mainClassName} \\
         "\$@"
 
 # Stop when "xargs" is not available.
