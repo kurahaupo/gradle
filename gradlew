@@ -107,15 +107,16 @@ cygwin=false
 msys=false
 darwin=false
 nonstop=false
-case "$( uname )" in                #(
-  CYGWIN* )         cygwin=true  ;; #(
-  Darwin* )         darwin=true  ;; #(
-  MSYS* | MINGW* )  msys=true    ;; #(
-  NONSTOP* )        nonstop=true ;;
+can_increase_fd=true
+need_windows_paths=false
+case "$( uname )" in                                                              #(
+  CYGWIN* )         cygwin=true  can_increase_fd=false need_windows_paths=true ;; #(
+  Darwin* )         darwin=true  can_increase_fd=false                         ;; #(
+  MSYS* | MINGW* )  msys=true                          need_windows_paths=true ;; #(
+  NONSTOP* )        nonstop=true can_increase_fd=false                         ;;
 esac
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
-
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
@@ -143,7 +144,7 @@ location of your Java installation."
 fi
 
 # Increase the maximum file descriptors if we can.
-if ! "$cygwin" && ! "$darwin" && ! "$nonstop" ; then
+if "$can_increase_fd" ; then
     case $MAX_FD in #(
       max*)
         # In POSIX sh, ulimit -H is undefined. That's why the result is checked to see if it worked.
@@ -170,7 +171,7 @@ fi
 #   * DEFAULT_JVM_OPTS, JAVA_OPTS, and GRADLE_OPTS environment variables.
 
 # For Cygwin or MSYS, switch paths to Windows format before running java
-if "$cygwin" || "$msys" ; then
+if "$need_windows_paths" ; then
     APP_HOME=$( cygpath --path --mixed "$APP_HOME" )
     CLASSPATH=$( cygpath --path --mixed "$CLASSPATH" )
     JAVACMD=$( cygpath --unix "$JAVACMD" )
