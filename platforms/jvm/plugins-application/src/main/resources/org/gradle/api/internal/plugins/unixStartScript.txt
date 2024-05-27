@@ -77,7 +77,8 @@
 #
 #        1. Any character following \ is passed unmodified through to the
 #           next phase, while the \ is removed. Any other $ followed by
-#           varName or {varName} is replaced by the value of that variable.
+#           varName or {varName} is replaced by the value of that Gradle
+#           setting.
 #
 #        2. The result of the first phase is parsed and run in a similar
 #           manner to JSP or MASON or PHP: anything within < % ... % > is a
@@ -265,6 +266,11 @@ fi
 # You can also use JAVA_OPTS and ${optsEnvironmentVar}
 # to pass JVM options to this script.
 default_jvm_opts=${defaultJvmOpts}
+
+# The inherited environment variables JAVA_OPTS and ${optsEnvironmentVar},
+# and the Gradle defaultJvmOpts setting (used to set default_jvm_opts) need
+# special treatment because they can comprise multiple shell words separated by
+# spaces, adjusted by quotes and backslashes.
 
 set -- \\<%
 if ( appNameSystemProperty ) { %>

@@ -227,6 +227,11 @@ fi
 # to pass JVM options to this script.
 default_jvm_opts='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
 
+# The inherited environment variables JAVA_OPTS and GRADLE_OPTS,
+# and the Gradle defaultJvmOpts setting (used to set default_jvm_opts) need
+# special treatment because they can comprise multiple shell words separated by
+# spaces, adjusted by quotes and backslashes.
+
 set -- \
         "-Dorg.gradle.appname=$APP_BASE_NAME" \
         -classpath "$CLASSPATH" \
