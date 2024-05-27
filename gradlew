@@ -29,6 +29,8 @@
 #       bash, then to run this script, type that shell name before the whole
 #       command line, like:
 #
+#           ksh gradlew
+#       or
 #           ksh Gradle
 #
 #       Busybox and similar reduced shells will NOT work, because this script
@@ -49,9 +51,10 @@
 #       problems, so this is (mostly) avoided, by progressively accumulating
 #       options in "$@", and eventually passing that to Java.
 #
-#       Where the inherited environment variables (DEFAULT_JVM_OPTS, JAVA_OPTS,
-#       and GRADLE_OPTS) rely on word-splitting, this is performed explicitly;
-#       see the in-line comments for details.
+#       Where the inherited environment variables JAVA_OPTS and GRADLE_OPTS
+#       and the Gradle defaultJvmOpts setting (used to set default_jvm_opts)
+#       rely on word-splitting, this is performed explicitly; see the in-line
+#       comments for details.
 #
 #       There are tweaks for specific operating systems such as AIX, CygWin,
 #       Darwin, MinGW, and NonStop.
@@ -63,6 +66,10 @@
 #       You can find Gradle at https://github.com/gradle/gradle/.
 #
 ##############################################################################
+
+# As is common practice, upper-case shell variable names are intended to be
+# exported and shared; lower-case names are for internal use only and may
+# change without notice.
 
 # Attempt to set APP_HOME
 
@@ -168,7 +175,8 @@ fi
 #   * -classpath
 #   * -D...appname settings
 #   * --module-path (only if needed)
-#   * DEFAULT_JVM_OPTS, JAVA_OPTS, and GRADLE_OPTS environment variables.
+#   * the Gradle defaultJvmOpts setting
+#   * the JAVA_OPTS and GRADLE_OPTS environment variables.
 
 # For Cygwin or MSYS, switch paths to Windows format before running java
 if "$need_windows_paths" ; then
@@ -200,21 +208,21 @@ if "$need_windows_paths" ; then
     done
 fi
 
-
-# Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
-DEFAULT_JVM_OPTS='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
-
-# Collect all arguments for the java command:
-#   * DEFAULT_JVM_OPTS, JAVA_OPTS, JAVA_OPTS, and optsEnvironmentVar are not allowed to contain shell fragments,
-#     and any embedded shellness will be escaped.
-#   * For example: A user cannot expect ${Hostname} to be expanded, as it is an environment variable and will be
-#     treated as '${Hostname}' itself on the command line.
+# Define default_jvm_opts here, from the Gradle defaultJvmOpts setting, to
+# allow it to include the Windows-path version of APP_HOME (for Cygwin & MSYS).
+# You can also use JAVA_OPTS and GRADLE_OPTS
+# to pass JVM options to this script.
+default_jvm_opts='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
 
 set -- \
         "-Dorg.gradle.appname=$APP_BASE_NAME" \
         -classpath "$CLASSPATH" \
         org.gradle.wrapper.GradleWrapperMain \
         "$@"
+
+# For each word accumulated thus far, perform word-splitting. Quotes and
+# backslashes may be used to change word boundaries, but other all other shell
+# metacharacters are taken literally, including $ < > | & ; ( )
 
 # Stop when "xargs" is not available.
 if ! command -v xargs >/dev/null 2>&1
@@ -242,7 +250,7 @@ fi
 #
 
 eval "set -- $(
-        printf '%s\n' "$DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS" |
+        printf '%s\n' "$default_jvm_opts $JAVA_OPTS $GRADLE_OPTS" |
         xargs -n1 |
         sed ' s~[^-[:alnum:]+,./:=@_]~\\&~g; ' |
         tr '\n' ' '
