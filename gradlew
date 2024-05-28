@@ -71,29 +71,42 @@
 # exported and shared; lower-case names are for internal use only and may
 # change without notice.
 
-# Attempt to set APP_HOME
+# Attempt to set APP_HOME from $0, which may be a symlink
 
-# Resolve links: $0 may be a link
+# Define a (suboptimal) version of readlink in case systems don't have it.
+command -v readlink > /dev/null 2>&1 ||
+    readlink() {
+        link=$( ls -ld "$1" ) || return
+        case $link in   #(
+          *'-> '*) ;;   #(
+          *) return 1
+        esac
+        link=${link##*'-> '}
+        printf '%s\n' "$link"
+    }
+
+# Need this loop for daisy-chained symlinks.
 app_path=$0
-
-# Need this for daisy-chained symlinks.
 while
-    APP_HOME=${app_path%"${app_path##*/}"}  # leaves a trailing /; empty if no leading path
+    # Get dirname of $app_path, with a trailing / or empty if no leading path
+    APP_HOME=${app_path%"${app_path##*/}"}
+    # Is it a symlink? If so, rewrite it and try again
     [ -h "$app_path" ]
 do
-    ls=$( ls -ld "$app_path" )
-    link=${ls#*' -> '}
-    case $link in             #(
-      /*)   app_path=$link ;; #(
-      *)    app_path=$APP_HOME$link ;;
+    app_path=$( readlink "$app_path" ) ||
+        break
+    case $app_path in   #(
+      /*)   ;;          #(
+      *)    app_path=$APP_HOME$app_path ;;
     esac
 done
+
+# Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
+APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && pwd -P ) || exit
 
 # This is normally unused
 # shellcheck disable=SC2034
 APP_BASE_NAME=${0##*/}
-# Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
-APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && printf '%s\n' "$PWD" ) || exit
 
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
