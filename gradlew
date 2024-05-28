@@ -150,7 +150,7 @@ if "$can_increase_fd" ; then
         # In POSIX sh, ulimit -H is undefined. That's why the result is checked to see if it worked.
         # shellcheck disable=SC2039,SC3045
         MAX_FD=$( ulimit -H -n ) ||
-            warn "Could not query maximum file descriptor limit"
+            warn "Could not query maximum file descriptor limit; got '$MAX_FD'"
     esac
     case $MAX_FD in  #(
       '' | soft) :;; #(
@@ -158,7 +158,7 @@ if "$can_increase_fd" ; then
         # In POSIX sh, ulimit -n is undefined. That's why the result is checked to see if it worked.
         # shellcheck disable=SC2039,SC3045
         ulimit -n "$MAX_FD" ||
-            warn "Could not set maximum file descriptor limit to $MAX_FD"
+            warn "Could not set maximum file descriptor limit to '$MAX_FD'"
     esac
 fi
 
