@@ -64,29 +64,47 @@
 #
 ##############################################################################
 
-# Attempt to set APP_HOME
+# Set APP_HOME to the directory containing this script, so that it can
+# be used when setting DEFAULT_JVM_OPTS
+if  command -v realpath > /dev/null 2>&1
+then
+    # POSIX-1.2024 mandates realpath, and it's been widely available since
+    # 2002, so use it if available. (It was added to Debian Woody, to FreeBSD,
+    # and to Busybox in 2002, and to GNU coreutils v8.15 in 2012.)
+    app_path=$( realpath "$0" )
+    APP_HOME=${app_path%"${app_path##*/}"}
+else
+    # Resolve all symlinks in $0, and then use the containing directory of the
+    # resulting path.
+    app_path=$0
 
-# Resolve links: $0 may be a link
-app_path=$0
+    #   Resolve symlink as last component of path; repeat until it's not a symlink.
+    while
+        APP_HOME=${app_path%"${app_path##*/}"}  # leaves a trailing /; empty if no leading path
+        [ -h "$app_path" ]
+    do
+        ls=$( ls -ld "$app_path" )
+        link=${ls#*' -> '}
+        case $link in             #(
+          /*)   app_path=$link ;; #(
+          *)    app_path=$APP_HOME$link ;;
+        esac
+    done
 
-# Need this for daisy-chained symlinks.
-while
-    APP_HOME=${app_path%"${app_path##*/}"}  # leaves a trailing /; empty if no leading path
-    [ -h "$app_path" ]
-do
-    ls=$( ls -ld "$app_path" )
-    link=${ls#*' -> '}
-    case $link in             #(
-      /*)   app_path=$link ;; #(
-      *)    app_path=$APP_HOME$link ;;
-    esac
-done
+    #   Use `cd -P … && pwd` to resolve all directory symlinks
+    APP_HOME=$(
+            # CDPATH should not normally be exported, but don't trust users
+            unset CDPATH
+            # Without CDPATH, `cd` shouldn't produce any output, but suppress
+            # it just in case (https://github.com/gradle/gradle/issues/25036)
+            cd -P "${APP_HOME:-./}" > /dev/null &&
+            pwd -P
+        ) || exit
+fi
 
-# This is normally unused
+# TODO: APP_BASE_NAME seems to be unused; check whether it's safe to remove it.
 # shellcheck disable=SC2034
 APP_BASE_NAME=${0##*/}
-# Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
-APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && pwd -P ) || exit
 
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
