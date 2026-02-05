@@ -30,6 +30,8 @@
 #       command line, like:
 #
 #           ksh gradlew
+#       or
+#           ksh gradlew
 #
 #       Busybox and similar reduced shells will NOT work, because this script
 #       requires all of these POSIX shell features:
@@ -49,9 +51,10 @@
 #       problems, so this is (mostly) avoided, by progressively accumulating
 #       options in "$@", and eventually passing that to Java.
 #
-#       Where the inherited environment variables (DEFAULT_JVM_OPTS, JAVA_OPTS,
-#       and GRADLE_OPTS) rely on word-splitting, this is performed explicitly;
-#       see the in-line comments for details.
+#       Where the inherited environment variables JAVA_OPTS and GRADLE_OPTS
+#       and the Gradle defaultJvmOpts template parameter (used to set default_jvm_opts)
+#       rely on word-splitting, this is performed explicitly; see the in-line
+#       comments for details.
 #
 #       There are tweaks for specific operating systems such as AIX, CygWin,
 #       Darwin, MinGW, and NonStop.
@@ -64,43 +67,70 @@
 #
 ##############################################################################
 
-# Set APP_HOME to the directory containing this script, so that it can
-# be used when setting DEFAULT_JVM_OPTS
-if  command -v realpath > /dev/null 2>&1
+# As is common practice, upper-case shell variable names are intended to be
+# exported and shared; lower-case names are for internal use only and may
+# change without notice.
+
+# Set APP_HOME to the directory containing this script, so that it can be used
+# when expanding the defaultJvmOpts template parameter.
+
+# Use realpath if available.
+# POSIX-1.2024 mandates realpath, but if it's not available, define a
+# replacement shell function.
+# (It's been widely available since 2002: it was added to Debian Woody, to
+# FreeBSD, and to Busybox in 2002, and to GNU coreutils v8.15 in 2012.)
+
+if ! command -v realpath > /dev/null 2>&1
 then
-    # POSIX-1.2024 mandates realpath, and it's been widely available since
-    # 2002, so use it if available. (It was added to Debian Woody, to FreeBSD,
-    # and to Busybox in 2002, and to GNU coreutils v8.15 in 2012.)
-    app_path=$( realpath "$0" )
-    APP_HOME=${app_path%"${app_path##*/}"}
-else
-    # Resolve all symlinks in $0, and then use the containing directory of the
-    # resulting path.
-    app_path=$0
 
-    #   Resolve symlink as last component of path; repeat until it's not a symlink.
-    while
-        APP_HOME=${app_path%"${app_path##*/}"}  # leaves a trailing /; empty if no leading path
-        [ -h "$app_path" ]
-    do
-        ls=$( ls -ld "$app_path" )
-        link=${ls#*' -> '}
-        case $link in             #(
-          /*)   app_path=$link ;; #(
-          *)    app_path=$APP_HOME$link ;;
-        esac
-    done
+    # Define a (suboptimal) version of readlink in case systems don't have it.
+    command -v readlink > /dev/null 2>&1 ||
+        readlink() {
+            [ -h "$1" ] || return
+            link=$( ls -ld "$1" ) || return
+            case $link in   #(
+              *'-> '*) ;;   #(
+              *) return 1
+            esac
+            link=${link#*' -> '}
+            printf '%s\n' "$link"
+        }
 
-    #   Use `cd -P … && pwd` to resolve all directory symlinks
-    APP_HOME=$(
-            # CDPATH should not normally be exported, but don't trust users
-            unset CDPATH
-            # Without CDPATH, `cd` shouldn't produce any output, but suppress
-            # it just in case (https://github.com/gradle/gradle/issues/25036)
-            cd -P "${APP_HOME:-./}" > /dev/null &&
-            pwd -P
-        ) || exit
+    realpath() {
+        # Resolve all symlinks in $0, and then use the containing directory of the
+        # resulting path.
+        path=$1
+
+        #   Resolve symlink as last component of path; repeat until it's not a symlink.
+        while
+            # Get dirname of $path, with a trailing / or empty if no leading path
+            dir=${path%"${path##*/}"}
+            # Is it a symlink? If so, rewrite it and try again
+            link=$( readlink "$path" )
+        do
+            case $link in                       #(
+              '' | "$path")  break ;;           #(
+              /*)             path=$link ;;     #(
+              *)              path=$dir$link ;;
+            esac
+        done
+
+        #   Use `cd -P … && pwd` to resolve all directory symlinks
+        dir=$(
+                # CDPATH should not normally be exported, but don't trust users
+                unset CDPATH
+                # Without CDPATH, `cd` shouldn't produce any output, but suppress
+                # it just in case (https://github.com/gradle/gradle/issues/25036)
+                cd -P "${dir:-./}" > /dev/null &&
+                pwd -P
+            ) || return
+
+        printf '%s\n' "$dir${path##*/}"
+    }
 fi
+
+app_path=$( realpath "$0" ) || exit
+APP_HOME=${app_path%"${app_path##*/}"}
 
 # TODO: APP_BASE_NAME seems to be unused; check whether it's safe to remove it.
 # shellcheck disable=SC2034
@@ -125,17 +155,17 @@ cygwin=false
 msys=false
 darwin=false
 nonstop=false
-case "$( uname )" in                #(
-  CYGWIN* )         cygwin=true  ;; #(
-  Darwin* )         darwin=true  ;; #(
-  MSYS* | MINGW* )  msys=true    ;; #(
-  NONSTOP* )        nonstop=true ;;
+can_increase_fd=true
+need_windows_paths=false
+case "$( uname )" in                                                              #(
+  CYGWIN* )         cygwin=true  can_increase_fd=false need_windows_paths=true ;; #(
+  Darwin* )         darwin=true  can_increase_fd=false                         ;; #(
+  MSYS* | MINGW* )  msys=true                          need_windows_paths=true ;; #(
+  NONSTOP* )        nonstop=true can_increase_fd=false                         ;;
 esac
 
 CLASSPATH=gradle/wrapper/gradle-wrapper.jar
-
 MODULE_PATH=
-
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
@@ -163,13 +193,13 @@ location of your Java installation."
 fi
 
 # Increase the maximum file descriptors if we can.
-if ! "$cygwin" && ! "$darwin" && ! "$nonstop" ; then
+if "$can_increase_fd" ; then
     case $MAX_FD in #(
       max*)
         # In POSIX sh, ulimit -H is undefined. That's why the result is checked to see if it worked.
         # shellcheck disable=SC2039,SC3045
         MAX_FD=$( ulimit -H -n ) ||
-            warn "Could not query maximum file descriptor limit"
+            warn "Could not query maximum file descriptor limit; got '$MAX_FD'"
     esac
     case $MAX_FD in  #(
       '' | soft) :;; #(
@@ -177,7 +207,7 @@ if ! "$cygwin" && ! "$darwin" && ! "$nonstop" ; then
         # In POSIX sh, ulimit -n is undefined. That's why the result is checked to see if it worked.
         # shellcheck disable=SC2039,SC3045
         ulimit -n "$MAX_FD" ||
-            warn "Could not set maximum file descriptor limit to $MAX_FD"
+            warn "Could not set maximum file descriptor limit to '$MAX_FD'"
     esac
 fi
 
@@ -187,13 +217,14 @@ fi
 #   * -classpath
 #   * -D...appname settings
 #   * --module-path (only if needed)
-#   * DEFAULT_JVM_OPTS, JAVA_OPTS, and GRADLE_OPTS environment variables.
+#   * the expanded defaultJvmOpts template parameter
+#   * the expanded JAVA_OPTS and GRADLE_OPTS environment variables.
 
 # For Cygwin or MSYS, switch paths to Windows format before running java
-if "$cygwin" || "$msys" ; then
-    APP_HOME=$( cygpath --path --mixed "$APP_HOME" )
-    CLASSPATH=$( cygpath --path --mixed "$CLASSPATH" )
-    MODULE_PATH=$( cygpath --path --mixed "$MODULE_PATH" )
+if "$need_windows_paths" ; then
+    APP_HOME=${APP_HOME:+$( cygpath --path --mixed "$APP_HOME" )}
+    CLASSPATH=${CLASSPATH:+$( cygpath --path --mixed "$CLASSPATH" )}
+    MODULE_PATH=
     JAVACMD=$( cygpath --unix "$JAVACMD" )
 
     # Now convert the arguments - kludge to limit ourselves to /bin/sh
@@ -220,25 +251,31 @@ if "$cygwin" || "$msys" ; then
     done
 fi
 
-
-# Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
-DEFAULT_JVM_OPTS='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
+# Define default_jvm_opts here, from the Gradle defaultJvmOpts template parameter, to
+# allow it to include the Windows-path version of APP_HOME (for Cygwin & MSYS).
+# You can also use JAVA_OPTS and GRADLE_OPTS
+# to pass JVM options to this script.
+default_jvm_opts='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
 
 # Collect all arguments for the java command;
-#   * The DEFAULT_JVM_OPTS, JAVA_OPTS, and GRADLE_OPTS shell
-#     variables each comprises a space-separated list of arguments, some of
-#     which may be quoted strings that contain spaces; use `xargs` to split
-#     these, then insert backslashes to prevent other shell expansions, and
-#     then hand it to "eval" to parse it into separate shell words.
-#     (See "man bash" for the exact meaning of "word" in this context.)
-#   * put everything else in single quotes, so that it's not re-expanded.
+#
+#     The inherited environment variables JAVA_OPTS and GRADLE_OPTS,
+#     and the Gradle defaultJvmOpts template parameter (as the shell variable
+#     default_jvm_opts) need special treatment because they can comprise
+#     multiple shell words separated by spaces, adjusted by quotes and
+#     backslashes.
 
 set -- \
         "-Dorg.gradle.appname=$APP_BASE_NAME" \
-        -classpath "$CLASSPATH" \
-        --module-path "$MODULE_PATH" \
+
+        ${CLASSPATH:+   -classpath    "$CLASSPATH"   } \
+        ${MODULE_PATH:+ --module-path "$MODULE_PATH" } \
         org.gradle.wrapper.GradleWrapperMain \
         "$@"
+
+# For each word accumulated thus far, perform word-splitting. Quotes and
+# backslashes may be used to change word boundaries, but other all other shell
+# metacharacters are taken literally, including $ < > | & ; ( )
 
 # Stop when "xargs" is not available.
 if ! command -v xargs >/dev/null 2>&1
@@ -259,14 +296,14 @@ fi
 # post-process each arg (as a line of input to sed) to backslash-escape any
 # character that might be a shell metacharacter, then use eval to reverse
 # that process (while maintaining the separation between arguments), and wrap
-# the whole thing up as a single "set" statement.
+# the whole thing up as a single "set" statement, with the original args in
+# single quotes so that they're only expanded once.
 #
 # This will of course break if any of these variables contains a newline or
 # an unmatched quote.
-#
 
 eval "set -- $(
-        printf '%s\n' "$DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS" |
+        printf '%s\n' "$default_jvm_opts $JAVA_OPTS $GRADLE_OPTS" |
         xargs -n1 |
         sed ' s~[^-[:alnum:]+,./:=@_]~\\&~g; ' |
         tr '\n' ' '
