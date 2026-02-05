@@ -56,14 +56,16 @@
 #       There are tweaks for specific operating systems such as AIX, CygWin,
 #       Darwin, MinGW, and NonStop.
 #
-#   (3) This script is generated from the Groovy template
+#   (3) This script was generated from the Groovy template
 #       https://github.com/gradle/gradle/blob/${gitRef}/platforms/jvm/plugins-application/src/main/resources/org/gradle/api/internal/plugins/unixStartScript.txt
 #       within the Gradle project.
 #<% /*
 #       ... and if you're reading this, this IS the template just mentioned.
+#       Its latest version is
+#       https://github.com/gradle/gradle/blob/HEAD/platforms/jvm/plugins-application/src/main/resources/org/gradle/api/internal/plugins/unixStartScript.txt
 #
-#       This template is processed by
-#       https://github.com/gradle/gradle/blob/${gitRef}/platforms/jvm/plugins-application/src/main/java/org/gradle/api/internal/plugins/UnixStartScriptGenerator.java
+#       This template will be processed by
+#       https://github.com/gradle/gradle/blob/HEAD/platforms/jvm/plugins-application/src/main/java/org/gradle/api/internal/plugins/UnixStartScriptGenerator.java
 #
 #       Gradle is a meta-build system used by the project that you're building
 #       or installing. It's like autoconf but for projects that are written in
@@ -90,7 +92,7 @@
 #       (Template Engines) for details.
 #
 #       (An example invocation of this template is from
-#       https://github.com/gradle/gradle/blob/${gitRef}/subprojects/build-init/src/main/java/org/gradle/api/tasks/wrapper/Wrapper.java
+#       https://github.com/gradle/gradle/blob/HEAD/subprojects/build-init/src/main/java/org/gradle/api/tasks/wrapper/Wrapper.java
 #       within the Gradle project, which builds "gradlew".)
 # */ %>
 #       You can find Gradle at https://github.com/gradle/gradle/.
