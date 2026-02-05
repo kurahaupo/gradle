@@ -23,6 +23,7 @@ import org.gradle.api.internal.plugins.ExecutableJar;
 import org.gradle.api.internal.plugins.StartScriptGenerator;
 import org.gradle.api.tasks.wrapper.Wrapper;
 import org.gradle.api.tasks.wrapper.Wrapper.PathBase;
+import org.gradle.api.tasks.wrapper.internal.WrapperDefaults;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.util.PropertiesUtils;
 import org.gradle.util.GradleVersion;
@@ -123,7 +124,7 @@ public class WrapperGenerator {
 
     private static void writeScripts(String jarFileRelativePath, File unixScript, File batchScript) {
         StartScriptGenerator generator = new StartScriptGenerator();
-        generator.setApplicationName("Gradle");
+        generator.setApplicationName(WrapperDefaults.SCRIPT_PATH);
         generator.setGitRef(DefaultGradleVersion.current().getGitRevision());
         generator.setEntryPoint(new ExecutableJar(jarFileRelativePath));
         generator.setClasspath(Collections.emptyList());
