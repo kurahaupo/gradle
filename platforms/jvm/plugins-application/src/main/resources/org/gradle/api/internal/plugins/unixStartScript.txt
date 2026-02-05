@@ -266,11 +266,14 @@ fi
 # Add default JVM options here. You can also use JAVA_OPTS and ${optsEnvironmentVar} to pass JVM options to this script.
 DEFAULT_JVM_OPTS=${defaultJvmOpts}
 
-# Collect all arguments for the java command:
-#   * DEFAULT_JVM_OPTS, JAVA_OPTS, and optsEnvironmentVar are not allowed to contain shell fragments,
-#     and any embedded shellness will be escaped.
-#   * For example: A user cannot expect \${Hostname} to be expanded, as it is an environment variable and will be
-#     treated as '\${Hostname}' itself on the command line.
+# Collect all arguments for the java command;
+#   * The DEFAULT_JVM_OPTS, JAVA_OPTS, and ${optsEnvironmentVar} shell
+#     variables each comprises a space-separated list of arguments, some of
+#     which may be quoted strings that contain spaces; use `xargs` to split
+#     these, then insert backslashes to prevent other shell expansions, and
+#     then hand it to "eval" to parse it into separate shell words.
+#     (See "man bash" for the exact meaning of "word" in this context.)
+#   * put everything else in single quotes, so that it's not re-expanded.
 
 set -- \\
 <% if ( appNameSystemProperty ) {
