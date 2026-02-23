@@ -24,7 +24,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSets;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.gradle.api.internal.tasks.compile.incremental.compilerapi.CompilerApiData;
 import org.gradle.api.internal.tasks.compile.incremental.compilerapi.deps.DependentSetSerializer;
 import org.gradle.api.internal.tasks.compile.incremental.compilerapi.deps.DependentsSet;
@@ -255,7 +255,7 @@ public class ClassSetAnalysisData {
         Set<String> typesInPackage = new HashSet<>();
         for (String type : classHashes.keySet()) {
             int i = type.lastIndexOf(".");
-            if (i < 0 && packageName == null || i > 0 && type.substring(0, i).equals(packageName)) {
+            if ((i < 0 && packageName == null) || (i > 0 && type.substring(0, i).equals(packageName))) {
                 typesInPackage.add(type);
             }
         }

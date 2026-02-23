@@ -57,7 +57,7 @@ class AndroidCommunityPluginsSmokeTest extends AbstractPluginValidatingSmokeTest
             // https://plugins.gradle.org/plugin/com.osacky.fladle
             (FLADLE_PLUGIN_ID): Versions.of('0.17.4'),
             // https://plugins.gradle.org/plugin/com.github.triplet.play
-            (TRIPLET_PLAY_PLUGIN_ID): Versions.of('3.8.4'),
+            (TRIPLET_PLAY_PLUGIN_ID): Versions.of('3.9.0'),
             // https://mvnrepository.com/artifact/androidx.navigation.safeargs/androidx.navigation.safeargs.gradle.plugin
             (SAFEARGS_PLUGIN_ID): Versions.of('2.6.0'),
             // https://mvnrepository.com/artifact/com.google.dagger/hilt-android-gradle-plugin
@@ -117,10 +117,10 @@ class AndroidCommunityPluginsSmokeTest extends AbstractPluginValidatingSmokeTest
         buildFile << """
                 android {
                     namespace = "org.gradle.smoke.test"
-                    compileSdkVersion 24
-                    buildToolsVersion '${TestedVersions.androidTools}'
+                    compileSdk = 24
+                    buildToolsVersion = '${AGP_VERSIONS.getBuildToolsVersionFor(ANDROID_PLUGIN_VERSION_FOR_TESTS)}'
                     defaultConfig {
-                        versionCode 1
+                        versionCode = 1
                     }
                 }
         """

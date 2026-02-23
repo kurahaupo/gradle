@@ -1,5 +1,3 @@
-import gradlebuild.commons.configureJavaToolChain
-
 /*
  * Copyright 2020 the original author or authors.
  *
@@ -22,18 +20,21 @@ plugins {
     id("gradlebuild.code-quality")
     id("gradlebuild.ci-reporting")
     id("gradlebuild.test-retry")
+    id("gradlebuild.private-javadoc")
 }
 
-java.configureJavaToolChain()
+val testLibs = project.versionCatalogs.named("testLibs")
 
 dependencies {
     api(platform("gradlebuild:build-platform"))
     implementation("gradlebuild:gradle-plugin")
 
     implementation(localGroovy())
-    testImplementation("org.spockframework:spock-core")
-    testImplementation("net.bytebuddy:byte-buddy")
-    testImplementation("org.objenesis:objenesis")
+    testImplementation(testLibs.findLibrary("spock").get())
+    testImplementation(testLibs.findLibrary("bytebuddy").get())
+    testImplementation(testLibs.findLibrary("objenesis").get())
+
+    testRuntimeOnly(testLibs.findLibrary("junitPlatform").get())
 }
 
 tasks.withType<GroovyCompile>().configureEach {
@@ -49,11 +50,23 @@ tasks.withType<GroovyCompile>().configureEach {
 }
 
 tasks.withType<Test>().configureEach {
-    if (JavaVersion.current().isJava9Compatible) {
+    val testVersionProvider = javaLauncher.map { it.metadata.languageVersion }
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
         //allow ProjectBuilder to inject legacy types into the system classloader
-        jvmArgs("--add-opens", "java.base/java.lang=ALL-UNNAMED")
-        jvmArgs("--illegal-access=deny")
-    }
+        if (testVersionProvider.get().canCompileOrRun(9)) {
+            listOf("--add-opens", "java.base/java.lang=ALL-UNNAMED")
+        } else {
+            emptyList()
+        }
+    })
+    jvmArgumentProviders.add(CommandLineArgumentProvider {
+        val testVersion = testVersionProvider.get()
+        if (testVersion.canCompileOrRun(9) && !testVersion.canCompileOrRun(17)) {
+            listOf("--illegal-access=deny")
+        } else {
+            emptyList()
+        }
+    })
     useJUnitPlatform()
 }
 

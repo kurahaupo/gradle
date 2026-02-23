@@ -20,7 +20,6 @@ import org.gradle.api.credentials.Credentials
 import org.gradle.api.credentials.PasswordCredentials
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.integtests.fixtures.publish.maven.AbstractMavenPublishIntegTest
-import org.gradle.internal.credentials.DefaultPasswordCredentials
 import org.gradle.test.fixtures.server.http.AuthScheme
 import org.gradle.test.fixtures.server.http.HttpServer
 import org.gradle.test.fixtures.server.http.MavenHttpModule
@@ -119,7 +118,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
     def "can publish to authenticated repository using #authScheme auth"() {
         given:
         buildFile << publicationBuildWithCredentialsProvider(version, group, mavenRemoteRepo.uri)
-        PasswordCredentials credentials = new DefaultPasswordCredentials('username', 'password')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('username', 'password')
         configureRepositoryCredentials(credentials.username, credentials.password)
 
         server.authenticationScheme = authScheme
@@ -148,7 +147,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
 
     def "reports failure publishing with wrong credentials using #authScheme"() {
         given:
-        PasswordCredentials credentials = new DefaultPasswordCredentials('wrong', 'wrong')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('wrong', 'wrong')
         buildFile << publicationBuildWithCredentialsProvider(version, group, mavenRemoteRepo.uri)
         configureRepositoryCredentials(credentials.username, credentials.password)
 
@@ -219,7 +218,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
         redirectServer.start()
 
         buildFile.text = publicationBuild(version, group, new URI("${redirectServer.uri}/repo"))
-        PasswordCredentials credentials = new DefaultPasswordCredentials('username', 'password')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('username', 'password')
         configureRepositoryCredentials(credentials.username, credentials.password)
 
         redirectServer.expectGetRedirected(module.rootMetaData.path, "${server.uri}${module.rootMetaData.path}", credentials)
@@ -312,7 +311,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
         given:
         buildFile << publicationBuild(version, group, mavenRemoteRepo.uri)
         server.authenticationScheme = AuthScheme.BASIC
-        PasswordCredentials credentials = new DefaultPasswordCredentials('username', 'password')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('username', 'password')
         expectPublishModuleWithCredentials(module, credentials)
 
         when:
@@ -323,7 +322,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
     }
 
     /**
-     * @see org.gradle.configurationcache.ConfigurationCacheMavenPublishIntegrationTest
+     * @see org.gradle.internal.cc.impl.ConfigurationCacheMavenPublishIntegrationTest
      */
     def "cannot publish to authenticated repository using credentials Provider with inferred identity if repo has incompatible name"() {
         given:
@@ -334,21 +333,17 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
         fails 'publish'
 
         then:
-        if (GradleContextualExecuter.isConfigCache()) {
-            failure.assertHasDescription("Configuration cache state could not be cached:")
-        } else {
-            failure.assertHasDescription("Execution failed for task ':publishMavenPublicationToIncompatible_repo_nameRepository'.")
-        }
-        failure.assertHasCause("Identity may contain only letters and digits, received: incompatible_repo_name")
+        // graceful degradation causes early evaluation of credential providers (and build failure at configuration time)
+        failure.assertHasDescription("Identity may contain only letters and digits, received: incompatible_repo_name")
     }
 
     def "can publish to authenticated repository using inlined credentials"() {
         given:
-        PasswordCredentials credentials = new DefaultPasswordCredentials('username', 'password')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('username', 'password')
         buildFile << publicationBuild(version, group, mavenRemoteRepo.uri, "mavenRepo","""
             credentials {
-                username '${credentials.username}'
-                password '${credentials.password}'
+                username = '${credentials.username}'
+                password = '${credentials.password}'
             }
         """)
         server.authenticationScheme = AuthScheme.BASIC
@@ -360,19 +355,19 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
         then:
         module.assertPublishedAsJavaModule()
         if (GradleContextualExecuter.isConfigCache()) {
-            postBuildOutputContains("Configuration cache entry discarded")
+            postBuildOutputContains("Configuration cache disabled because incompatible task was found.")
         }
     }
 
     def "can publish to authenticated repository with name not valid as identity as long as one uses inlined credentials "() {
         given:
-        PasswordCredentials credentials = new DefaultPasswordCredentials('username', 'password')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('username', 'password')
 
         def repositoryName = "maven-repo-invalid-as-identity"
         buildFile << publicationBuild(version, group, mavenRemoteRepo.uri, repositoryName,"""
             credentials {
-                username '${credentials.username}'
-                password '${credentials.password}'
+                username = '${credentials.username}'
+                password = '${credentials.password}'
             }
         """)
 
@@ -385,7 +380,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
         then:
         module.assertPublishedAsJavaModule()
         if (GradleContextualExecuter.isConfigCache()) {
-            postBuildOutputContains("Configuration cache entry discarded")
+            postBuildOutputContains("Configuration cache disabled because incompatible task was found.")
         }
     }
 
@@ -417,7 +412,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
         configureRepositoryCredentials('foo', 'bar')
 
         server.authenticationScheme = AuthScheme.BASIC
-        PasswordCredentials credentials = new DefaultPasswordCredentials('foo', 'bar')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('foo', 'bar')
         expectPublishModuleWithCredentials(module, credentials)
 
         when:
@@ -451,8 +446,8 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
             publishing {
                 repositories {
                     maven {
-                        name "$repoName"
-                        url "$uri"
+                        name = "$repoName"
+                        url = "$uri"
                         ${credentialsBlock}
                     }
                 }
@@ -465,7 +460,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
         """
     }
 
-    private static void expectPublishModuleWithCredentials(MavenHttpModule module, PasswordCredentials credentials) {
+    private static void expectPublishModuleWithCredentials(MavenHttpModule module, HttpServer.PasswordCredentials credentials) {
         module.artifact.expectPut(credentials)
         module.artifact.sha1.expectPut(credentials)
         module.artifact.sha256.expectPut(credentials)
@@ -497,7 +492,7 @@ class MavenPublishHttpIntegTest extends AbstractMavenPublishIntegTest {
         module.moduleMetadata.expectPublish(extraChecksums)
     }
 
-    private static void expectModulePublishViaRedirect(MavenHttpModule module, URI targetServerUri, HttpServer httpServer, PasswordCredentials credentials = null) {
+    private static void expectModulePublishViaRedirect(MavenHttpModule module, URI targetServerUri, HttpServer httpServer, HttpServer.PasswordCredentials credentials = null) {
         String redirectUri = targetServerUri.toString()
         [module.artifact, module.pom, module.rootMetaData, module.moduleMetadata].each { artifact ->
             [artifact, artifact.sha1, artifact.md5, artifact.sha256, artifact.sha512].each { innerArtifact ->

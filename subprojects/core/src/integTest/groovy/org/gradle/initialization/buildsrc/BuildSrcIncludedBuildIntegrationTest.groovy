@@ -18,9 +18,11 @@ package org.gradle.initialization.buildsrc
 
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.test.fixtures.Flaky
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.plugin.PluginBuilder
 
+@Flaky(because = "https://github.com/gradle/gradle-private/issues/4550")
 class BuildSrcIncludedBuildIntegrationTest extends AbstractIntegrationSpec {
     def "buildSrc can use a library contributed by a build that it includes"() {
         file("buildSrc/settings.gradle") << """
@@ -38,8 +40,8 @@ class BuildSrcIncludedBuildIntegrationTest extends AbstractIntegrationSpec {
         run()
 
         then:
-        result.assertTaskExecuted(":included:jar")
-        result.assertTaskExecuted(":buildSrc:jar")
+        result.assertTaskScheduled(":included:jar")
+        result.assertTaskScheduled(":buildSrc:jar")
     }
 
     def "buildSrc can use a library contributed by a build included by the root build"() {
@@ -59,8 +61,8 @@ class BuildSrcIncludedBuildIntegrationTest extends AbstractIntegrationSpec {
         run()
 
         then:
-        result.assertTaskExecuted(":included:jar")
-        result.assertTaskExecuted(":buildSrc:jar")
+        result.assertTaskScheduled(":included:jar")
+        result.assertTaskScheduled(":buildSrc:jar")
     }
 
     // buildSrc acts like an implicit pluginManagement { } included build
@@ -79,7 +81,7 @@ class BuildSrcIncludedBuildIntegrationTest extends AbstractIntegrationSpec {
         fails("build")
 
         then:
-        failure.assertTaskExecuted(":buildSrc:jar")
+        failure.assertTaskScheduled(":buildSrc:jar")
         failure.assertHasCause("Cannot resolve external dependency test.lib:lib:1.0 because no repositories are defined.")
     }
 
@@ -102,7 +104,7 @@ class BuildSrcIncludedBuildIntegrationTest extends AbstractIntegrationSpec {
         fails(":included:build")
 
         then:
-        failure.assertTaskExecuted(":buildSrc:jar")
+        failure.assertTaskScheduled(":buildSrc:jar")
         failure.assertHasCause("Cannot resolve external dependency test.lib:lib:1.0 because no repositories are defined.")
     }
 
@@ -318,7 +320,7 @@ class BuildSrcIncludedBuildIntegrationTest extends AbstractIntegrationSpec {
         fails("help")
         then:
         failure.assertHasDescription("Execution failed for task ':included:compileJava'.")
-        failure.assertHasCause("Compilation failed; see the compiler error output for details.")
+        failure.assertHasCause("Compilation failed; see the compiler output below.")
     }
 
     def "buildSrc can apply plugins contributed by a build included by the root build and use them in plugins for the root build"() {

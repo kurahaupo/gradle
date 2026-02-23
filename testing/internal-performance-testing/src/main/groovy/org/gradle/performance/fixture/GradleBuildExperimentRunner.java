@@ -52,7 +52,6 @@ import org.gradle.util.GradleVersion;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -181,7 +180,7 @@ public class GradleBuildExperimentRunner extends AbstractBuildExperimentRunner {
         } else {
             invoker = invocationSpec.isUseDaemon()
                 ? GradleBuildInvoker.Cli
-                : GradleBuildInvoker.CliNoDaemon;
+                : GradleBuildInvoker.Cli.withColdDaemon();
         }
 
         boolean measureGarbageCollection = experiment.isMeasureGarbageCollection()
@@ -194,7 +193,7 @@ public class GradleBuildExperimentRunner extends AbstractBuildExperimentRunner {
             .setTargets(invocationSpec.getTasksToRun())
             .setGradleUserHome(determineGradleUserHome(invocationSpec))
             .setMeasureConfigTime(false)
-            .setMeasuredBuildOperations(experiment.getMeasuredBuildOperations())
+            .setBuildOperationMeasurements(experiment.getBuildOperationMeasurements())
             .setMeasureGarbageCollection(measureGarbageCollection)
             .setBuildLog(invocationSpec.getBuildLog())
             .setStudioInstallDir(invocationSpec.getStudioInstallDir())
@@ -216,18 +215,19 @@ public class GradleBuildExperimentRunner extends AbstractBuildExperimentRunner {
         try (InputStream inputStream = Files.newInputStream(gradlePropertiesFile.toPath())) {
             gradleProperties.load(inputStream);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
         String[] jvmOptsFromGradleProperties = gradleProperties.getProperty("org.gradle.jvmargs").split(" ");
         final ImmutableList<String> actualJvmArgs = ImmutableList.<String>builder()
             .add(jvmOptsFromGradleProperties)
             .addAll(invocationSpec.getJvmArguments())
             .build();
+        boolean isBuildOperationsTrace = false;
         return new GradleScenarioDefinition(
             OutputDirSelectorUtil.fileSafeNameFor(experimentSpec.getDisplayName()),
             experimentSpec.getDisplayName(),
             (GradleBuildInvoker) invocationSettings.getInvoker(),
-            new GradleBuildConfiguration(gradleDistribution.getVersion(), gradleDistribution.getGradleHomeDir(), Jvm.current().getJavaHome(), actualJvmArgs, false, invocationSpec.getClientJvmArguments()),
+            new GradleBuildConfiguration(gradleDistribution.getVersion(), gradleDistribution.getGradleHomeDir(), Jvm.current().getJavaHome(), actualJvmArgs, false, false, invocationSpec.getClientJvmArguments()),
             experimentSpec.getInvocation().getBuildAction(),
             cleanTasks.isEmpty()
                 ? BuildAction.NO_OP
@@ -238,8 +238,9 @@ public class GradleBuildExperimentRunner extends AbstractBuildExperimentRunner {
             invocationSettings.getWarmUpCount(),
             invocationSettings.getBuildCount(),
             invocationSettings.getOutputDir(),
-            ImmutableList.of(),
-            invocationSettings.getMeasuredBuildOperations()
+            actualJvmArgs,
+            invocationSettings.getBuildOperationMeasurements(),
+            isBuildOperationsTrace
         );
     }
 

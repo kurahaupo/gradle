@@ -17,21 +17,18 @@ package org.gradle.api.internal.catalog;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
-import org.gradle.api.Project;
-import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.DependencyArtifact;
 import org.gradle.api.artifacts.ExcludeRule;
 import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.artifacts.ModuleDependencyCapabilitiesHandler;
 import org.gradle.api.artifacts.ProjectDependency;
+import org.gradle.api.artifacts.capability.CapabilitySelector;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.artifacts.dependencies.ProjectDependencyInternal;
-import org.gradle.api.tasks.TaskDependency;
-import org.gradle.util.Path;
+import org.gradle.api.internal.project.ProjectIdentity;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
-import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,13 +52,13 @@ public class DelegatingProjectDependency implements ProjectDependencyInternal {
     }
 
     @Override
-    public Path getIdentityPath() {
-        return delegate.getIdentityPath();
+    public ProjectIdentity getTargetProjectIdentity() {
+        return delegate.getTargetProjectIdentity();
     }
 
     @Override
-    public Project getDependencyProject() {
-        return delegate.getDependencyProject();
+    public String getPath() {
+        return delegate.getPath();
     }
 
     @Override
@@ -142,6 +139,11 @@ public class DelegatingProjectDependency implements ProjectDependencyInternal {
     }
 
     @Override
+    public Set<CapabilitySelector> getCapabilitySelectors() {
+        return delegate.getCapabilitySelectors();
+    }
+
+    @Override
     public void endorseStrictVersions() {
         delegate.endorseStrictVersions();
     }
@@ -174,11 +176,6 @@ public class DelegatingProjectDependency implements ProjectDependencyInternal {
     }
 
     @Override
-    public boolean contentEquals(Dependency dependency) {
-        return delegate.contentEquals(dependency);
-    }
-
-    @Override
     @Nullable
     public String getReason() {
         return delegate.getReason();
@@ -190,20 +187,7 @@ public class DelegatingProjectDependency implements ProjectDependencyInternal {
     }
 
     @Override
-    @Deprecated
-    public Set<File> resolve() {
-        return delegate.resolve();
-    }
-
-    @Override
-    @Deprecated
-    public Set<File> resolve(boolean transitive) {
-        return delegate.resolve(transitive);
-    }
-
-    @Override
-    @Deprecated
-    public TaskDependency getBuildDependencies() {
-        return delegate.getBuildDependencies();
+    public String toString() {
+        return delegate.toString();
     }
 }

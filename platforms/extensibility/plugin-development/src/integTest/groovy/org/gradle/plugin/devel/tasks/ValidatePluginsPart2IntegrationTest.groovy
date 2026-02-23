@@ -19,11 +19,11 @@ package org.gradle.plugin.devel.tasks
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.AvailableJavaHomes
 import org.gradle.internal.jvm.Jvm
-import org.gradle.internal.reflect.validation.ValidationMessageChecker
+import org.gradle.internal.jvm.SupportedJavaVersions
 import org.junit.Assume
 import spock.lang.Issue
 
-class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implements ValidationMessageChecker, ValitdatePluginsTrait {
+class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implements ValidatePluginsTrait {
     @Issue("https://github.com/gradle/gradle/issues/24979")
     def "cannot annotate type 'java.net.URL' with @Input"() {
         given:
@@ -76,13 +76,13 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
         expect:
         executer.withArgument("-Dorg.gradle.internal.max.validation.errors=7")
         assertValidationFailsWith([
-            warning(unsupportedValueTypeConfig { type('MyTask').property('direct').propertyType('URL') }, "validation_problems", "unsupported_value_type"),
-            warning(unsupportedValueTypeConfig { type('MyTask').property('listPropertyInput').propertyType('ListProperty<URL>') }, "validation_problems", "unsupported_value_type"),
-            warning(unsupportedValueTypeConfig { type('MyTask').property('mapPropertyInput').propertyType('MapProperty<String, URL>') }, "validation_problems", "unsupported_value_type"),
-            warning(unsupportedValueTypeConfig { type('MyTask').property('nestedBean.nestedInput').propertyType('Property<URL>') }, "validation_problems", "unsupported_value_type"),
-            warning(unsupportedValueTypeConfig { type('MyTask').property('propertyInput').propertyType('Property<URL>') }, "validation_problems", "unsupported_value_type"),
-            warning(unsupportedValueTypeConfig { type('MyTask').property('providerInput').propertyType('Provider<URL>') }, "validation_problems", "unsupported_value_type"),
-            warning(unsupportedValueTypeConfig { type('MyTask').property('setPropertyInput').propertyType('SetProperty<URL>') }, "validation_problems", "unsupported_value_type"),
+            error(unsupportedValueTypeConfig { type('MyTask').property('direct').propertyType('URL') }, "validation_problems", "unsupported_value_type"),
+            error(unsupportedValueTypeConfig { type('MyTask').property('listPropertyInput').propertyType('ListProperty<URL>') }, "validation_problems", "unsupported_value_type"),
+            error(unsupportedValueTypeConfig { type('MyTask').property('mapPropertyInput').propertyType('MapProperty<String, URL>') }, "validation_problems", "unsupported_value_type"),
+            error(unsupportedValueTypeConfig { type('MyTask').property('nestedBean.nestedInput').propertyType('Property<URL>') }, "validation_problems", "unsupported_value_type"),
+            error(unsupportedValueTypeConfig { type('MyTask').property('propertyInput').propertyType('Property<URL>') }, "validation_problems", "unsupported_value_type"),
+            error(unsupportedValueTypeConfig { type('MyTask').property('providerInput').propertyType('Provider<URL>') }, "validation_problems", "unsupported_value_type"),
+            error(unsupportedValueTypeConfig { type('MyTask').property('setPropertyInput').propertyType('SetProperty<URL>') }, "validation_problems", "unsupported_value_type"),
         ])
 
         and:
@@ -91,7 +91,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'direct\' has @Input annotation used on type \'java.net.URL\' or a property of this type'
             details == 'Type \'java.net.URL\' is not supported on properties annotated with @Input because Java Serialization can be inconsistent for this type'
             solutions == [ 'Use type \'java.net.URI\' instead' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'direct',
             ]
@@ -101,7 +101,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'listPropertyInput\' has @Input annotation used on type \'java.net.URL\' or a property of this type'
             details == 'Type \'java.net.URL\' is not supported on properties annotated with @Input because Java Serialization can be inconsistent for this type'
             solutions == [ 'Use type \'java.net.URI\' instead' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'listPropertyInput',
             ]
@@ -111,7 +111,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'mapPropertyInput\' has @Input annotation used on type \'java.net.URL\' or a property of this type'
             details == 'Type \'java.net.URL\' is not supported on properties annotated with @Input because Java Serialization can be inconsistent for this type'
             solutions == [ 'Use type \'java.net.URI\' instead' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'mapPropertyInput',
             ]
@@ -121,7 +121,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'nestedBean.nestedInput\' has @Input annotation used on type \'java.net.URL\' or a property of this type'
             details == 'Type \'java.net.URL\' is not supported on properties annotated with @Input because Java Serialization can be inconsistent for this type'
             solutions == [ 'Use type \'java.net.URI\' instead' ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'nestedBean',
                 'typeName' : 'MyTask',
                 'propertyName' : 'nestedInput',
@@ -132,7 +132,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'propertyInput\' has @Input annotation used on type \'java.net.URL\' or a property of this type'
             details == 'Type \'java.net.URL\' is not supported on properties annotated with @Input because Java Serialization can be inconsistent for this type'
             solutions == [ 'Use type \'java.net.URI\' instead' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'propertyInput',
             ]
@@ -142,7 +142,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'providerInput\' has @Input annotation used on type \'java.net.URL\' or a property of this type'
             details == 'Type \'java.net.URL\' is not supported on properties annotated with @Input because Java Serialization can be inconsistent for this type'
             solutions == [ 'Use type \'java.net.URI\' instead' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'providerInput',
             ]
@@ -152,7 +152,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'setPropertyInput\' has @Input annotation used on type \'java.net.URL\' or a property of this type'
             details == 'Type \'java.net.URL\' is not supported on properties annotated with @Input because Java Serialization can be inconsistent for this type'
             solutions == [ 'Use type \'java.net.URI\' instead' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'setPropertyInput',
             ]
@@ -242,7 +242,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Annotate with @InputFiles for collections of files',
                 'If you want to track the path, return File.absolutePath as a String and keep @Input',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'file',
             ]
@@ -256,7 +256,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Annotate with @InputFiles for collections of files',
                 'If you want to track the path, return File.absolutePath as a String and keep @Input',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'fileCollection',
             ]
@@ -270,7 +270,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Annotate with @InputFiles for collections of files',
                 'If you want to track the path, return File.absolutePath as a String and keep @Input',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'filePath',
             ]
@@ -284,7 +284,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Annotate with @InputFiles for collections of files',
                 'If you want to track the path, return File.absolutePath as a String and keep @Input',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'fileTree',
             ]
@@ -294,7 +294,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'inputDirectory\' is annotated with @InputDirectory but missing a normalization strategy'
             details == 'If you don\'t declare the normalization, outputs can\'t be re-used between machines or locations on the same machine, therefore caching efficiency drops significantly'
             solutions == [ 'Declare the normalization strategy by annotating the property with either @PathSensitive, @Classpath or @CompileClasspath' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'inputDirectory',
             ]
@@ -304,7 +304,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'inputFile\' is annotated with @InputFile but missing a normalization strategy'
             details == 'If you don\'t declare the normalization, outputs can\'t be re-used between machines or locations on the same machine, therefore caching efficiency drops significantly'
             solutions == [ 'Declare the normalization strategy by annotating the property with either @PathSensitive, @Classpath or @CompileClasspath' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'inputFile',
             ]
@@ -314,7 +314,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             contextualLabel == 'Type \'MyTask\' property \'inputFiles\' is annotated with @InputFiles but missing a normalization strategy'
             details == 'If you don\'t declare the normalization, outputs can\'t be re-used between machines or locations on the same machine, therefore caching efficiency drops significantly'
             solutions == [ 'Declare the normalization strategy by annotating the property with either @PathSensitive, @Classpath or @CompileClasspath' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'inputFiles',
             ]
@@ -444,7 +444,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Add an input or output annotation',
                 'Mark it as @Internal',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'doubleIterableOptions.*.*',
                 'typeName' : 'MyTask',
                 'propertyName' : 'notAnnotated',
@@ -458,7 +458,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Add an input or output annotation',
                 'Mark it as @Internal',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'iterableMappedOptions.*.<key>.*',
                 'typeName' : 'MyTask',
                 'propertyName' : 'notAnnotated',
@@ -472,7 +472,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Add an input or output annotation',
                 'Mark it as @Internal',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'iterableOptions.*',
                 'typeName' : 'MyTask',
                 'propertyName' : 'notAnnotated',
@@ -486,7 +486,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Add an input or output annotation',
                 'Mark it as @Internal',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'mappedOptions.<key>',
                 'typeName' : 'MyTask',
                 'propertyName' : 'notAnnotated',
@@ -500,7 +500,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Add an input or output annotation',
                 'Mark it as @Internal',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'namedIterable.<name>',
                 'typeName' : 'MyTask',
                 'propertyName' : 'notAnnotated',
@@ -514,7 +514,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Add an input or output annotation',
                 'Mark it as @Internal',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'options',
                 'typeName' : 'MyTask',
                 'propertyName' : 'notAnnotated',
@@ -528,7 +528,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Add an input or output annotation',
                 'Mark it as @Internal',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'optionsList.*',
                 'typeName' : 'MyTask',
                 'propertyName' : 'notAnnotated',
@@ -542,7 +542,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Add an input or output annotation',
                 'Mark it as @Internal',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'parentPropertyName' : 'providedOptions',
                 'typeName' : 'MyTask',
                 'propertyName' : 'notAnnotated',
@@ -602,6 +602,9 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
         supportedType | value
         'Integer'     | 'Integer.valueOf(0)'
         'String'      | '"foo"'
+        'Letter'      | 'Letter.A'
+        // This was allowed in older versions of Gradle
+        // Map<Enum, Options>
         'Enum'        | 'Letter.A'
     }
 
@@ -640,16 +643,16 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
         expect:
         executer.withArgument("-Dorg.gradle.internal.max.validation.errors=1")
         assertValidationFailsWith([
-            warning(nestedMapUnsupportedKeyTypeConfig { type('MyTask').property("mapWithUnsupportedKey").keyType("java.lang.Boolean") }, 'validation_problems', 'unsupported_key_type_of_nested_map'),
+            error(nestedMapUnsupportedKeyTypeConfig { type('MyTask').property("mapWithUnsupportedKey").keyType("java.lang.Boolean") }, 'validation_problems', 'unsupported_key_type_of_nested_map'),
         ])
 
         and:
         verifyAll(receivedProblem) {
             fqid == 'validation:property-validation:nested-map-unsupported-key-type'
             contextualLabel == "Type 'MyTask' property 'mapWithUnsupportedKey' where key of nested map is of type 'java.lang.Boolean'"
-            details == 'Key of nested map must be one of the following types: \'Enum\', \'Integer\', \'String\''
-            solutions == [ 'Change type of key to one of the following types: \'Enum\', \'Integer\', \'String\'' ]
-            additionalData == [
+            details == "Key of nested map must be an enum or one of the following types: 'java.lang.String', 'java.lang.Integer'"
+            solutions == [ "Change type of key to an enum or one of the following types: 'java.lang.String', 'java.lang.Integer'" ]
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : 'mapWithUnsupportedKey',
             ]
@@ -680,7 +683,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
         expect:
         def reason = "Type is in 'java.*' or 'javax.*' package that are reserved for standard Java API types."
         assertValidationFailsWith([
-            warning(nestedTypeUnsupportedConfig { type("MyTask").property("my$typeName").annotatedType(className).reason(reason) },
+            error(nestedTypeUnsupportedConfig { type("MyTask").property("my$typeName").annotatedType(className).reason(reason) },
                 'validation_problems', 'unsupported_nested_type'),
         ])
 
@@ -693,7 +696,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Use a different input annotation if type is not a bean',
                 'Use a different package that doesn\'t conflict with standard Java or Kotlin types for custom types',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : "my$typeName",
             ]
@@ -778,7 +781,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
 
         expect:
         assertValidationFailsWith([
-            warning(nestedTypeUnsupportedConfig { type("MyTask").property("my$typeName").annotatedType(className).reason(reason) },
+            error(nestedTypeUnsupportedConfig { type("MyTask").property("my$typeName").annotatedType(className).reason(reason) },
                 'validation_problems', 'unsupported_nested_type'),
         ])
 
@@ -791,7 +794,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
                 'Use a different input annotation if type is not a bean',
                 'Use a different package that doesn\'t conflict with standard Java or Kotlin types for custom types'
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'MyTask',
                 'propertyName' : "my$typeName"
             ]
@@ -820,11 +823,11 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             public abstract class MyTask extends DefaultTask {
             }
         """
-        executer.withArgument("-Porg.gradle.java.installations.paths=" + installationPaths)
+        executer.withArgument("-Dorg.gradle.java.installations.paths=" + installationPaths)
         buildFile << """
             java {
                 toolchain {
-                    languageVersion.set(JavaLanguageVersion.of(${newerJdk.javaVersion.majorVersion}))
+                    languageVersion.set(JavaLanguageVersion.of(${newerJdk.javaVersion?.majorVersion}))
                 }
             }
         """
@@ -832,7 +835,7 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
         assertValidationSucceeds()
     }
 
-    def "missing Java Toolchain plugin causes a deprecation warning"() {
+    def "missing Java Toolchain plugin causes a build failure"() {
         given:
         source("producer/settings.gradle") << ""
         source("producer/build.gradle") << "plugins { id 'java' }"
@@ -852,21 +855,62 @@ class ValidatePluginsPart2IntegrationTest extends AbstractIntegrationSpec implem
             .run()
 
         executer.inDirectory(file("consumer"))
-            .expectDocumentedDeprecationWarning(
-                "Using task ValidatePlugins without applying the Java Toolchain plugin. " +
-                    "This behavior has been deprecated. This will fail with an error in Gradle 9.0. " +
-                    "Consult the upgrading guide for further information: " +
-                    "https://docs.gradle.org/current/userguide/upgrading_version_8.html#validate_plugins_without_java_toolchain"
-            )
 
         then:
-        succeeds "validatePlugins"
+        fails "validatePlugins"
 
         and:
         verifyAll(receivedProblem) {
-            fqid == 'deprecation:missing-java-toolchain-plugin'
-            contextualLabel == 'Using task ValidatePlugins without applying the Java Toolchain plugin. This behavior has been deprecated.'
+            fqid == 'validation:missing-java-toolchain-plugin'
+            contextualLabel == 'Using task ValidatePlugins without applying the Java Toolchain plugin is not supported.'
+            definition.documentationLink.url.endsWith("/userguide/upgrading_major_version_9.html#validate_plugins_without_java_toolchain_90")
         }
+    }
 
+    def "using toolchain lower than supported by the daemon causes a build failure"() {
+        def currentJdk = Jvm.current()
+        def unsupportedDaemonJDK = AvailableJavaHomes.getUnsupportedDaemonJdk()
+        Assume.assumeNotNull(unsupportedDaemonJDK)
+
+        def installationPaths = [currentJdk, unsupportedDaemonJDK].collect { it.javaHome.absolutePath }.join(",")
+
+        given:
+        source("producer/settings.gradle") << ""
+        source("producer/build.gradle") << "plugins { id 'java' }"
+        source("producer/src/main/java/Test.java") << "public class Test {}"
+
+        source("consumer/settings.gradle") << ""
+        source("consumer/build.gradle") << """
+            plugins {
+                id 'java-library'
+            }
+            tasks.register("validatePlugins", ValidatePlugins) {
+                classes.from("../producer/build/classes/java/main")
+                outputFile.set(project.file("\$buildDir/report.txt"))
+                launcher.set(javaToolchains.launcherFor {
+                    languageVersion = JavaLanguageVersion.of(8)
+                })
+            }
+        """
+
+        when:
+
+        executer.inDirectory(file("producer"))
+
+        succeeds("build")
+
+        executer.inDirectory(file("consumer"))
+            .withArgument("-Dorg.gradle.java.installations.paths=" + installationPaths)
+
+
+        then:
+        fails "validatePlugins"
+
+        and:
+        verifyAll(receivedProblem) {
+            fqid == 'validation:invalid-java-toolchain'
+            contextualLabel == "Running task ValidatePlugins with Java Toolchain lower than ${SupportedJavaVersions.MINIMUM_DAEMON_JAVA_VERSION} is not supported."
+            definition.documentationLink.url.endsWith("/userguide/upgrading_version_9.html#validate_plugins_java_version")
+        }
     }
 }

@@ -9,48 +9,39 @@ testing-related abstract base types and interfaces for things like Test tasks, l
 This project is a implementation dependency of many other testing-related subprojects in the Gradle build.
 """
 
-errorprone {
-    disabledChecks.addAll(
-        "EmptyBlockTag", // 3 occurrences
-        "InlineMeInliner", // 2 occurrences
-        "MissingCasesInEnumSwitch", // 1 occurrences
-        "OperatorPrecedence", // 1 occurrences
-    )
-}
-
 dependencies {
     api(projects.baseServices)
     api(projects.buildOperations)
     api(projects.core)
     api(projects.coreApi)
     api(projects.enterpriseLogging)
-    api(projects.javaLanguageExtensions)
-    api(projects.logging)
+    api(projects.fileCollections)
+    api(projects.files)
+    api(projects.functional)
+    api(projects.stdlibJavaExtensions)
     api(projects.loggingApi)
     api(projects.messaging)
     api(projects.native)
+    api(projects.problemsApi)
+    api(projects.reportRendering)
     api(projects.reporting)
+    api(projects.serialization)
     api(projects.serviceProvider)
     api(projects.testingBaseInfrastructure)
     api(projects.time)
 
     api(libs.groovy)
     api(libs.guava)
-    api(libs.jsr305)
+    api(libs.jspecify)
     api(libs.inject)
 
+    implementation(projects.logging)
     implementation(projects.baseServicesGroovy)
     implementation(projects.concurrent)
-    implementation(projects.files)
     implementation(projects.modelCore)
-    implementation(projects.processServices)
-    implementation(projects.serialization)
 
-    implementation(libs.ant) {
-        because("only used for DateUtils")
-    }
     implementation(libs.commonsLang)
-    implementation(libs.kryo)
+    implementation(libs.commonsIo)
     implementation(libs.slf4jApi)
 
     testImplementation(projects.fileCollections)
@@ -61,6 +52,7 @@ dependencies {
     testImplementation(testFixtures(projects.messaging))
     testImplementation(testFixtures(projects.platformBase))
     testImplementation(testFixtures(projects.serialization))
+    testImplementation(testFixtures(projects.time))
 
     testImplementation(libs.commonsIo)
 
@@ -86,4 +78,6 @@ packageCycles {
     excludePatterns.add("org/gradle/api/internal/tasks/testing/**")
 }
 
-integTest.usesJavadocCodeSnippets = true
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}

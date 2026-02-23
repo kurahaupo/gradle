@@ -17,7 +17,6 @@
 package org.gradle.internal.work
 
 import org.gradle.internal.concurrent.DefaultExecutorFactory
-import org.gradle.internal.concurrent.DefaultWorkerLimits
 import org.gradle.internal.concurrent.ExecutorFactory
 import org.gradle.internal.concurrent.ManagedExecutor
 import org.gradle.internal.resources.DefaultResourceLockCoordinationService
@@ -31,7 +30,7 @@ class DefaultConditionalExecutionQueueTest extends ConcurrentSpec {
     private static final int MAX_WORKERS = 4
     def coordinationService = new DefaultResourceLockCoordinationService()
     def workerLimits = new DefaultWorkerLimits(MAX_WORKERS)
-    def workerLeaseService = new DefaultWorkerLeaseService(coordinationService, workerLimits)
+    def workerLeaseService = new DefaultWorkerLeaseService(coordinationService, workerLimits, ResourceLockStatistics.NO_OP)
     def queue = new DefaultConditionalExecutionQueue(DISPLAY_NAME, workerLimits, new DefaultExecutorFactory(), workerLeaseService)
 
     def "can run an action and wait for the result"() {

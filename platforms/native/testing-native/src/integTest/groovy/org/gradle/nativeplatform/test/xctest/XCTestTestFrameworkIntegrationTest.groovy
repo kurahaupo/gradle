@@ -16,35 +16,43 @@
 
 package org.gradle.nativeplatform.test.xctest
 
+import org.gradle.api.internal.tasks.testing.report.generic.GenericTestExecutionResult
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AvailableToolChains
+import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
 import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.XCTestCaseElement
 import org.gradle.nativeplatform.fixtures.app.XCTestSourceElement
 import org.gradle.nativeplatform.fixtures.app.XCTestSourceFileElement
 import org.gradle.test.fixtures.file.DoesNotSupportNonAsciiPaths
 import org.gradle.test.precondition.Requires
-import org.gradle.test.preconditions.UnitTestPreconditions
 import org.gradle.testing.AbstractTestFrameworkIntegrationTest
+import org.junit.Assume
 
-import static org.junit.Assume.assumeTrue
+import static org.gradle.test.preconditions.UnitTestPreconditions.HasXCTest
 
-@Requires(UnitTestPreconditions.NotMacOsM1)
+@RequiresInstalledToolChain(ToolChainRequirement.SWIFTC)
+@Requires(HasXCTest)
 @DoesNotSupportNonAsciiPaths(reason = "Swift sometimes fails when executed from non-ASCII directory")
 class XCTestTestFrameworkIntegrationTest extends AbstractTestFrameworkIntegrationTest {
     def setup() {
-        def toolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFTC)
-        assumeTrue(toolChain != null)
+        def toolChain
+        if (OperatingSystem.current().isLinux()) {
+            // We only have Swift 5 on Linux
+            toolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFTC_5_OR_OLDER)
+        } else {
+            toolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFTC)
+        }
+
+        Assume.assumeNotNull(toolChain)
 
         File initScript = file("init.gradle") << """
 allprojects { p ->
     apply plugin: ${toolChain.pluginClass}
 
-    model {
-          toolChains {
-            ${toolChain.buildScriptConfig}
-          }
-    }
+      toolChains {
+        ${toolChain.buildScriptConfig}
+      }
 }
 """
         executer.beforeExecute({
@@ -55,6 +63,11 @@ allprojects { p ->
         buildFile << """
             apply plugin: 'xctest'
         """
+    }
+
+    @Override
+    GenericTestExecutionResult.TestFramework getTestFramework() {
+        return GenericTestExecutionResult.TestFramework.XC_TEST
     }
 
     @Override
@@ -103,14 +116,14 @@ allprojects { p ->
         List<XCTestSourceFileElement> testSuites = [
             new XCTestSourceFileElement("SomeTest") {
                 List<XCTestCaseElement> testCases = [
-                    testCase(failingTestCaseName, FAILING_TEST, true),
-                    passingTestCase(passingTestCaseName)
+                    testCase(failingTestMethodName, FAILING_TEST, true),
+                    passingTestCase(passingTestMethodName)
                 ]
             }.withImport(libcModuleName),
 
             new XCTestSourceFileElement("SomeOtherTest") {
                 List<XCTestCaseElement> testCases = [
-                    passingTestCase(passingTestCaseName)
+                    passingTestCase(passingTestMethodName)
                 ]
             },
         ]
@@ -129,12 +142,12 @@ allprojects { p ->
     }
 
     @Override
-    String getPassingTestCaseName() {
+    String getPassingTestMethodName() {
         return "testPass"
     }
 
     @Override
-    String getFailingTestCaseName() {
+    String getFailingTestMethodName() {
         return "testFail"
     }
 

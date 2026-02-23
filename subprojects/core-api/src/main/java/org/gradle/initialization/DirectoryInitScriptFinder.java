@@ -16,8 +16,8 @@
 package org.gradle.initialization;
 
 import org.gradle.internal.scripts.DefaultScriptFileResolver;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Collection;
 import java.util.Collections;
@@ -36,7 +36,7 @@ public abstract class DirectoryInitScriptFinder implements InitScriptFinder {
 
     @Nullable
     protected File resolveScriptFile(File dir, String basename) {
-        return resolver().resolveScriptFile(dir, basename);
+        return resolver().resolveScriptFile(dir, basename).getSelectedCandidate();
     }
 
     private List<File> initScriptsIn(File initScriptsDir) {

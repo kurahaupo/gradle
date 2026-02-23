@@ -19,11 +19,10 @@ package org.gradle.api.internal.tasks.compile;
 import org.gradle.api.tasks.compile.CompileOptions;
 import org.gradle.jvm.toolchain.JavaInstallationMetadata;
 
-import javax.annotation.Nullable;
 import java.io.File;
 
 public class DefaultGroovyJavaJointCompileSpecFactory extends AbstractJavaCompileSpecFactory<DefaultGroovyJavaJointCompileSpec> {
-    public DefaultGroovyJavaJointCompileSpecFactory(CompileOptions compileOptions, @Nullable JavaInstallationMetadata javaInstallationMetadata) {
+    public DefaultGroovyJavaJointCompileSpecFactory(CompileOptions compileOptions, JavaInstallationMetadata javaInstallationMetadata) {
         super(compileOptions, javaInstallationMetadata);
     }
 
@@ -38,40 +37,8 @@ public class DefaultGroovyJavaJointCompileSpecFactory extends AbstractJavaCompil
     }
 
     @Override
-    protected DefaultGroovyJavaJointCompileSpec getDefaultSpec() {
+    protected DefaultGroovyJavaJointCompileSpec getInProcessSpec() {
         return new DefaultGroovyJavaJointCompileSpec();
     }
 
-    private static class DefaultCommandLineGroovyJavaJointCompileSpec extends DefaultGroovyJavaJointCompileSpec implements CommandLineJavaCompileSpec {
-        private final File executable;
-
-        private DefaultCommandLineGroovyJavaJointCompileSpec(File executable) {
-            this.executable = executable;
-        }
-
-        @Override
-        public File getExecutable() {
-            return executable;
-        }
-    }
-
-    private static class DefaultForkingGroovyJavaJointCompileSpec extends DefaultGroovyJavaJointCompileSpec implements ForkingJavaCompileSpec {
-        private final File javaHome;
-        private final int javaLanguageVersion;
-
-        private DefaultForkingGroovyJavaJointCompileSpec(File javaHome, int javaLanguageVersion) {
-            this.javaHome = javaHome;
-            this.javaLanguageVersion = javaLanguageVersion;
-        }
-
-        @Override
-        public File getJavaHome() {
-            return javaHome;
-        }
-
-        @Override
-        public int getJavaLanguageVersion() {
-            return javaLanguageVersion;
-        }
-    }
 }

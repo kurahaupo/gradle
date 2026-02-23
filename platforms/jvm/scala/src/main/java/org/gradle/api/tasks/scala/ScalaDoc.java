@@ -15,10 +15,10 @@
  */
 package org.gradle.api.tasks.scala;
 
+import org.gradle.api.Action;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
-import org.gradle.api.internal.project.IsolatedAntBuilder;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.CacheableTask;
@@ -36,14 +36,15 @@ import org.gradle.api.tasks.SourceTask;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.scala.internal.GenerateScaladoc;
 import org.gradle.api.tasks.scala.internal.ScalaRuntimeHelper;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 import org.gradle.jvm.toolchain.JavaLauncher;
 import org.gradle.jvm.toolchain.JavaToolchainService;
 import org.gradle.process.JavaForkOptions;
 import org.gradle.util.internal.GUtil;
 import org.gradle.workers.WorkQueue;
 import org.gradle.workers.WorkerExecutor;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.util.List;
@@ -77,6 +78,7 @@ public abstract class ScalaDoc extends SourceTask {
      * Returns the directory to generate the API documentation into.
      */
     @OutputDirectory
+    @ToBeReplacedByLazyProperty
     public File getDestinationDir() {
         return destinationDir;
     }
@@ -96,6 +98,7 @@ public abstract class ScalaDoc extends SourceTask {
      */
     @PathSensitive(PathSensitivity.RELATIVE)
     @Override
+    @ToBeReplacedByLazyProperty
     public FileTree getSource() {
         return super.getSource();
     }
@@ -132,6 +135,7 @@ public abstract class ScalaDoc extends SourceTask {
      * @return The classpath.
      */
     @Classpath
+    @ToBeReplacedByLazyProperty
     public FileCollection getClasspath() {
         return classpath;
     }
@@ -144,6 +148,7 @@ public abstract class ScalaDoc extends SourceTask {
      * Returns the classpath to use to load the ScalaDoc tool.
      */
     @Classpath
+    @ToBeReplacedByLazyProperty
     public FileCollection getScalaClasspath() {
         return scalaClasspath;
     }
@@ -160,8 +165,13 @@ public abstract class ScalaDoc extends SourceTask {
         return scalaDocOptions;
     }
 
-    public void setScalaDocOptions(ScalaDocOptions scalaDocOptions) {
-        this.scalaDocOptions = scalaDocOptions;
+    /**
+     * Configures the ScalaDoc generation options.
+     *
+     * @since 8.11
+     */
+    public void scalaDocOptions(Action<? super ScalaDocOptions> action) {
+        action.execute(getScalaDocOptions());
     }
 
     /**
@@ -170,6 +180,7 @@ public abstract class ScalaDoc extends SourceTask {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getTitle() {
         return title;
     }
@@ -273,9 +284,6 @@ public abstract class ScalaDoc extends SourceTask {
 
     @Inject
     protected abstract ObjectFactory getObjectFactory();
-
-    @Inject
-    protected abstract IsolatedAntBuilder getAntBuilder();
 
     @Inject
     protected abstract WorkerExecutor getWorkerExecutor();

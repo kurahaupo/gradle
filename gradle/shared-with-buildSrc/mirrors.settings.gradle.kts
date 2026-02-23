@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import org.gradle.api.internal.artifacts.BaseRepositoryFactory.PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY
 import org.gradle.api.internal.GradleInternal
 import org.gradle.build.event.BuildEventsListenerRegistry
 import org.gradle.internal.nativeintegration.network.HostnameLookup
@@ -24,7 +23,6 @@ import org.gradle.tooling.events.OperationCompletionListener
 
 class Helper(private val providers: ProviderFactory) {
     val originalUrls: Map<String, String> = mapOf(
-        "jcenter" to "https://jcenter.bintray.com/",
         "mavencentral" to "https://repo.maven.apache.org/maven2/",
         "google" to "https://dl.google.com/dl/android/maven2/",
         "gradle" to "https://repo.gradle.org/gradle/repo",

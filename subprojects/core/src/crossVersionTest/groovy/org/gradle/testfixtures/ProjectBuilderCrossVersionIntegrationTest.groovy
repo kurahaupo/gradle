@@ -18,7 +18,9 @@ package org.gradle.testfixtures
 
 import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
 import org.gradle.integtests.fixtures.TargetVersions
+import org.gradle.integtests.fixtures.executer.GradleDistribution
 import org.gradle.integtests.fixtures.executer.GradleExecuter
+import org.gradle.integtests.fixtures.executer.NoDaemonGradleExecuter
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
@@ -104,14 +106,14 @@ class ProjectBuilderCrossVersionIntegrationTest extends MultiVersionIntegrationS
                     }
                     repositories {
                         maven {
-                            url '${repoDir.toURI().toURL()}'
+                            url = '${repoDir.toURI().toURL()}'
                         }
                     }
                 }
             """
         }
 
-        createGradleExecutor(version, helloWorldPluginDir, 'publish').run()
+        createGradleExecutor(version, helloWorldPluginDir, 'publish').noDeprecationChecks().run()
     }
 
     private void writeConsumingProject(File repoDir) {
@@ -153,14 +155,15 @@ class ProjectBuilderCrossVersionIntegrationTest extends MultiVersionIntegrationS
             }
 
             repositories {
-                maven { url '${repoDir.toURI().toURL()}' }
+                maven { url = '${repoDir.toURI().toURL()}' }
                 ${mavenCentralRepositoryDefinition()}
             }
         """
     }
 
     private GradleExecuter createGradleExecutor(String gradleVersion, File projectDir = testDirectory, String... tasks) {
-        def executer = buildContext.distribution(gradleVersion).executer(temporaryFolder, getBuildContext())
+        GradleDistribution distribution = buildContext.distribution(gradleVersion)
+        def executer = new NoDaemonGradleExecuter(distribution, temporaryFolder, buildContext)
         executer.inDirectory(projectDir)
         executer.withTasks(tasks)
         executers << executer

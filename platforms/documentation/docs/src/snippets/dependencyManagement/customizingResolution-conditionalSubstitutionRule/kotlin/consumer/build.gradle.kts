@@ -14,7 +14,7 @@ plugins {
 }
 
 // tag::project_substitution[]
-configurations.all {
+configurations.configureEach {
     resolutionStrategy.dependencySubstitution.all {
         requested.let {
             if (it is ModuleComponentSelector && it.group == "org.example") {
@@ -33,10 +33,10 @@ dependencies {
 }
 
 tasks.register("showJarFiles") {
-    val rootDir = project.rootDir
+    val settingsDir = project.layout.settingsDirectory.asFile
     val compileClasspath: FileCollection = configurations.compileClasspath.get()
 
     doLast {
-        compileClasspath.forEach { println(it.path.removePrefix(rootDir.path)) }
+        compileClasspath.forEach { println(it.path.removePrefix(settingsDir.path)) }
     }
 }

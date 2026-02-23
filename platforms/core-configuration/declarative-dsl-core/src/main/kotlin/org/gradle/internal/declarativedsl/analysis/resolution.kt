@@ -1,5 +1,7 @@
 package org.gradle.internal.declarativedsl.analysis
 
+import org.gradle.declarative.dsl.evaluation.OperationGenerationId
+import org.gradle.declarative.dsl.schema.DataParameter
 import org.gradle.declarative.dsl.schema.DataProperty
 import org.gradle.declarative.dsl.schema.DataType
 import org.gradle.declarative.dsl.schema.FqName
@@ -15,16 +17,16 @@ data class ResolutionResult(
     val additions: List<DataAdditionRecord>,
     val nestedObjectAccess: List<NestedObjectAccessRecord>,
     val errors: List<ResolutionError>,
-    val conventionAssignments: List<AssignmentRecord> = emptyList(),
-    val conventionAdditions: List<DataAdditionRecord> = emptyList(),
-    val conventionNestedObjectAccess: List<NestedObjectAccessRecord> = emptyList()
+    val assignmentsFromDefaults: List<AssignmentRecord> = emptyList(),
+    val additionsFromDefaults: List<DataAdditionRecord> = emptyList(),
+    val nestedObjectAccessFromDefaults: List<NestedObjectAccessRecord> = emptyList()
 )
 
 
-data class DataAdditionRecord(val container: ObjectOrigin, val dataObject: ObjectOrigin)
+data class DataAdditionRecord(val container: ObjectOrigin, val dataObject: ObjectOrigin, val operationId: OperationId)
 
 
-data class NestedObjectAccessRecord(val container: ObjectOrigin, val dataObject: ObjectOrigin.AccessAndConfigureReceiver)
+data class NestedObjectAccessRecord(val container: ObjectOrigin, val dataObject: ObjectOrigin, val operationId: OperationId)
 
 
 data class ResolutionError(
@@ -45,6 +47,8 @@ sealed interface ErrorReason {
     data class ValReassignment(val localVal: LocalValue) : ErrorReason
     data class ExternalReassignment(val external: ObjectOrigin.External) : ErrorReason
     data class AssignmentTypeMismatch(val expected: DataType, val actual: DataType) : ErrorReason
+    data class AugmentingAssignmentNotResolved(val propertyType: DataType) : ErrorReason
+    data class OpaqueArgumentForIdentityParameter(val functionCall: FunctionCall, val parameter: DataParameter, val argument: ObjectOrigin) : ErrorReason
 
     // TODO: these two are never reported for now, instead it is UnresolvedFunctionCallSignature
     data object UnusedConfigureLambda : ErrorReason
@@ -59,12 +63,12 @@ sealed interface ErrorReason {
 }
 
 
-/**
- * Represents the "generation" of a particular operation (either an addition function call or a property assignment operation).  The order of generations
- * is important as calls in later generations can override calls in earlier generations, but no the other way around.  For instance, a property assignment
- * can override a convention assignment, but a convention assignment cannot override a property assignment.
- */
-enum class OperationGenerationId {
-    CONVENTION_ASSIGNMENT,
-    PROPERTY_ASSIGNMENT
+class DefaultOperationGenerationId(override val ordinal: Int) : OperationGenerationId {
+    companion object {
+        val preExisting = DefaultOperationGenerationId(-1)
+        val defaults = DefaultOperationGenerationId(0)
+        val finalEvaluation = DefaultOperationGenerationId(1)
+    }
+
+    override fun compareTo(other: OperationGenerationId): Int = compareValues(ordinal, other.ordinal)
 }

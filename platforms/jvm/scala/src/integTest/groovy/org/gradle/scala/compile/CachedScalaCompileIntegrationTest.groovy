@@ -17,6 +17,7 @@
 package org.gradle.scala.compile
 
 import org.gradle.api.tasks.compile.AbstractCachedCompileIntegrationTest
+import org.gradle.integtests.fixtures.ScalaCoverage
 import org.gradle.scala.ScalaCompilationFixture
 import org.gradle.test.fixtures.file.TestFile
 
@@ -39,7 +40,7 @@ class CachedScalaCompileIntegrationTest extends AbstractCachedCompileIntegration
             ${mavenCentralRepository()}
 
             dependencies {
-                implementation group: 'org.scala-lang', name: 'scala-library', version: '2.11.12'
+                implementation("org.scala-lang:scala-library:${ScalaCoverage.latestSupportedScala2Version}")
             }
         """.stripIndent()
 
@@ -55,7 +56,8 @@ class CachedScalaCompileIntegrationTest extends AbstractCachedCompileIntegration
 
     def "joint Java and Scala compilation can be cached"() {
         given:
-        buildScript """
+        buildFile.clear()
+        buildFile """
             plugins {
                 id 'scala'
             }
@@ -63,7 +65,7 @@ class CachedScalaCompileIntegrationTest extends AbstractCachedCompileIntegration
             ${mavenCentralRepository()}
 
             dependencies {
-                implementation group: 'org.scala-lang', name: 'scala-library', version: '2.11.12'
+                implementation("org.scala-lang:scala-library:${ScalaCoverage.latestSupportedScala2Version}")
             }
         """
         file('src/main/java/RequiredByScala.java') << """

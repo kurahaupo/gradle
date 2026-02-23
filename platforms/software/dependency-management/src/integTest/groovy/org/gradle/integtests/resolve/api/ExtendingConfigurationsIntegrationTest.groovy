@@ -71,7 +71,7 @@ class ExtendingConfigurationsIntegrationTest extends AbstractDependencyResolutio
 
         buildFile << """
 repositories {
-    maven { url "${mavenRepo.uri}" }
+    maven { url = "${mavenRepo.uri}" }
 }
 configurations {
     one
@@ -118,7 +118,7 @@ task checkResolveParentThenChild {
 
         buildFile << """
             repositories {
-                maven { url "${mavenRepo.uri}" }
+                maven { url = "${mavenRepo.uri}" }
             }
             configurations {
                 superConfiguration
@@ -150,7 +150,7 @@ task checkResolveParentThenChild {
             def attr = Attribute.of('org.example.attr', String)
 
             repositories {
-                maven { url "${mavenRepo.uri}" }
+                maven { url = "${mavenRepo.uri}" }
             }
 
             configurations {
@@ -182,5 +182,255 @@ task checkResolveParentThenChild {
 
         expect:
         succeeds("resolve")
+    }
+
+    def "extending a configuration in another project is not allowed"() {
+        given:
+        settingsFile """
+            include ":project1", ":project2"
+        """
+
+        groovyFile('project1/build.gradle', """
+            configurations {
+                resolvable('conf1')
+            }
+        """)
+
+        groovyFile('project2/build.gradle', """
+            configurations {
+                resolvable('conf2') {
+                    extendsFrom project(':project1').configurations.conf1
+                }
+            }
+        """)
+
+        expect:
+        fails ':project2:resolvableConfigurations', '--all'
+        failure.assertHasCause("Configuration ':project2:conf2' in project ':project2' cannot extend configuration ':project1:conf1' from project ':project1'. Configurations can only extend from configurations in the same context.")
+    }
+
+    def "extending a configuration from the buildscript is not allowed"() {
+        settingsFile """
+            rootProject.name = 'foo'
+        """
+        buildFile """
+            configurations {
+                resolvable('conf1') {
+                    extendsFrom(buildscript.configurations.classpath)
+                }
+            }
+        """
+
+        expect:
+        fails':resolvableConfigurations', '--configuration', 'conf1'
+        failure.assertHasCause("Configuration ':conf1' in root project 'foo' cannot extend configuration 'classpath' from buildscript of root project 'foo'. Configurations can only extend from configurations in the same context.")
+    }
+
+    def "extending a configuration in same project is fine"() {
+        given:
+        buildFile """
+            configurations {
+                resolvable('conf1')
+            }
+
+            configurations {
+                resolvable('conf2') {
+                    extendsFrom configurations.conf1
+                }
+            }
+        """
+
+        expect:
+        succeeds 'resolvableConfigurations', '--all'
+        outputContains("""
+--------------------------------------------------
+Configuration conf2
+--------------------------------------------------
+
+Extended Configurations
+    - conf1
+""")
+    }
+
+    def "can extend from a configuration provider"() {
+        given:
+        buildFile """
+            def conf1 = configurations.resolvable('conf1')
+
+            configurations {
+                resolvable('conf2') {
+                    extendsFrom conf1
+                }
+            }
+        """
+
+        expect:
+        succeeds 'resolvableConfigurations', '--all'
+        outputContains("""
+--------------------------------------------------
+Configuration conf2
+--------------------------------------------------
+
+Extended Configurations
+    - conf1
+""")
+    }
+
+    def "extending from provided configuration does not impact iteration order"() {
+        mavenRepo.module("org", "foo").publish()
+        mavenRepo.module("org", "bar").publish()
+        mavenRepo.module("org", "baz").publish()
+
+        buildFile << """
+            repositories {
+                maven { url = "${mavenRepo.uri}" }
+            }
+            configurations {
+                resolvable('child')
+
+                def one = dependencyScope('one')
+                child.extendsFrom one
+
+                two
+                child.extendsFrom two
+
+                def zzz = dependencyScope('zzz')
+                child.extendsFrom zzz
+            }
+            dependencies {
+                one "org:foo:1.0"
+                two "org:bar:1.0"
+                zzz "org:baz:1.0"
+            }
+
+            task checkResolveChild {
+                def files = configurations.child
+                doFirst {
+                    println files*.name
+                }
+            }
+        """
+
+        when:
+        succeeds "checkResolveChild"
+
+        then:
+        outputContains("[foo-1.0.jar, bar-1.0.jar, baz-1.0.jar]")
+    }
+
+    def "simply extending from a provided configuration does not realize it"() {
+        mavenRepo.module("org", "foo").publish()
+        mavenRepo.module("org", "bar").publish()
+        mavenRepo.module("org", "baz").publish()
+
+        buildFile << """
+            repositories {
+                maven { url = "${mavenRepo.uri}" }
+            }
+            configurations {
+                resolvable('child')
+
+                def one = dependencyScope('one') {
+                    println "Realizing one"
+                    dependencies.add(project.dependencies.create("org:foo:1.0"))
+                }
+                child.extendsFrom one
+
+                two
+                child.extendsFrom two
+
+                def zzz = dependencyScope('zzz') {
+                    println "Realizing zzz"
+                    dependencies.add(project.dependencies.create("org:baz:1.0"))
+                }
+                child.extendsFrom zzz
+            }
+            dependencies {
+                two "org:bar:1.0"
+            }
+
+            task checkResolveTwo {
+                def files = configurations.two
+                doFirst {
+                    println files*.name
+                }
+            }
+
+            task checkResolveChild {
+                def files = configurations.child
+                doFirst {
+                    println files*.name
+                }
+            }
+        """
+
+        when:
+        succeeds "checkResolveTwo"
+
+        then:
+        outputContains("[bar-1.0.jar]")
+        outputDoesNotContain("Realizing one")
+        outputDoesNotContain("Realizing zzz")
+
+        when:
+        succeeds "checkResolveChild"
+
+        then:
+        outputContains("[foo-1.0.jar, bar-1.0.jar, baz-1.0.jar]")
+        outputContains("Realizing one")
+        outputContains("Realizing zzz")
+    }
+
+    def "resetting extended configurations does not realize provided configurations that are no longer included"() {
+        mavenRepo.module("org", "foo").publish()
+        mavenRepo.module("org", "bar").publish()
+        mavenRepo.module("org", "baz").publish()
+
+        buildKotlinFile()
+        buildFile << """
+            repositories {
+                maven { url = "${mavenRepo.uri}" }
+            }
+            configurations {
+                resolvable('child')
+
+                def one = dependencyScope('one') {
+                    println "Realizing one"
+                    dependencies.add(project.dependencies.create("org:foo:1.0"))
+                }
+                child.extendsFrom one
+
+                two
+                child.extendsFrom two
+
+                def zzz = dependencyScope('zzz') {
+                    println "Realizing zzz"
+                    dependencies.add(project.dependencies.create("org:baz:1.0"))
+                }
+                child.extendsFrom zzz
+
+                // Now reset the extended configurations to exclude 'zzz'
+                child.extendsFrom = [two]
+                child.extendsFrom one
+            }
+            dependencies {
+                two "org:bar:1.0"
+            }
+
+            task checkResolveChild {
+                def files = configurations.child
+                doFirst {
+                    println files*.name
+                }
+            }
+        """
+
+        when:
+        succeeds "checkResolveChild"
+
+        then:
+        outputContains("[foo-1.0.jar, bar-1.0.jar]")
+        outputContains("Realizing one")
+        outputDoesNotContain("Realizing zzz")
     }
 }

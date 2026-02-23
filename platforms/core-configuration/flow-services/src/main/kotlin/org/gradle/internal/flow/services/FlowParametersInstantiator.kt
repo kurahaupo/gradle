@@ -17,15 +17,14 @@
 package org.gradle.internal.flow.services
 
 import com.google.common.collect.ImmutableList
-import org.gradle.api.Task
 import org.gradle.api.flow.FlowParameters
 import org.gradle.api.internal.tasks.AbstractTaskDependencyResolveContext
 import org.gradle.api.internal.tasks.properties.InspectionSchemeFactory
-import org.gradle.api.problems.Problems
 import org.gradle.api.problems.Severity
 import org.gradle.api.problems.internal.GradleCoreProblemGroup
+import org.gradle.api.problems.internal.InternalProblem
+import org.gradle.api.problems.internal.InternalProblemReporter
 import org.gradle.api.problems.internal.InternalProblems
-import org.gradle.api.problems.internal.Problem
 import org.gradle.api.services.BuildService
 import org.gradle.api.services.ServiceReference
 import org.gradle.api.tasks.Input
@@ -50,17 +49,18 @@ class FlowParametersInstantiator(
     fun <P : FlowParameters> newInstance(parametersType: Class<P>, configure: (P) -> Unit): P {
         return instantiator.newInstance(parametersType).also {
             configure(it)
+            // TODO(mlopatkin) this doesn't prevent late binding to a task output (e.g. there can be a Property in the chain that is set later).
             validate(parametersType, it)
         }
     }
 
     private
     fun <P : FlowParameters> validate(type: Class<P>, parameters: P) {
-        val problems = ImmutableList.builder<Problem>()
+        val problems = ImmutableList.builder<InternalProblem>()
         inspection.propertyWalker.visitProperties(
             parameters,
-            object : ProblemRecordingTypeValidationContext(type, { Optional.empty() }) {
-                override fun recordProblem(problem: Problem) {
+            object : ProblemRecordingTypeValidationContext(type, { Optional.empty() }, problemsService) {
+                override fun recordProblem(problem: InternalProblem) {
                     problems.add(problem)
                 }
             },
@@ -70,20 +70,17 @@ class FlowParametersInstantiator(
                 }
 
                 override fun visitInputProperty(propertyName: String, value: PropertyValue, optional: Boolean) {
-
-                    val taskDependencies = value.taskDependencies
-                    taskDependencies.visitDependencies(
+                    value.taskDependencies.visitDependencies(
                         object : AbstractTaskDependencyResolveContext() {
                             override fun add(dependency: Any) {
                                 problems.add(
-                                    (problemsService as InternalProblems).internalReporter.create {
+                                    internalProblemReporter.internalCreate {
                                         id("invalid-dependency", "Property cannot carry dependency", GradleCoreProblemGroup.validation().property())
                                         contextualLabel("Property '$propertyName' cannot carry a dependency on $dependency as these are not yet supported.")
                                         severity(Severity.ERROR)
-                                    })
+                                    }
+                                )
                             }
-
-                            override fun getTask(): Task? = null
                         }
                     )
                 }
@@ -93,12 +90,16 @@ class FlowParametersInstantiator(
     }
 
     private
+    val internalProblemReporter: InternalProblemReporter
+        get() = problemsService.internalReporter
+
+    private
     val instantiator by lazy {
         instantiatorFactory.decorateScheme().withServices(services).instantiator()
     }
 
     private
-    val problemsService = services.get(Problems::class.java)
+    val problemsService = services.get(InternalProblems::class.java)
 
     private
     val inspection by lazy {
@@ -110,6 +111,7 @@ class FlowParametersInstantiator(
             listOf(
                 org.gradle.api.tasks.Optional::class.java
             ),
+            emptyList(),
             instantiatorFactory.decorateScheme()
         )
     }

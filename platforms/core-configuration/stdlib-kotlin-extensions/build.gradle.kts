@@ -22,5 +22,9 @@ description = "Useful extension methods for Kotlin"
 
 dependencies {
     api(libs.kotlinStdlib)
-    implementation(projects.javaLanguageExtensions)
+    implementation(projects.stdlibJavaExtensions)
+}
+
+errorprone {
+    nullawayEnabled = true
 }

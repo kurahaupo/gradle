@@ -27,6 +27,7 @@ import org.gradle.test.fixtures.server.http.HttpServer
 import org.gradle.test.fixtures.server.http.MavenHttpModule
 import org.gradle.test.fixtures.server.http.MavenHttpRepository
 import org.gradle.test.fixtures.server.http.PomHttpArtifact
+import org.gradle.util.GradleVersion
 import org.gradle.util.SetSystemProperties
 import org.gradle.util.internal.TextUtil
 import org.junit.Rule
@@ -77,6 +78,11 @@ abstract class MavenConversionIntegrationTest extends AbstractInitIntegrationSpe
         run 'init', '--dsl', scriptDsl.id as String, '--incubating'
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+            assertParallelEnabled()
+            assertCachingEnabled()
+        }
         targetDir.file(dsl.settingsFileName).exists()
         conventionPluginScript.exists()
         conventionPluginBuildFile.exists()
@@ -103,6 +109,9 @@ abstract class MavenConversionIntegrationTest extends AbstractInitIntegrationSpe
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         targetDir.file(dsl.settingsFileName).exists()
         !targetDir.file(dsl.buildFileName).exists() // no root build file
         warSubprojectBuildFile.exists()
@@ -112,6 +121,10 @@ abstract class MavenConversionIntegrationTest extends AbstractInitIntegrationSpe
 
         assertContainsPublishingConfig(conventionPluginScript, scriptDsl)
         assertContainsEncodingConfig(conventionPluginScript, scriptDsl, 'UTF-8')
+        assertContainsDependenciesConfig(implSubprojectBuildFile, scriptDsl,
+            [new Dependency("api", "libs.commons.lang.commons.lang", ["javax.servlet:servlet-api", "javax.servlet:jsp-api"]),
+             new Dependency("api", "project(':webinar-api')"),
+             new Dependency("testImplementation", "libs.junit.junit")])
         conventionPluginScript.text.contains(TextUtil.toPlatformLineSeparators('''
 java {
     withSourcesJar()
@@ -158,6 +171,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         targetDir.file(dsl.settingsFileName).exists()
         !targetDir.file(dsl.buildFileName).exists() // no root build file
         warSubprojectBuildFile.exists()
@@ -206,6 +222,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         targetDir.file(dsl.settingsFileName).exists()
         targetDir.file("webinar-war/" + dsl.buildFileName).exists()
 
@@ -230,6 +249,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGeneratedIn(targetDir.file("webinar-parent")) {
+            assertConfigurationCacheEnabled()
+        }
         !targetDir.file(dsl.buildFileName).exists()
         !targetDir.file("webinar-parent/" + dsl.buildFileName).exists()
         targetDir.file("webinar-parent/" + dsl.settingsFileName).exists()
@@ -266,9 +288,15 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
         dsl.getSettingsFile().text.contains("rootProject.name = 'util'") || dsl.getSettingsFile().text.contains('rootProject.name = "util"')
         assertContainsPublishingConfig(dsl.getBuildFile(), scriptDsl)
+        assertContainsDependenciesConfig(dsl.getBuildFile(), scriptDsl,
+            [new Dependency("api", "libs.commons.lang.commons.lang", ["javax.servlet:servlet-api", "javax.servlet:jsp-api"]),
+             new Dependency("testImplementation", "libs.junit.junit")])
 
         when:
         fails 'clean', 'build'
@@ -287,6 +315,11 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String, '--incubating'
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+            assertParallelEnabled()
+            assertCachingEnabled()
+        }
         dsl.assertGradleFilesGenerated()
         dsl.getSettingsFile().text.contains("rootProject.name = 'util'") || dsl.getSettingsFile().text.contains('rootProject.name = "util"')
         assertContainsPublishingConfig(dsl.getBuildFile(), scriptDsl)
@@ -307,6 +340,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
         dsl.getSettingsFile().text.contains("rootProject.name = 'util'") || dsl.getSettingsFile().text.contains('rootProject.name = "util"')
         assertContainsPublishingConfig(dsl.getBuildFile(), scriptDsl)
@@ -375,6 +411,60 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
 
     }
 
+    private static class Dependency {
+        final String configuration
+        final String module
+        final List<String> exclusions
+
+        Dependency(String configuration, String module, List<String> exclusions = []) {
+            this.module = module
+            this.configuration = configuration
+            this.exclusions = exclusions
+        }
+
+        String asString(BuildInitDsl dsl) {
+            String moduleStr
+            if (dsl == BuildInitDsl.GROOVY) {
+                moduleStr = module.replaceAll("\"", "'")
+            } else {
+                moduleStr = module.replaceAll("'", "\"")
+            }
+            String dependencyStr = "$configuration($moduleStr)"
+            if (exclusions.isEmpty()) {
+                if (dsl == BuildInitDsl.GROOVY) {
+                    // groovy uses infix syntax when no exclusions are needed
+                    dependencyStr = "$configuration $moduleStr"
+                }
+            } else {
+                def exclusionWarning = "// TODO: This exclude was sourced from a POM exclusion and is NOT exactly equivalent, see: https://docs.gradle.org/${GradleVersion.current().version}/userguide/build_init_plugin.html#sec:pom_maven_conversion\n"
+                if (dsl == BuildInitDsl.GROOVY) {
+                    dependencyStr += TextUtil.toPlatformLineSeparators(""" {
+${TextUtil.indent(exclusions.collect {
+                        def (group, module) = it.split(":")
+                        exclusionWarning + "exclude(group: '$group', module: '$module')\n"
+                    }.join("\n"), "    ")}
+}""")
+                } else {
+                    dependencyStr += TextUtil.toPlatformLineSeparators(""" {
+${TextUtil.indent(exclusions.collect {
+                        def (group, module) = it.split(":")
+                        exclusionWarning + "exclude(mapOf(\"group\" to \"$group\", \"module\" to \"$module\"))\n"
+                    }.join("\n"), "    ")}
+}""")
+                }
+            }
+            return dependencyStr
+        }
+    }
+
+    static void assertContainsDependenciesConfig(TestFile buildScript, BuildInitDsl dsl, List<Dependency> dependencies) {
+        assert buildScript.text.contains(TextUtil.toPlatformLineSeparators("""
+dependencies {
+${TextUtil.indent(dependencies.collect { it.asString(dsl) }.join("\n"), "    ")}
+}
+"""))
+    }
+
     def "singleModule with explicit project dir"() {
         given:
         resources.maybeCopy('MavenConversionIntegrationTest/singleModule')
@@ -387,6 +477,9 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dslFixtureFor(scriptDsl).assertGradleFilesGenerated()
 
         when:
@@ -410,6 +503,9 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dslFixtureFor(scriptDsl).assertGradleFilesGenerated()
 
         when:
@@ -500,6 +596,9 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         and:
@@ -529,6 +628,9 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         when:
@@ -561,6 +663,9 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         when:
@@ -586,6 +691,9 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
         run 'init', '--dsl', scriptDsl.id as String, '--insecure-protocol', InsecureProtocolOption.ALLOW as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         when:
@@ -608,6 +716,9 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         when:
@@ -633,6 +744,9 @@ ${TextUtil.indent(configLines.join("\n"), "                    ")}
         run 'init', '--dsl', scriptDsl.id as String, '--insecure-protocol', InsecureProtocolOption.UPGRADE as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         targetDir.file(dsl.settingsFileName).exists()
 
         when:
@@ -674,6 +788,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
         succeeds 'build'
     }
@@ -694,6 +811,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
         outputContains("Gradle found an insecure protocol in a repository definition. You will have to opt into allowing insecure protocols in the generated build file. " +
             insecureProtocolsLinks())
@@ -711,6 +831,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String, '--insecure-protocol', InsecureProtocolOption.WARN as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
         outputContains("Gradle found an insecure protocol in a repository definition. You will have to opt into allowing insecure protocols in the generated build file. " +
             insecureProtocolsLinks())
@@ -725,6 +848,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String, '--insecure-protocol', InsecureProtocolOption.ALLOW as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         def isGroovy = scriptDsl == BuildInitDsl.GROOVY
@@ -751,6 +877,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String, '--insecure-protocol', InsecureProtocolOption.UPGRADE as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         def isGroovy = scriptDsl == BuildInitDsl.GROOVY
@@ -776,6 +905,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         def isGroovy = scriptDsl == BuildInitDsl.GROOVY
@@ -791,6 +923,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         def isGroovy = scriptDsl == BuildInitDsl.GROOVY
@@ -806,6 +941,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
 
         def isGroovy = scriptDsl == BuildInitDsl.GROOVY
@@ -821,6 +959,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
         dsl.getSettingsFile().text.contains("rootProject.name = 'util'") || dsl.getSettingsFile().text.contains('rootProject.name = "util"')
         assertContainsPublishingConfig(dsl.getBuildFile(), scriptDsl)
@@ -835,6 +976,9 @@ Root project 'webinar-parent'
         run 'init', '--dsl', scriptDsl.id as String
 
         then:
+        gradlePropertiesGenerated {
+            assertConfigurationCacheEnabled()
+        }
         dsl.assertGradleFilesGenerated()
         dsl.getSettingsFile().text.contains("rootProject.name = 'util'") || dsl.getSettingsFile().text.contains('rootProject.name = "util"')
         assertContainsPublishingConfig(dsl.getBuildFile(), scriptDsl)

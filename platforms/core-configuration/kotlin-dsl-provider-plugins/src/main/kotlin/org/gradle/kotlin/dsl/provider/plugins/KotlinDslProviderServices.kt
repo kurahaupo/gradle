@@ -16,9 +16,15 @@
 
 package org.gradle.kotlin.dsl.provider.plugins
 
+import org.gradle.cache.internal.CrossBuildInMemoryCacheFactory
+import org.gradle.internal.service.PrivateService
+import org.gradle.internal.service.Provides
 import org.gradle.internal.service.ServiceRegistration
+import org.gradle.internal.service.ServiceRegistrationProvider
 import org.gradle.internal.service.scopes.AbstractGradleModuleServices
-
+import org.gradle.kotlin.dsl.accessors.ProjectSchemaProvider
+import org.gradle.kotlin.dsl.provider.KotlinScriptBasePluginsApplicator
+import org.gradle.kotlin.dsl.provider.PrecompiledScriptPluginsSupport
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.DefaultPrecompiledScriptPluginsSupport
 
 
@@ -31,17 +37,25 @@ class KotlinDslProviderServices : AbstractGradleModuleServices() {
 
 
 internal
-object GradleUserHomeServices {
+object GradleUserHomeServices : ServiceRegistrationProvider {
 
-    @Suppress("unused")
-    fun createProjectSchemaProvider() =
-        DefaultProjectSchemaProvider()
+    @Provides
+    fun createProjectSchemaProvider(kotlinDslDclSchemaCollector: KotlinDslDclSchemaCollector): ProjectSchemaProvider =
+        DefaultProjectSchemaProvider(kotlinDslDclSchemaCollector)
 
-    @Suppress("unused")
-    fun createKotlinScriptBasePluginsApplicator() =
+    @Provides
+    fun createKotlinScriptBasePluginsApplicator(): KotlinScriptBasePluginsApplicator =
         DefaultKotlinScriptBasePluginsApplicator()
 
-    @Suppress("unused")
-    fun createPrecompiledScriptPluginsSupport() =
+    @Provides
+    fun createPrecompiledScriptPluginsSupport(): PrecompiledScriptPluginsSupport =
         DefaultPrecompiledScriptPluginsSupport()
+
+    @Provides
+    @PrivateService
+    internal fun createKotlinDslDclSchemaCollector(cacheFactory: CrossBuildInMemoryCacheFactory): KotlinDslDclSchemaCollector =
+        CachedKotlinDslDclSchemaCollector(
+            CrossBuildInMemoryKotlinDslDclSchemaCache(cacheFactory),
+            DefaultKotlinDslDclSchemaCollector()
+        )
 }

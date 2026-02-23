@@ -16,24 +16,30 @@
 
 package org.gradle.api.provider;
 
-import org.gradle.api.Incubating;
-import org.gradle.api.Transformer;
+import org.gradle.api.model.ManagedType;
+import org.gradle.declarative.dsl.model.annotations.internal.DeclarativeWithHiddenMembers;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 /**
  * Represents a property whose type is a {@link List} of elements of type {@link T}.
  *
  * <p>
- * You can create a {@link ListProperty} instance using factory method {@link org.gradle.api.model.ObjectFactory#listProperty(Class)}.
+ * Instances of this interface are not thread-safe for reading and writing.
+ * It is not safe to share the same ListProperty instance between different projects.
  * </p>
  *
  * <p><b>Note:</b> This interface is not intended for implementation by build script or plugin authors.
  *
  * @param <T> the type of elements.
  * @since 4.3
+ *
+ * @see ManagedType Create an instance of this as a managed property (preferred).
+ * @see org.gradle.api.model.ObjectFactory#listProperty(Class) Create an instance of this manually.
  */
+@ManagedType
+@DeclarativeWithHiddenMembers
 public interface ListProperty<T> extends Provider<List<T>>, HasMultipleValues<T> {
     /**
      * {@inheritDoc}
@@ -84,47 +90,4 @@ public interface ListProperty<T> extends Provider<List<T>>, HasMultipleValues<T>
      */
     @Override
     ListProperty<T> unsetConvention();
-
-    /**
-     * Replaces the current value of this property with a one computed by the provided transformation.
-     * The transformation is applied to the provider of the current value, and the returned provider is used as a new value.
-     * The provider of the value can be used to derive the new value, but doesn't have to.
-     * Returning null from the transformation unsets the property.
-     * For example, the current value of a string list property can be reversed:
-     * <pre class='autoTested'>
-     *     def property = objects.listProperty(String).value(["a", "b"])
-     *
-     *     property.replace { it.map { value -&gt; value.reverse() } }
-     *
-     *     println(property.get()) // ["b", "a"]
-     * </pre>
-     * Note that simply writing {@code property.set(property.map { ... } } doesn't work and will cause an exception because of a circular reference evaluation at runtime.
-     * <p>
-     * <b>Further changes to the value of the property, such as calls to {@link #set(Iterable)}, are not transformed, and override the replacement instead</b>.
-     * Because of this, this method inherently depends on the order of property changes, and therefore must be used sparingly.
-     * <p>
-     * If the value of the property is specified via a provider, then the current value provider tracks that provider.
-     * For example, changes to the upstream property are visible:
-     * <pre class='autoTested'>
-     *     def upstream = objects.listProperty(String).value(["a", "b"])
-     *     def property = objects.listProperty(String).value(upstream)
-     *
-     *     property.replace { it.map { value -&gt; value.reverse() } }
-     *     upstream.set(["c", "d"])
-     *
-     *     println(property.get()) // ["d", "c"]
-     * </pre>
-     * The provided transformation runs <b>eagerly</b>, so it can capture any objects without introducing memory leaks and without breaking configuration caching.
-     * However, transformations applied to the current value provider (like {@link Provider#map(Transformer)}) are subject to the usual constraints.
-     * <p>
-     * If the property has no explicit value set, then the current value comes from the convention.
-     * Changes to convention of this property do not affect the current value provider in this case, though upstream changes are still visible if the convention was set to a provider.
-     * If there is no convention too, then the current value is a provider without a value.
-     * The replacement value becomes the explicit value of the property.
-     *
-     * @param transformation the transformation to apply to the current value. May return null, which unsets the property.
-     * @since 8.8
-     */
-    @Incubating
-    void replace(Transformer<? extends @org.jetbrains.annotations.Nullable Provider<? extends Iterable<? extends T>>, ? super Provider<List<T>>> transformation);
 }

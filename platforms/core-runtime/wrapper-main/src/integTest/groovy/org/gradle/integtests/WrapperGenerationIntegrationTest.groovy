@@ -35,6 +35,8 @@ import java.util.jar.Manifest
 import static org.hamcrest.CoreMatchers.containsString
 
 class WrapperGenerationIntegrationTest extends AbstractIntegrationSpec {
+    private static final HashCode EXPECTED_WRAPPER_JAR_HASH = HashCode.fromString("55243ef57851f12b070ad14f7f5bb8302daceeebc5bce5ece5fa6edb23e1145c")
+
     def "generated wrapper scripts use correct line separators"() {
         buildFile << """
             wrapper {
@@ -63,7 +65,7 @@ class WrapperGenerationIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         // wrapper needs to be small. Let's check it's smaller than some arbitrary 'small' limit
-        file("gradle/wrapper/gradle-wrapper.jar").length() < 46 * 1024
+        file("gradle/wrapper/gradle-wrapper.jar").length() < 48 * 1024
     }
 
     def "wrapper jar has LICENSE file"() {
@@ -89,13 +91,16 @@ class WrapperGenerationIntegrationTest extends AbstractIntegrationSpec {
         file("gradle/wrapper/gradle-wrapper.properties").text.contains("distributionUrl=https\\://services.gradle.org/distributions/gradle-2.2.1-bin.zip")
     }
 
+    // NOTE: this test will fail on any changes to wrapper code
+    // If your changes do relate to wrapper, just change the hash.
+    // Otherwise, investigate.
     def "generated wrapper files are reproducible"() {
         when:
         executer.inDirectory(file("first")).withTasks("wrapper").run()
         executer.inDirectory(file("second")).withTasks("wrapper").run()
 
         then: "the checksum should be constant (unless there are code changes)"
-        Hashing.sha256().hashFile(file("first/gradle/wrapper/gradle-wrapper.jar")) == HashCode.fromString("cb0da6751c2b753a16ac168bb354870ebb1e162e9083f116729cec9c781156b8")
+        Hashing.sha256().hashFile(file("first/gradle/wrapper/gradle-wrapper.jar")) == EXPECTED_WRAPPER_JAR_HASH
 
         and:
         file("first/gradle/wrapper/gradle-wrapper.jar").md5Hash == file("second/gradle/wrapper/gradle-wrapper.jar").md5Hash
@@ -119,7 +124,7 @@ class WrapperGenerationIntegrationTest extends AbstractIntegrationSpec {
         run "wrapper", "--gradle-version", "2.2.1", "--rerun-tasks", "--no-validate-url"
 
         then:
-        result.assertTasksExecuted(":wrapper")
+        result.assertTasksScheduled(":wrapper")
         wrapperJar.md5Hash == old(wrapperJar.md5Hash)
         wrapperProperties.text == old(wrapperProperties.text)
     }
@@ -178,9 +183,12 @@ class WrapperGenerationIntegrationTest extends AbstractIntegrationSpec {
 
         Manifest manifest = contents.file('META-INF/MANIFEST.MF').withInputStream { new Manifest(it) } as Manifest
         with(manifest.mainAttributes) {
-            size() == 2
+            size() == 5
             getValue(Attributes.Name.MANIFEST_VERSION) == '1.0'
             getValue(Attributes.Name.IMPLEMENTATION_TITLE) == 'Gradle Wrapper'
+            getValue(Attributes.Name.MAIN_CLASS) == org.gradle.wrapper.GradleWrapperMain.class.getName()
+            getValue("SPDX-License-Identifier") == "Apache-2.0"
+            getValue("Enable-Native-Access") == "ALL-UNNAMED"
         }
     }
 

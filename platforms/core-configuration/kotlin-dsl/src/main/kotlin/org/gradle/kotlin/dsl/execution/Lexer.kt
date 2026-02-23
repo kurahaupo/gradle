@@ -39,7 +39,7 @@ class UnexpectedDuplicateBlock(val identifier: TopLevelBlockId, override val loc
 
 internal
 class UnexpectedBlockOrder(val identifier: TopLevelBlockId, override val location: IntRange, expectedFirstIdentifier: TopLevelBlockId) :
-    UnexpectedBlock("Unexpected `$identifier` block found. `$identifier` can not appear before `$expectedFirstIdentifier`.")
+    UnexpectedBlock("Unexpected `$identifier` block found. `$identifier` cannot appear before `$expectedFirstIdentifier`.")
 
 
 data class Packaged<T>(
@@ -64,8 +64,9 @@ data class LexedScript(
 /**
  * Returns the comments and [top-level blocks][topLevelBlockIds] found in the given [script].
  */
+@Suppress("CyclomaticComplexMethod", "NestedBlockDepth")
 internal
-fun lex(script: String, vararg topLevelBlockIds: TopLevelBlockId): Packaged<LexedScript> {
+fun lex(script: String, topLevelBlockIds: Array<TopLevelBlockId>): Packaged<LexedScript> {
 
     var packageName: String? = null
     val comments = mutableListOf<IntRange>()
@@ -267,7 +268,7 @@ data class TopLevelBlock(val identifier: TopLevelBlockId, val section: ScriptSec
 }
 
 
-@Suppress("EnumEntryName")
+@Suppress("EnumEntryName", "EnumNaming")
 internal
 enum class TopLevelBlockId {
     buildscript,

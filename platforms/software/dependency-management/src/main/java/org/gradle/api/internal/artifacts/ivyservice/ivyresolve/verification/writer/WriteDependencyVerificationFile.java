@@ -23,7 +23,6 @@ import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
 import org.gradle.api.Action;
 import org.gradle.api.Project;
-import org.gradle.api.UncheckedIOException;
 import org.gradle.api.artifacts.ArtifactView;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
@@ -51,8 +50,8 @@ import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.internal.Factory;
 import org.gradle.internal.UncheckedException;
+import org.gradle.internal.component.external.model.ExternalModuleComponentGraphResolveState;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
-import org.gradle.internal.component.external.model.ModuleComponentGraphResolveState;
 import org.gradle.internal.deprecation.DeprecatableConfiguration;
 import org.gradle.internal.hash.ChecksumService;
 import org.gradle.internal.operations.BuildOperationContext;
@@ -65,8 +64,8 @@ import org.gradle.security.internal.PGPUtils;
 import org.gradle.security.internal.PublicKeyResultBuilder;
 import org.gradle.security.internal.PublicKeyService;
 import org.gradle.security.internal.SecuritySupport;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -80,6 +79,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -175,7 +175,7 @@ public class WriteDependencyVerificationFile implements DependencyVerificationOv
     }
 
     @Override
-    public ModuleComponentRepository<ModuleComponentGraphResolveState> overrideDependencyVerification(ModuleComponentRepository<ModuleComponentGraphResolveState> original) {
+    public ModuleComponentRepository<ExternalModuleComponentGraphResolveState> overrideDependencyVerification(ModuleComponentRepository<ExternalModuleComponentGraphResolveState> original) {
         return new DependencyVerifyingModuleComponentRepository(original, this, generatePgpInfo);
     }
 
@@ -286,7 +286,7 @@ public class WriteDependencyVerificationFile implements DependencyVerificationOv
                 try {
                     DependencyVerificationsXmlReader.readFromXml(new FileInputStream(previous), verificationsBuilder);
                 } catch (FileNotFoundException e) {
-                    throw new UncheckedIOException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
                 return;
             }
@@ -296,7 +296,7 @@ public class WriteDependencyVerificationFile implements DependencyVerificationOv
             try {
                 DependencyVerificationsXmlReader.readFromXml(new FileInputStream(verificationFile), verificationsBuilder);
             } catch (FileNotFoundException e) {
-                throw new UncheckedIOException(e);
+                throw UncheckedException.throwAsUncheckedException(e);
             }
         }
     }
@@ -535,7 +535,7 @@ public class WriteDependencyVerificationFile implements DependencyVerificationOv
         PublicKeyService publicKeyService,
         BuildTreeDefinedKeys existingKeyring,
         Set<String> publicKeys,
-        @Nullable DependencyVerificationConfiguration.KeyringFormat keyringFormat
+        DependencyVerificationConfiguration.@Nullable KeyringFormat keyringFormat
     ) throws IOException {
         List<PGPPublicKeyRing> existingRings = loadExistingKeyRing(existingKeyring);
         PGPPublicKeyRingListBuilder builder = new PGPPublicKeyRingListBuilder();
@@ -599,7 +599,7 @@ public class WriteDependencyVerificationFile implements DependencyVerificationOv
                     boolean hasUid = false;
                     PGPPublicKey pk = pks.next();
                     String keyType = pk.isMasterKey() ? "pub" : "sub";
-                    out.write((keyType + "    " + SecuritySupport.toLongIdHexString(pk.getKeyID()).toUpperCase() + "\n").getBytes(StandardCharsets.US_ASCII));
+                    out.write((keyType + "    " + SecuritySupport.toLongIdHexString(pk.getKeyID()).toUpperCase(Locale.ROOT) + "\n").getBytes(StandardCharsets.US_ASCII));
                     List<String> userIDs = PGPUtils.getUserIDs(pk);
                     for(String uid : userIDs) {
                         hasUid = true;
@@ -612,7 +612,7 @@ public class WriteDependencyVerificationFile implements DependencyVerificationOv
             }
             // Then write the ascii armored keyring
             try (FileOutputStream fos = new FileOutputStream(ascii, true);
-                 ArmoredOutputStream out = new ArmoredOutputStream(fos)) {
+                 ArmoredOutputStream out = ArmoredOutputStream.builder().build(fos)) {
                 keyRing.encode(out, true);
             }
             hasKey = true;

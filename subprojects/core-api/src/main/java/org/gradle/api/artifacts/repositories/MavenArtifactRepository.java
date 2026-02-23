@@ -16,6 +16,9 @@
 package org.gradle.api.artifacts.repositories;
 
 import org.gradle.api.Action;
+import org.gradle.declarative.dsl.model.annotations.HiddenInDefinition;
+import org.gradle.internal.instrumentation.api.annotations.NotToBeReplacedByLazyProperty;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 
 import java.net.URI;
 import java.util.Set;
@@ -34,6 +37,7 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      * @return The URL.
      */
     @Override
+    @ToBeReplacedByLazyProperty
     URI getUrl();
 
     /**
@@ -56,6 +60,7 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      * @param url The base URL.
      */
     @Override
+    @HiddenInDefinition
     void setUrl(Object url);
 
     /**
@@ -63,6 +68,8 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      *
      * @return The additional URLs. Returns an empty list if there are no such URLs.
      */
+    @ToBeReplacedByLazyProperty
+    @HiddenInDefinition
     Set<URI> getArtifactUrls();
 
     /**
@@ -73,6 +80,7 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      *
      * @param urls The URLs to add.
      */
+    @HiddenInDefinition
     void artifactUrls(Object... urls);
 
     /**
@@ -81,6 +89,7 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      * @param urls The URLs.
      * @since 4.0
      */
+    @HiddenInDefinition
     void setArtifactUrls(Set<URI> urls);
 
     /**
@@ -91,6 +100,7 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      *
      * @param urls The URLs.
      */
+    @HiddenInDefinition
     void setArtifactUrls(Iterable<?> urls);
 
     /**
@@ -101,6 +111,7 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      *
      * @since 4.5
      */
+    @HiddenInDefinition
     void metadataSources(Action<? super MetadataSources> configureAction);
 
     /**
@@ -108,6 +119,8 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      *
      * @since 6.4
      */
+    @NotToBeReplacedByLazyProperty(because = "Not settable property")
+    @HiddenInDefinition
     MetadataSources getMetadataSources();
 
     /**
@@ -179,5 +192,6 @@ public interface MavenArtifactRepository extends ArtifactRepository, UrlArtifact
      *
      * @since 5.1
      */
+    @HiddenInDefinition
     void mavenContent(Action<? super MavenRepositoryContentDescriptor> configureAction);
 }

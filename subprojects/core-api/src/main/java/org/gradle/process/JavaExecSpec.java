@@ -18,7 +18,6 @@ package org.gradle.process;
 import org.gradle.api.Incubating;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.jvm.ModularitySpec;
-import org.gradle.api.model.ReplacedBy;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Classpath;
@@ -26,17 +25,15 @@ import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
-import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.instrumentation.api.annotations.ReplacedAccessor;
 import org.gradle.internal.instrumentation.api.annotations.ReplacedAccessor.AccessorType;
 import org.gradle.internal.instrumentation.api.annotations.ReplacedDeprecation;
 import org.gradle.internal.instrumentation.api.annotations.ReplacedDeprecation.RemovedIn;
 import org.gradle.internal.instrumentation.api.annotations.ReplacesEagerProperty;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.List;
-
-import static org.gradle.internal.instrumentation.api.annotations.ReplacesEagerProperty.BinaryCompatibility.ACCESSORS_KEPT;
 
 /**
  * Specifies the options for executing a Java application.
@@ -68,7 +65,6 @@ public interface JavaExecSpec extends JavaForkOptions, BaseExecSpec {
      * The fully qualified name of the Main class to be executed.
      * <p>
      * This does not need to be set if using an <a href="https://docs.oracle.com/javase/tutorial/deployment/jar/appman.html">Executable Jar</a> with a {@code Main-Class} attribute.
-     * <p>
      *
      * @since 6.4
      */
@@ -76,37 +72,15 @@ public interface JavaExecSpec extends JavaForkOptions, BaseExecSpec {
     @Input
     @ReplacesEagerProperty(
         replacedAccessors = @ReplacedAccessor(value = AccessorType.SETTER, name = "setMain", fluentSetter = true),
-        binaryCompatibility = ACCESSORS_KEPT,
-        deprecation = @ReplacedDeprecation(removedIn = RemovedIn.GRADLE9, withDslReference = true)
+        deprecation = @ReplacedDeprecation(removedIn = RemovedIn.GRADLE9)
     )
     Property<String> getMainClass();
 
     /**
-     * Sets the fully qualified name of the main class to be executed.
-     *
-     * @param main the fully qualified name of the main class to be executed.
-     *
-     * @return this
-     *
-     * @deprecated Use {@link #getMainClass()}.set(main) instead. This method will be removed in Gradle 9.0.
-     */
-    @Deprecated
-    @ReplacedBy("mainClass")
-    default JavaExecSpec setMain(@Nullable String main) {
-        DeprecationLogger.deprecateProperty(JavaExecSpec.class, "main")
-                .replaceWith("mainClass")
-                .willBeRemovedInGradle9()
-                .withDslReference()
-                .nagUser();
-
-        getMainClass().set(main);
-        return this;
-    }
-
-    /**
      * Returns the arguments passed to the main class to be executed.
      */
-    @Nullable @Optional @Input
+    @ToBeReplacedByLazyProperty
+    @Optional @Input
     List<String> getArgs();
 
     /**
@@ -135,7 +109,7 @@ public interface JavaExecSpec extends JavaForkOptions, BaseExecSpec {
      * @return this
      * @since 4.0
      */
-    JavaExecSpec setArgs(@Nullable List<String> args);
+    JavaExecSpec setArgs(List<String> args);
 
     /**
      * Sets the args for the main class to be executed.
@@ -144,7 +118,7 @@ public interface JavaExecSpec extends JavaForkOptions, BaseExecSpec {
      *
      * @return this
      */
-    JavaExecSpec setArgs(@Nullable Iterable<?> args);
+    JavaExecSpec setArgs(Iterable<?> args);
 
     /**
      * Argument providers for the application.
@@ -152,6 +126,7 @@ public interface JavaExecSpec extends JavaForkOptions, BaseExecSpec {
      * @since 4.6
      */
     @Nested
+    @ToBeReplacedByLazyProperty
     List<CommandLineArgumentProvider> getArgumentProviders();
 
     /**
@@ -161,12 +136,13 @@ public interface JavaExecSpec extends JavaForkOptions, BaseExecSpec {
      *
      * @return this
      */
-    JavaExecSpec classpath(Object... paths);
+    JavaExecSpec classpath(@Nullable Object... paths);
 
     /**
      * Returns the classpath for executing the main class.
      */
     @Classpath
+    @ToBeReplacedByLazyProperty
     FileCollection getClasspath();
 
     /**

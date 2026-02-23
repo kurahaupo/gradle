@@ -10,13 +10,14 @@ repositories {
 publishing {
     repositories {
         maven {
-            url = uri("${rootProject.buildDir}/repo") // change to point to your repo, e.g. http://my.org/repo
+            // change to point to your repo, e.g. http://my.org/repo
+            url = uri(rootProject.layout.buildDirectory.dir("repo"))
         }
     }
 }
 
 dependencies {
-    api("org.slf4j:slf4j-api:1.7.10")
+    api("org.slf4j:slf4j-api:2.0.17")
 }
 
 // tag::customize-identity[]

@@ -20,6 +20,7 @@ import org.gradle.integtests.fixtures.publish.maven.AbstractMavenPublishIntegTes
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.maven.MavenFileModule
 import org.gradle.test.fixtures.maven.MavenFileRepository
+import org.gradle.util.GradleVersion
 import org.spockframework.util.TextUtil
 import spock.lang.Issue
 
@@ -49,7 +50,7 @@ class MavenPublishIssuesIntegTest extends AbstractMavenPublishIntegTest {
 
     publishing {
         repositories {
-            maven { url "${mavenRepo.uri}" }
+            maven { url = "${mavenRepo.uri}" }
         }
         publications {
             pub(MavenPublication) {
@@ -94,7 +95,7 @@ version = '1.0'
 
 publishing {
     repositories {
-        maven { url "${mavenRepo.uri}" }
+        maven { url = "${mavenRepo.uri}" }
     }
     publications {
         maven(MavenPublication) {
@@ -125,11 +126,11 @@ subprojects {
     group = 'my.org'
     version = '1.0'
     repositories {
-        maven { url "${mavenRepo.uri}" }
+        maven { url = "${mavenRepo.uri}" }
     }
     publishing {
         repositories {
-            maven { url "${mavenRepo.uri}" }
+            maven { url = "${mavenRepo.uri}" }
         }
         publications {
             mavenJava(MavenPublication) {
@@ -178,7 +179,7 @@ subprojects {
     version = "1.0"
 
     repositories {
-        maven { url "${mavenRepo.uri}" }
+        maven { url = "${mavenRepo.uri}" }
     }
     dependencies {
         api("org.gradle:pom-excludes:0.1"){
@@ -189,7 +190,7 @@ subprojects {
     }
     publishing {
         repositories {
-            maven { url "${mavenRepo.uri}" }
+            maven { url = "${mavenRepo.uri}" }
         }
         publications {
             pub(MavenPublication) {
@@ -232,11 +233,11 @@ subprojects {
             apply plugin: "maven-publish"
 
             publishing {
-                repositories{ maven{ url '${normaliseFileSeparators(repo.getAbsolutePath())}'}}
+                repositories{ maven { url = file('${normaliseFileSeparators(repo.getAbsolutePath())}') }}
                 publications {
                     maven(MavenPublication) {
-                        groupId 'org.gradle.sample'
-                        version '1.1'
+                        groupId = 'org.gradle.sample'
+                        version = '1.1'
                         from components.java
                     }
                 }
@@ -274,7 +275,7 @@ subprojects {
 
             publishing {
                 repositories {
-                    maven { url "\${buildDir}/repo" }
+                    maven { url = layout.buildDirectory.dir("repo") }
                 }
                 publications {
                     maven(MavenPublication) {
@@ -327,7 +328,7 @@ subprojects {
 
             publishing {
                 repositories {
-                    maven { url "\${buildDir}/repo" }
+                    maven { url = layout.buildDirectory.dir("repo") }
                 }
                 publications {
                     maven(MavenPublication) {
@@ -372,7 +373,7 @@ subprojects {
     }
 
     @Issue("https://github.com/gradle/gradle/issues/20581")
-    void "warn deprecated behavior when GMM is modified after a Maven publication is populated"() {
+    void "fail when GMM is modified after a Maven publication is populated"() {
         given:
         buildFile << """
             plugins {
@@ -391,15 +392,12 @@ subprojects {
         """
 
         when:
-        executer.expectDocumentedDeprecationWarning(
-            "Gradle Module Metadata is modified after an eagerly populated publication. " +
-                "This behavior has been deprecated. This will fail with an error in Gradle 9.0. " +
-                "Consult the upgrading guide for further information: " +
-                "https://docs.gradle.org/current/userguide/upgrading_version_8.html#gmm_modification_after_publication_populated"
-        )
+        fails "help"
 
         then:
-        succeeds "help"
+        failureDescriptionContains("A problem occurred evaluating root project '${buildFile.parentFile.name}'.")
+        failureCauseContains("Gradle Module Metadata can't be modified after an eagerly populated publication.")
+        failure.assertHasResolution("Consult the upgrading guide for further information: https://docs.gradle.org/${GradleVersion.current().version}/userguide/upgrading_version_8.html#gmm_modification_after_publication_populated")
     }
 
     @Issue("https://github.com/gradle/gradle/issues/26468")

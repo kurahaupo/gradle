@@ -16,16 +16,14 @@
 package org.gradle.internal.build;
 
 import org.gradle.api.internal.BuildDefinition;
-import org.gradle.internal.service.scopes.BuildScopeServices;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.service.scopes.Scope;
 import org.gradle.internal.service.scopes.ServiceScope;
 
 /**
- * <p>Responsible for creating a {@link BuildLifecycleController} instance for a build.
- *
- * Caller must call {@link BuildLifecycleController#stop()} when finished with the launcher.
+ * Responsible for creating a {@link BuildLifecycleController} instance for a build.
  */
 @ServiceScope(Scope.BuildTree.class)
 public interface BuildLifecycleControllerFactory {
-    BuildLifecycleController newInstance(BuildDefinition buildDefinition, BuildScopeServices buildScopeServices);
+    BuildLifecycleController newInstance(BuildDefinition buildDefinition, ServiceRegistry buildScopeServices);
 }

@@ -16,16 +16,16 @@
 
 package org.gradle.internal.deprecation;
 
+import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
 import org.gradle.api.internal.DocumentationRegistry;
-import org.gradle.api.problems.internal.DocLink;
+import org.gradle.api.problems.DocLink;
+import org.gradle.api.problems.internal.InternalDocLink;
+import org.jspecify.annotations.Nullable;
 
 import javax.annotation.CheckReturnValue;
-import javax.annotation.Nullable;
-import java.util.Map;
 
-public abstract class Documentation implements DocLink {
+public abstract class Documentation implements InternalDocLink {
     public static final String RECOMMENDATION = "For more %s, please refer to %s in the Gradle documentation.";
     private static final DocumentationRegistry DOCUMENTATION_REGISTRY = new DocumentationRegistry();
 
@@ -37,8 +37,12 @@ public abstract class Documentation implements DocLink {
         return new UserGuide(id, null);
     }
 
-    static Documentation upgradeGuide(int majorVersion, String upgradeGuideSection) {
-        return new UpgradeGuide(majorVersion, upgradeGuideSection);
+    public static Documentation upgradeMinorGuide(int majorVersion, String upgradeGuideSection) {
+        return UpgradeGuide.forMinorVersion(majorVersion, upgradeGuideSection);
+    }
+
+    public static Documentation upgradeMajorGuide(int majorVersion, String upgradeGuideSection) {
+        return UpgradeGuide.forMajorVersion(majorVersion, upgradeGuideSection);
     }
 
     public static Documentation dslReference(Class<?> targetClass, String property) {
@@ -49,14 +53,12 @@ public abstract class Documentation implements DocLink {
         return new KotlinDslExtensionReference(extensionName);
     }
 
-    @Nullable
     @Override
     public String getConsultDocumentationMessage() {
         return String.format(RECOMMENDATION, "information", getUrl());
     }
 
     private static abstract class SerializableDocumentation extends Documentation {
-        abstract Map<String, String> getProperties();
     }
 
     public static abstract class AbstractBuilder<T> {
@@ -69,14 +71,6 @@ public abstract class Documentation implements DocLink {
         @CheckReturnValue
         public T undocumented() {
             return withDocumentation(null);
-        }
-
-        /**
-         * Output: See USER_MANUAL_URL for more details.
-         */
-        @CheckReturnValue
-        public T withUserManual(String documentationId) {
-            return withDocumentation(Documentation.userManual(documentationId));
         }
 
         /**
@@ -100,7 +94,7 @@ public abstract class Documentation implements DocLink {
          */
         @CheckReturnValue
         public T withUpgradeGuideSection(int majorVersion, String upgradeGuideSection) {
-            return withDocumentation(Documentation.upgradeGuide(majorVersion, upgradeGuideSection));
+            return withDocumentation(Documentation.upgradeMinorGuide(majorVersion, upgradeGuideSection));
         }
     }
 
@@ -116,12 +110,6 @@ public abstract class Documentation implements DocLink {
             this.topic = null;
         }
 
-        private UserGuide(String topic, String id, @Nullable String section) {
-            this.page = Preconditions.checkNotNull(id);
-            this.section = section;
-            this.topic = topic;
-        }
-
         @Override
         public String getUrl() {
             if (section == null) {
@@ -134,21 +122,32 @@ public abstract class Documentation implements DocLink {
         }
 
         @Override
-        Map<String, String> getProperties() {
-            ImmutableMap.Builder<String, String> builder = ImmutableMap.<String, String>builder();
-            builder.put("page", page);
-            builder.put("section", section);
-            if (topic != null) {
-                builder.put("topic", topic);
+        public boolean equals(Object o) {
+            if (!(o instanceof UserGuide)) {
+                return false;
             }
-            return builder.build();
+            UserGuide userGuide = (UserGuide) o;
+            return Objects.equal(page, userGuide.page) && Objects.equal(section, userGuide.section) && Objects.equal(topic, userGuide.topic);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(page, section, topic);
         }
     }
 
     private static class UpgradeGuide extends UserGuide {
 
-        private UpgradeGuide(int majorVersion, String section) {
-            super("upgrading_version_" + majorVersion, section);
+        private UpgradeGuide(String basePath, String section) {
+            super(basePath, section);
+        }
+
+        public static UpgradeGuide forMinorVersion(int majorVersion, String section) {
+            return new UpgradeGuide("upgrading_version_" + majorVersion, section);
+        }
+
+        public static UpgradeGuide forMajorVersion(int majorVersion, String section) {
+            return new UpgradeGuide("upgrading_major_version_" + majorVersion, section);
         }
 
         @Override
@@ -172,8 +171,17 @@ public abstract class Documentation implements DocLink {
         }
 
         @Override
-        Map<String, String> getProperties() {
-            return ImmutableMap.of("property", property, "targetClass", targetClass.getName());
+        public boolean equals(Object o) {
+            if (!(o instanceof DslReference)) {
+                return false;
+            }
+            DslReference that = (DslReference) o;
+            return Objects.equal(targetClass, that.targetClass) && Objects.equal(property, that.property);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(targetClass, property);
         }
     }
 
@@ -190,8 +198,17 @@ public abstract class Documentation implements DocLink {
         }
 
         @Override
-        Map<String, String> getProperties() {
-            return ImmutableMap.of("extensionName", extensionName);
+        public boolean equals(Object o) {
+            if (!(o instanceof KotlinDslExtensionReference)) {
+                return false;
+            }
+            KotlinDslExtensionReference that = (KotlinDslExtensionReference) o;
+            return Objects.equal(extensionName, that.extensionName);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(extensionName);
         }
     }
 

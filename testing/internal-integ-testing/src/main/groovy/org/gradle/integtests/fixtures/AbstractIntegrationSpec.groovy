@@ -15,12 +15,13 @@
  */
 package org.gradle.integtests.fixtures
 
-import org.apache.commons.lang.StringEscapeUtils
-import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.lib.Config
+import org.apache.commons.lang3.StringEscapeUtils
 import org.gradle.api.Action
 import org.gradle.api.internal.DocumentationRegistry
+import org.gradle.api.problems.Severity
 import org.gradle.api.problems.internal.DefaultProblemProgressDetails
+import org.gradle.api.problems.internal.DefaultProblemsSummaryProgressDetails
+import org.gradle.api.problems.internal.ProblemSummaryData
 import org.gradle.integtests.fixtures.build.BuildTestFile
 import org.gradle.integtests.fixtures.build.BuildTestFixture
 import org.gradle.integtests.fixtures.configurationcache.ConfigurationCacheBuildOperationsFixture
@@ -46,8 +47,7 @@ import org.gradle.test.fixtures.ivy.IvyFileRepository
 import org.gradle.test.fixtures.maven.M2Installation
 import org.gradle.test.fixtures.maven.MavenFileRepository
 import org.gradle.test.fixtures.maven.MavenLocalRepository
-import org.gradle.util.internal.VersionNumber
-import org.hamcrest.CoreMatchers
+import org.gradle.util.Matchers
 import org.hamcrest.Matcher
 import org.intellij.lang.annotations.Language
 import org.junit.Rule
@@ -59,8 +59,8 @@ import java.util.regex.Pattern
 
 import static org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout.DEFAULT_TIMEOUT_SECONDS
 import static org.gradle.test.fixtures.dsl.GradleDsl.GROOVY
+import static org.gradle.test.fixtures.dsl.GradleDsl.KOTLIN
 import static org.gradle.util.Matchers.matchesRegexp
-import static org.gradle.util.Matchers.normalizedLineSeparators
 
 /**
  * Spockified version of AbstractIntegrationTest.
@@ -70,7 +70,7 @@ import static org.gradle.util.Matchers.normalizedLineSeparators
 @CleanupTestDirectory
 @SuppressWarnings("IntegrationTestFixtures")
 @IntegrationTestTimeout(DEFAULT_TIMEOUT_SECONDS)
-abstract class AbstractIntegrationSpec extends Specification {
+abstract class AbstractIntegrationSpec extends Specification implements CommonTestFilesFixture, LanguageSpecificTestFileFixture, HasGradleExecutor {
 
     @Rule
     public final TestNameTestDirectoryProvider temporaryFolder = new TestNameTestDirectoryProvider(getClass())
@@ -80,19 +80,28 @@ abstract class AbstractIntegrationSpec extends Specification {
 
     GradleDistribution distribution = new UnderDevelopmentGradleDistribution(getBuildContext())
     private GradleExecuter executor
-    private boolean ignoreCleanupAssertions
+    boolean ignoreCleanupAssertions
 
     private boolean enableProblemsApiCheck = false
-    private BuildOperationsFixture buildOperationsFixture = null
+    protected BuildOperationsFixture buildOperationsFixture = null
 
     GradleExecuter getExecuter() {
         if (executor == null) {
             executor = createExecuter()
-            if (ignoreCleanupAssertions) {
-                executor.ignoreCleanupAssertions()
-            }
         }
         return executor
+    }
+
+    /**
+     * Applies configuration that needs to be applied
+     * every time an executer runs.
+     *
+     * May be overwritten. In most cases, the overrides should ensure to invoke the base implementation.
+     */
+    protected void setupExecuter() {
+        if (ignoreCleanupAssertions) {
+            executor.ignoreCleanupAssertions()
+        }
     }
 
     BuildTestFixture buildTestFixture = new BuildTestFixture(temporaryFolder)
@@ -111,9 +120,6 @@ abstract class AbstractIntegrationSpec extends Specification {
     protected int maxHttpRetries = 1
     protected Integer maxUploadAttempts
 
-    @Lazy
-    private isAtLeastGroovy4 = VersionNumber.parse(GroovySystem.version).major >= 4
-
     def setup() {
         // Verify that the previous test (or fixtures) has cleaned up state correctly
         m2.assertNoLeftoverState()
@@ -128,12 +134,18 @@ abstract class AbstractIntegrationSpec extends Specification {
     }
 
     def cleanup() {
+        // TODO: Problems API checks should be integrated into the executor, not the integration spec.
+        // Similar to how we do it with deprecation checks
+        // This allows different executions to keep their emitted problems separate.
+        // See how this is done in SmokeTestGradleRunner
         if (enableProblemsApiCheck) {
             collectedProblems.each {
-                KnownProblemIds.assertIsKnown(it)
+                if(!ignoreCleanupAssertions) {
+                    KnownProblemIds.assertIsKnown(it)
+                }
             }
 
-            if (getReceivedProblems().every {it == null }) {
+            if (getReceivedProblems().every { it == null }) {
                 receivedProblems = null
             } else {
                 println "Problems that were not accessed during test execution:"
@@ -142,7 +154,9 @@ abstract class AbstractIntegrationSpec extends Specification {
                         printCollectedProblems(problem, index)
                     }
                 }
-                throw new AssertionError("Not all received problems were validated")
+                if (!ignoreCleanupAssertions) {
+                    throw new AssertionError("Not all received problems were validated")
+                }
             }
         }
 
@@ -167,139 +181,37 @@ abstract class AbstractIntegrationSpec extends Specification {
         new GradleContextualExecuter(distribution, temporaryFolder, getBuildContext())
     }
 
-    /**
-     * Some integration tests need to run git commands in test directory,
-     * but distributed-test-remote-executor has no .git directory so we init a "dummy .git dir".
-     */
-    void initGitDir() {
-        Git.init().setDirectory(testDirectory).call().withCloseable { Git git ->
-            // Clear config hierarchy to avoid global configuration loaded from user home
-            for (Config config = git.repository.config; config != null; config = config.getBaseConfig()) {
-                //noinspection GroovyAccessibility
-                config.clear()
-            }
-            testDirectory.file('initial-commit').createNewFile()
-            git.add().addFilepattern("initial-commit").call()
-            git.commit().setMessage("Initial commit").call()
-        }
-    }
-
-    /**
-     * Want syntax highlighting inside of IntelliJ? Consider using {@link AbstractIntegrationSpec#buildFile(String)}
-     */
-    TestFile getBuildFile() {
-        testDirectory.file(getDefaultBuildFileName())
+    @Override
+    TestFile getUserActionRootDir() {
+        testDirectory
     }
 
     String getTestJunitCoordinates() {
         return "junit:junit:4.13"
     }
 
-    void buildFile(@GroovyBuildScriptLanguage String script) {
-        groovyFile(buildFile, script)
-    }
-
-    void settingsFile(@GroovyBuildScriptLanguage String script) {
-        groovyFile(settingsFile, script)
-    }
-
-    /**
-     * Provides best-effort groovy script syntax highlighting.
-     * The highlighting is imperfect since {@link GroovyBuildScriptLanguage} uses stub methods to create a simulated script target environment.
-     */
-    void groovyFile(String targetBuildFile, @GroovyBuildScriptLanguage String script) {
-        groovyFile(file(targetBuildFile), script)
-    }
-
-    void groovyFile(TestFile targetBuildFile, @GroovyBuildScriptLanguage String script) {
-        targetBuildFile << script
-    }
-
-    void javaFile(String targetBuildFile, @Language('JAVA') String code) {
-        javaFile(file(targetBuildFile), code)
-    }
-
-    void javaFile(TestFile targetBuildFile, @Language('JAVA') String code) {
-        targetBuildFile << code
-    }
-
-    static String groovyScript(@GroovyBuildScriptLanguage String script) {
-        script
-    }
-
-    void versionCatalogFile(@Language("toml") String script) {
-        versionCatalogFile << script
-    }
-
     TestFile getBuildKotlinFile() {
-        testDirectory.file(defaultBuildKotlinFileName)
+        getBuildFile(KOTLIN)
     }
 
-    protected String getDefaultBuildFileName() {
-        'build.gradle'
+    TestFile buildKotlinFile(@Language(value = "kotlin") String script) {
+        buildKotlinFile << script
     }
 
-    protected String getDefaultBuildKotlinFileName() {
-        'build.gradle.kts'
+    TestFile getBuildFile(GradleDsl dsl, Object... path) {
+        testDirectory.file(*path, dsl.fileNameFor("build"))
     }
-
-    /**
-     * Sets (replacing) the contents of the build.gradle file.
-     *
-     * To append, use #buildFile(String).
-     */
-    protected TestFile buildScript(@GroovyBuildScriptLanguage String script) {
-        buildFile.text = script
-        buildFile
-    }
-
-    /**
-     * Sets (replacing) the contents of the settings.gradle file.
-     *
-     * To append, use #settingsFile(String)
-     */
-    protected TestFile settingsScript(@GroovyBuildScriptLanguage String script) {
-        settingsFile.text = script
-        settingsFile
-    }
-
-    protected TestFile initScript(@GroovyBuildScriptLanguage String script) {
-        initScriptFile.text = script
-        initScriptFile
-    }
-
-
-    protected TestFile getSettingsFile() {
-        testDirectory.file(settingsFileName)
-    }
-
-    protected TestFile getInitScriptFile() {
-        testDirectory.file(initScriptFileName)
-    }
-
 
     protected TestFile getSettingsKotlinFile() {
-        testDirectory.file(settingsKotlinFileName)
+        getSettingsFile(KOTLIN)
     }
 
-    protected TestFile getPropertiesFile() {
-        testDirectory.file('gradle.properties')
+    protected TestFile getSettingsFile(GradleDsl dsl) {
+        testDirectory.file(dsl.fileNameFor("settings"))
     }
 
-    protected TestFile getVersionCatalogFile() {
-        testDirectory.file('gradle/libs.versions.toml')
-    }
-
-    protected static String getSettingsFileName() {
-        return 'settings.gradle'
-    }
-
-    protected static String getSettingsKotlinFileName() {
-        return 'settings.gradle.kts'
-    }
-
-    protected static String getInitScriptFileName() {
-        return 'init.gradle'
+    private static String getSettingsFileName(GradleDsl dsl) {
+        return dsl.fileNameFor("settings")
     }
 
     def singleProjectBuild(String projectName, @DelegatesTo(value = BuildTestFile, strategy = Closure.DELEGATE_FIRST) Closure cl = {}) {
@@ -457,11 +369,11 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
         }
         def currentDirectory = testDirectory
         for (; ;) {
-            def settingsFile = currentDirectory.file(settingsFileName)
+            def settingsFile = currentDirectory.file(getSettingsFileName(GROOVY))
             if (settingsFile.exists()) {
                 return settingsFile
             }
-            settingsFile = currentDirectory.file(settingsKotlinFileName)
+            settingsFile = currentDirectory.file(getSettingsFileName(KOTLIN))
             if (settingsFile.exists()) {
                 return settingsFile
             }
@@ -473,6 +385,7 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
     }
 
     AbstractIntegrationSpec withBuildCache() {
+        executer.withArgument("--no-problems-report")
         executer.withBuildCacheEnabled()
         this
     }
@@ -497,6 +410,7 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
     }
 
     protected ExecutionResult succeeds(String... tasks) {
+        setupExecuter()
         resetProblemApiCheck()
 
         result = executer.withTasks(*tasks).run()
@@ -537,13 +451,18 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
     }
 
     protected ExecutionFailure runAndFail(String... tasks) {
-        fails(*tasks)
+        fails(Arrays.asList(tasks))
     }
 
     protected ExecutionFailure fails(String... tasks) {
+        fails(Arrays.asList(tasks))
+    }
+
+    protected ExecutionFailure fails(List<String> tasks) {
+        setupExecuter()
         resetProblemApiCheck()
 
-        failure = executer.withTasks(*tasks).runWithFailure()
+        failure = executer.withTasks(tasks).runWithFailure()
 
         if (enableProblemsApiCheck && getReceivedProblems().isEmpty()) {
             throw new AssertionFailedError("Expected to find a problem emitted via the 'Problems' service for the failing build, but none was received.")
@@ -555,7 +474,7 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
     protected void executedAndNotSkipped(String... tasks) {
         assertHasResult()
         tasks.each {
-            result.assertTaskNotSkipped(it)
+            result.assertTaskExecuted(it)
         }
     }
 
@@ -566,7 +485,7 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
 
     protected void allSkipped() {
         assertHasResult()
-        result.assertTasksNotSkipped()
+        result.assertAllTasksSkipped()
     }
 
     protected void skipped(String... tasks) {
@@ -579,14 +498,14 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
     protected void notExecuted(String... tasks) {
         assertHasResult()
         tasks.each {
-            result.assertTaskNotExecuted(it)
+            result.assertTasksNotScheduled(it)
         }
     }
 
     protected void executed(String... tasks) {
         assertHasResult()
         tasks.each {
-            result.assertTaskExecuted(it)
+            result.assertTaskScheduled(it)
         }
     }
 
@@ -610,8 +529,9 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
         failure.assertThatCause(containsNormalizedString(description))
     }
 
+    // TODO: Inline and remove.
     protected Matcher<String> containsNormalizedString(String description) {
-        normalizedLineSeparators(CoreMatchers.containsString(description))
+        return Matchers.containsNormalizedString(description)
     }
 
     private assertHasResult() {
@@ -727,15 +647,6 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
     }
 
     /**
-     * Replaces the given text in the build script with new value, asserting that the change was actually applied (ie the text was present).
-     */
-    void editBuildFile(String oldText, String newText) {
-        def newContent = buildFile.text.replace(oldText, newText)
-        assert newContent != buildFile.text
-        buildFile.text = newContent
-    }
-
-    /**
      * Creates a JAR that is unique to the test. The uniqueness is achieved via a properties file with a value containing the path to the test itself.
      */
     def createJarWithProperties(String path, Map<String, ?> properties = [source: 1]) {
@@ -779,7 +690,7 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
     }
 
     /**
-     * Called by {@link ToBeFixedForConfigurationCacheExtension} when a test fails as expected so no further checks are applied.
+     * Called by {@link ToBeFixedSpecInterceptor} when a test fails as expected so no further checks are applied.
      */
     void ignoreCleanupAssertions() {
         this.ignoreCleanupAssertions = true
@@ -794,6 +705,10 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
     void resetExecuter() {
         this.ignoreCleanupAssertions = false
         recreateExecuter()
+    }
+
+    BuildOperationsFixture newBuildOperationsFixture() {
+        new BuildOperationsFixture(executer, temporaryFolder)
     }
 
     def resetProblemApiCheck() {
@@ -824,11 +739,39 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
         if (!enableProblemsApiCheck) {
             throw new IllegalStateException('Problems API check is not enabled')
         }
-        return buildOperationsFixture.all().collectMany {operation ->
+        return buildOperationsFixture.all().collectMany { operation ->
             operation.progress(DefaultProblemProgressDetails.class).collect {
                 def problemDetails = it.details.get("problem") as Map<String, Object>
                 return new ReceivedProblem(operation.id, problemDetails)
-            }
+            }.findAll { isRealProblem(it) }
+        }
+    }
+
+    static boolean isRealProblem(ReceivedProblem problem) {
+        // Filter out all java version deprecation problems
+        // TODO: The problems API infrastructure should be built-into the executor.
+        // However, since it isn't we do not know if the test has disabled the filtering of
+        // these deprecation logs from the normal deprecation checks.
+        // So, just ignore them all the time, even if the test has requested to not ignore these warnings.
+        if (problem.fqid == 'deprecation:executing-gradle-on-jvm-versions-and-lower') {
+            return false
+        }
+        // Filter out Kotlin DSL JDK incompatibility warnings that don't matter in practice
+        // These occur when we try to run Gradle on newer JDKs when KGP hasn't updated their target compatibility.
+        if (problem.fqid == 'KOTLIN:KGP:MISCONFIGURATION:InconsistentTargetCompatibilityForKotlinAndJavaTasks'
+            && problem.severity == Severity.WARNING) {
+            return false
+        }
+        return true
+    }
+
+    List<List<ProblemSummaryData>> getProblemSummaries() {
+        if (!enableProblemsApiCheck) {
+            throw new IllegalStateException('Problems API check is not enabled')
+        }
+
+        return buildOperationsFixture.all().collectMany { operation ->
+            return operation.progress(DefaultProblemsSummaryProgressDetails.class).collect { it.details.get("problemIdCounts") }
         }
     }
 
@@ -850,11 +793,11 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
             }
             println "    ]"
         }
-        if (problem.additionalData.size() == 1) {
-            println "    additionalData == [ '${problem.additionalData.keySet().iterator().next()}' : '${problem.additionalData.values().iterator().next()}' ]"
-        } else if (problem.additionalData.size() > 1) {
-            println "    additionalData == ["
-            problem.additionalData.each { key, value ->
+        if (problem.additionalData?.asMap.size() == 1) {
+            println "    additionalData.asMap == [ '${problem.additionalData.asMap.keySet().iterator().next()}' : '${problem.additionalData.asMap.values().iterator().next()}' ]"
+        } else if (problem.additionalData?.asMap.size() > 1) {
+            println "    additionalData.asMap == ["
+            problem.additionalData.asMap.each { key, value ->
                 println "        '$key' : '$value',"
             }
             println "    ]"
@@ -865,7 +808,7 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
 
     private List<ReceivedProblem> receivedProblems
 
-    private List<ReceivedProblem> getReceivedProblems() {
+    protected List<ReceivedProblem> getReceivedProblems() {
         if (receivedProblems == null) {
             receivedProblems = getCollectedProblems()
             // sometimes we receive problems in a non-deterministic order. To make the tests stable we sort them before performing the assertions.
@@ -878,6 +821,11 @@ tmpdir is currently ${System.getProperty("java.io.tmpdir")}""")
                 }
                 if (p1.details != p2.details) {
                     return p1.details <=> p2.details
+                }
+                if (p1.additionalData.getAsMap() != p2.additionalData.getAsMap()) {
+                    String sortableP1 = p1.additionalData.getAsMap().collect { k, v -> "$k=$v" }.sort().join(", ")
+                    String sortableP2 = p2.additionalData.getAsMap().collect { k, v -> "$k=$v" }.sort().join(", ")
+                    return sortableP1 <=> sortableP2
                 }
                 return 0
             }

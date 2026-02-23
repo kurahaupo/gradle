@@ -24,6 +24,8 @@ import org.gradle.integtests.fixtures.jvm.JavaToolchainFixture
 import org.gradle.internal.jvm.Jvm
 import org.gradle.internal.jvm.inspection.JvmInstallationMetadata
 import org.gradle.quality.integtest.fixtures.CheckstyleCoverage
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.IntegTestPreconditions
 import org.hamcrest.Matcher
 import spock.lang.Issue
 
@@ -135,9 +137,9 @@ class CheckstylePluginToolchainsIntegrationTest extends MultiVersionIntegrationS
 
                 doLast {
                     assert services.get(WorkerDaemonClientsManager).idleClients.find {
-                        new File(it.forkOptions.javaForkOptions.executable).canonicalPath == Jvm.current().javaExecutable.canonicalPath &&
-                        it.forkOptions.javaForkOptions.minHeapSize == "128m" &&
-                        it.forkOptions.javaForkOptions.maxHeapSize == "256m"
+                        new File(it.forkOptions.executable).canonicalPath == Jvm.current().javaExecutable.canonicalPath &&
+                        it.forkOptions.jvmOptions.minHeapSize == "128m" &&
+                        it.forkOptions.jvmOptions.maxHeapSize == "256m"
                     }
                 }
             }
@@ -162,6 +164,7 @@ class CheckstylePluginToolchainsIntegrationTest extends MultiVersionIntegrationS
         file("build/reports/checkstyle/main.html").assertExists()
     }
 
+    @Requires(value = IntegTestPreconditions.NotEmbeddedExecutor, reason = "explicit locale")
     def "analyze bad code with the toolchain JDK"() {
         executer.withDefaultLocale(new Locale('en'))
         badCode()

@@ -19,12 +19,12 @@ package org.gradle.language.objectivecpp.plugins;
 import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
-import org.gradle.nativeplatform.plugins.NativeComponentPlugin;
+import org.gradle.nativeplatform.plugins.NativeComponentModelPlugin;
 
 /**
  * A plugin for projects wishing to build native binary components from Objective-C++ sources.
  *
- * <p>Automatically includes the {@link ObjectiveCppLangPlugin} for core Objective-C++ support and the {@link NativeComponentPlugin} for native component support.</p>
+ * <p>Automatically includes the {@link ObjectiveCppLangPlugin} for core Objective-C++ support and the {@link NativeComponentModelPlugin} for native component support.</p>
  *
  * <ul>
  * <li>Creates a {@link org.gradle.language.objectivecpp.tasks.ObjectiveCppCompile} task for each {@link org.gradle.language.objectivecpp.ObjectiveCppSourceSet} to compile the Objective-C++ sources.</li>
@@ -34,7 +34,7 @@ import org.gradle.nativeplatform.plugins.NativeComponentPlugin;
 public abstract class ObjectiveCppPlugin implements Plugin<Project> {
     @Override
     public void apply(Project project) {
-        project.getPluginManager().apply(NativeComponentPlugin.class);
+        project.getPluginManager().apply(NativeComponentModelPlugin.class);
         project.getPluginManager().apply(ObjectiveCppLangPlugin.class);
     }
 

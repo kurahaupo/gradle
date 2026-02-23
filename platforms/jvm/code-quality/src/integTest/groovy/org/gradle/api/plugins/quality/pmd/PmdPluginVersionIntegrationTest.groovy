@@ -15,7 +15,7 @@
  */
 package org.gradle.api.plugins.quality.pmd
 
-
+import org.gradle.test.fixtures.Flaky
 import org.hamcrest.Matcher
 import spock.lang.Issue
 
@@ -50,9 +50,7 @@ class PmdPluginVersionIntegrationTest extends AbstractPmdPluginVersionIntegratio
                 // clear the classpath to avoid file locking issues on PMD version < 5.5.1
                 classpath = files()
             }"""}
-
-            ${requiredSourceCompatibility()}
-        """.stripIndent()
+        """
     }
 
     def "analyze good code"() {
@@ -91,6 +89,7 @@ class PmdPluginVersionIntegrationTest extends AbstractPmdPluginVersionIntegratio
         output.contains("2 PMD rule violations were found. See the report at:")
     }
 
+    @Flaky(because = "https://github.com/gradle/gradle-private/issues/4688")
     void "can set max failures"() {
         badCode()
         buildFile << """
@@ -174,6 +173,12 @@ class PmdPluginVersionIntegrationTest extends AbstractPmdPluginVersionIntegratio
                 reports {
                     xml.required = false
                     html.outputLocation = file("htmlReport.html")
+                    csv.required = true
+                    csv.outputLocation = file("csvReport.csv")
+                    codeClimate.required = true
+                    codeClimate.outputLocation = file("codeClimateReport.json")
+                    sarif.required = true
+                    sarif.outputLocation = file("sarifReport.json")
                 }
             }
         """
@@ -182,6 +187,42 @@ class PmdPluginVersionIntegrationTest extends AbstractPmdPluginVersionIntegratio
         succeeds("check")
         !file("build/reports/pmd/main.xml").exists()
         file("htmlReport.html").exists()
+        file("csvReport.csv").exists()
+        file("codeClimateReport.json").exists()
+        file("sarifReport.json").exists()
+    }
+
+    def "default file locations for reports are sensible"() {
+        goodCode()
+        buildFile << """
+            pmdMain {
+                reports {
+                    xml.required = true
+                    html.required = true
+                    csv.required = true
+                    codeClimate.required = true
+                    sarif.required = true
+                }
+            }
+        """
+
+        expect:
+        succeeds("check")
+        file("build/reports/pmd/main.xml").exists()
+        file("build/reports/pmd/main.html").exists()
+        file("build/reports/pmd/main.csv").exists()
+        file("build/reports/pmd/main.codeclimate.json").exists()
+        file("build/reports/pmd/main.sarif.json").exists()
+    }
+
+    def "only xml and html reports are required by default"() {
+        goodCode()
+
+        expect:
+        succeeds("check")
+        file("build/reports/pmd/").assertHasDescendants(
+            "main.xml", "main.html", "test.xml", "test.html"
+        )
     }
 
     def "use custom rule set files"() {

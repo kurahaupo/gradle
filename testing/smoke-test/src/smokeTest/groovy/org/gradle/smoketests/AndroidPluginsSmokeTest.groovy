@@ -16,14 +16,12 @@
 
 package org.gradle.smoketests
 
-import org.gradle.integtests.fixtures.UnsupportedWithConfigurationCache
+import org.gradle.api.JavaVersion
 import org.gradle.integtests.fixtures.android.AndroidHome
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
-import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
 import org.gradle.internal.reflect.validation.ValidationMessageChecker
+import org.gradle.test.fixtures.Flaky
 import org.gradle.testkit.runner.TaskOutcome
-
-import static org.gradle.api.problems.Severity.ERROR
 
 /**
  * For these tests to run you need to set ANDROID_SDK_ROOT to your Android SDK directory
@@ -35,6 +33,7 @@ import static org.gradle.api.problems.Severity.ERROR
  * To run your tests against all AGP versions from agp-versions.properties, use higher version of java by setting -PtestJavaVersion=<version>
  * See {@link org.gradle.integtests.fixtures.versions.AndroidGradlePluginVersions#assumeCurrentJavaVersionIsSupportedBy() assumeCurrentJavaVersionIsSupportedBy} for more details
  */
+@Flaky(because = "https://github.com/gradle/gradle-private/issues/4910")
 class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implements ValidationMessageChecker, RunnerFactory {
 
     public static final String JAVA_COMPILE_DEPRECATION_MESSAGE = "Extending the JavaCompile task has been deprecated. This is scheduled to be removed in Gradle 7.0. Configure the task instead."
@@ -50,37 +49,11 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
         return runner.withJvmArguments(runner.jvmArguments + [
             // A workaround for this has been added to TaskExecutionAccessCheckers;
             // TODO once we remove it, uncomment the flag below or upgrade AGP
-            // "-Dorg.gradle.configuration-cache.internal.task-execution-access-pre-stable=true"
+            // "-Dorg.gradle.internal.configuration-cache.task-execution-access-pre-stable=true"
         ])
     }
 
-    @UnsupportedWithConfigurationCache
-    def "can use sourceSets task with android library and application build (agp=#agpVersion, ide=#ide)"() {
-        given:
-        AGP_VERSIONS.assumeCurrentJavaVersionIsSupportedBy(agpVersion)
-
-        and:
-        androidLibraryAndApplicationBuild(agpVersion)
-
-        and:
-        def runner = agpRunner(agpVersion, 'sourceSets')
-
-        when:
-        def result = runner.build()
-
-        then:
-        result.task(':app:sourceSets').outcome == TaskOutcome.SUCCESS
-        result.task(':library:sourceSets').outcome == TaskOutcome.SUCCESS
-
-        where:
-        [agpVersion, ide] << [
-            TestedVersions.androidGradle.toList(),
-            [false, true]
-        ].combinations()
-    }
-
     def "android library and application APK assembly (agp=#agpVersion, ide=#ide)"() {
-
         given:
         AGP_VERSIONS.assumeCurrentJavaVersionIsSupportedBy(agpVersion)
 
@@ -91,13 +64,14 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
         def runner = agpRunner(agpVersion,
             'assembleDebug',
             'testDebugUnitTest',
-            'connectedDebugAndroidTest',
             "-Pandroid.injected.invoked.from.ide=$ide"
         )
-
         when: 'first build'
-        SantaTrackerConfigurationCacheWorkaround.beforeBuild(runner.projectDir, IntegrationTestBuildContext.INSTANCE.gradleUserHomeDir)
-        def result = runner.build()
+        def result = runner
+            .deprecations(AndroidDeprecations) {
+                expectMultiStringNotationDeprecation(agpVersion)
+            }
+            .build()
 
         then:
         result.task(':app:compileDebugJavaWithJavac').outcome == TaskOutcome.SUCCESS
@@ -113,14 +87,17 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
         }
 
         when: 'up-to-date build'
-        SantaTrackerConfigurationCacheWorkaround.beforeBuild(runner.projectDir, IntegrationTestBuildContext.INSTANCE.gradleUserHomeDir)
-        result = runner.build()
+        result = runner
+            .deprecations(AndroidDeprecations) {
+                expectMultiStringNotationDeprecationIf(agpVersion, GradleContextualExecuter.isNotConfigCache())
+            }
+            .build()
 
         then:
         result.task(':app:compileDebugJavaWithJavac').outcome == TaskOutcome.UP_TO_DATE
         result.task(':library:assembleDebug').outcome == TaskOutcome.UP_TO_DATE
         result.task(':app:assembleDebug').outcome == TaskOutcome.UP_TO_DATE
-        result.task(':app:processDebugAndroidTestManifest').outcome == TaskOutcome.UP_TO_DATE
+        result.task(':app:processDebugManifest').outcome == TaskOutcome.UP_TO_DATE
 
         and:
         if (GradleContextualExecuter.isConfigCache()) {
@@ -129,8 +106,11 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
 
         when: 'abi change on library'
         abiChange.run()
-        SantaTrackerConfigurationCacheWorkaround.beforeBuild(runner.projectDir, IntegrationTestBuildContext.INSTANCE.gradleUserHomeDir)
-        result = runner.build()
+        result = runner
+            .deprecations(AndroidDeprecations) {
+                expectMultiStringNotationDeprecationIf(agpVersion, GradleContextualExecuter.isNotConfigCache())
+            }
+            .build()
 
         then: 'dependent sources are recompiled'
         result.task(':library:compileDebugJavaWithJavac').outcome == TaskOutcome.SUCCESS
@@ -144,9 +124,15 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
         }
 
         when: 'clean re-build'
-        agpRunner(agpVersion, 'clean').build()
-        SantaTrackerConfigurationCacheWorkaround.beforeBuild(runner.projectDir, IntegrationTestBuildContext.INSTANCE.gradleUserHomeDir)
-        result = runner.build()
+        agpRunner(agpVersion, 'clean')
+            .deprecations(AndroidDeprecations) {
+                expectMultiStringNotationDeprecation(agpVersion)
+            }
+            .build()
+        result = runner
+            .deprecations(AndroidDeprecations) {
+                expectMultiStringNotationDeprecationIf(agpVersion, GradleContextualExecuter.isNotConfigCache())
+            }.build()
 
         then:
         result.task(':app:compileDebugJavaWithJavac').outcome == TaskOutcome.SUCCESS
@@ -237,7 +223,7 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
 
             android.defaultConfig.applicationId "org.gradle.android.myapplication"
         """
-        appBuildFile << androidPluginConfiguration(appPackage)
+        appBuildFile << androidPluginConfiguration(appPackage, agpVersion)
         appBuildFile << activityDependency()
         appBuildFile << """
             dependencies {
@@ -251,7 +237,7 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
         libraryBuildFile << """
             apply plugin: 'com.android.library'
         """
-        libraryBuildFile << androidPluginConfiguration(libPackage)
+        libraryBuildFile << androidPluginConfiguration(libPackage, agpVersion)
         libraryBuildFile << activityDependency()
 
         return {
@@ -325,26 +311,29 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
             </LinearLayout>'''.stripIndent()
     }
 
-    def androidPluginConfiguration(String appPackage) {
+    def androidPluginConfiguration(String appPackage, String agpVersion) {
+
+        JavaVersion targetJvm = JavaVersion.current()
+
         """
             android {
-                compileSdkVersion 22
-                buildToolsVersion "${TestedVersions.androidTools}"
+                compileSdk = 30
+                buildToolsVersion = "${AGP_VERSIONS.getBuildToolsVersionFor(agpVersion)}"
 
-                namespace "${appPackage}"
+                namespace = "${appPackage}"
                 defaultConfig {
-                    minSdkVersion 22
-                    targetSdkVersion 26
-                    versionCode 1
-                    versionName "1.0"
+                    minSdk = 22
+                    targetSdk = 26
+                    versionCode = 1
+                    versionName = "1.0"
                 }
                 compileOptions {
-                    sourceCompatibility JavaVersion.VERSION_1_8
-                    targetCompatibility JavaVersion.VERSION_1_8
+                    sourceCompatibility = JavaVersion.${targetJvm.name()}
+                    targetCompatibility = JavaVersion.${targetJvm.name()}
                 }
                 buildTypes {
                     release {
-                        minifyEnabled false
+                        minifyEnabled = false
                     }
                 }
             }
@@ -357,7 +346,7 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
             'com.android.application': TestedVersions.androidGradle,
             'com.android.library': TestedVersions.androidGradle,
             'com.android.test': TestedVersions.androidGradle,
-            'com.android.reporting': TestedVersions.androidGradle,
+            'com.android.reporting': TestedVersions.androidGradleBefore9,
             'com.android.dynamic-feature': TestedVersions.androidGradle,
         ]
     }
@@ -378,8 +367,8 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
             buildFile << """
                 android {
                     namespace = "org.gradle.android.example.app"
-                    compileSdkVersion 24
-                    buildToolsVersion '${TestedVersions.androidTools}'
+                    compileSdk = 24
+                    buildToolsVersion = '${AGP_VERSIONS.getBuildToolsVersionFor(version)}'
                 }
             """
         }
@@ -404,22 +393,7 @@ class AndroidPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implemen
             }
         """
         validatePlugins {
-            boolean failsValidation = version.startsWith('4.2.')
-            if (failsValidation) {
-                def pluginSuffix = testedPluginId.substring('com.android.'.length())
-                def failingPlugins = ['com.android.internal.version-check', testedPluginId, 'com.android.internal.' + pluginSuffix]
-                passing {
-                    it !in failingPlugins
-                }
-                onPlugins(failingPlugins) {
-                    failsWith([
-                        (missingAnnotationMessage { type('com.android.build.gradle.internal.TaskManager.ConfigAttrTask').property('consumable').missingInputOrOutput().includeLink() }): ERROR,
-                        (missingAnnotationMessage { type('com.android.build.gradle.internal.TaskManager.ConfigAttrTask').property('resolvable').missingInputOrOutput().includeLink() }): ERROR,
-                    ])
-                }
-            } else {
-                alwaysPasses()
-            }
+            alwaysPasses()
         }
     }
 }

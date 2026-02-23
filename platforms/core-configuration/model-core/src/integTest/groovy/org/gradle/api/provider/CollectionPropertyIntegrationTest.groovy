@@ -17,8 +17,7 @@
 package org.gradle.api.provider
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.test.precondition.Requires
-import org.gradle.test.preconditions.IntegTestPreconditions
+import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 
 class CollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
     def setup() {
@@ -165,7 +164,47 @@ afterEvaluate {
         failure.assertHasCause("The value for task ':thing' property 'prop' is final and cannot be changed any further.")
     }
 
-    @Requires(value = IntegTestPreconditions.NotConfigCached, reason = "https://github.com/gradle/gradle/issues/25516")
+    def "UPGRADED task @Input property is LENIENTLY implicitly finalized when task starts execution UNTIL NEXT MAJOR"() {
+        given:
+        buildFile """
+            import org.gradle.internal.instrumentation.api.annotations.ReplacesEagerProperty
+
+            abstract class SomeTask extends DefaultTask {
+
+                @ReplacesEagerProperty
+                @Input
+                abstract ListProperty<String> getProp()
+
+                @OutputFile
+                final Property<RegularFile> outputFile = project.objects.fileProperty()
+
+                @TaskAction
+                void go() {
+                    println("value: " + prop.get().join(", "))
+                    outputFile.get().asFile.text = prop.get()
+                }
+            }
+
+            task thing(type: SomeTask) {
+                prop = ["value 1"]
+                outputFile = layout.buildDirectory.file("out.txt")
+                doFirst {
+                    prop.add("value 3")
+                }
+            }
+
+            afterEvaluate {
+                thing.prop.addAll(["value 2"])
+            }
+        """
+
+        expect:
+        executer.expectDocumentedDeprecationWarning("Changing property value of task ':thing' property 'prop' at execution time. This behavior has been deprecated. Starting with Gradle 11, changing property value of task ':thing' property 'prop' at execution time will become an error.")
+        succeeds("thing")
+        outputContains("value: value 1, value 2, value 3")
+    }
+
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/36664")
     def "task ad hoc input property is implicitly finalized when task starts execution"() {
         given:
         buildFile """
@@ -229,7 +268,6 @@ task thing {
         "providers.provider { [ 'a', 'b', 'c' ] }" | _
     }
 
-    @Requires(value = IntegTestPreconditions.NotConfigCached, reason = "https://github.com/gradle/gradle/issues/27528")
     def "can set value for string list property using GString values"() {
         buildFile """
             def str = "aBc"
@@ -263,7 +301,6 @@ task thing {
         succeeds("verify")
     }
 
-    @Requires(value = IntegTestPreconditions.NotConfigCached, reason = "https://github.com/gradle/gradle/issues/27528")
     def "can add element to string list property using GString value"() {
         buildFile << """
             def str = "aBc"
@@ -282,7 +319,6 @@ task thing {
         'providers.provider { "${str.toLowerCase().substring(1, 2)}" }' | _
     }
 
-    @Requires(value = IntegTestPreconditions.NotConfigCached, reason = "https://github.com/gradle/gradle/issues/27528")
     def "can add elements to string list property using GString value"() {
         buildFile << """
             def str = "aBc"
@@ -409,9 +445,7 @@ task wrongPropertyElementTypeApi(type: MyTask) {
             verify {
                 prop.convention(project.provider { [ 'a', 'b' ] })
                 assert !prop.explicit
-                prop.withActualValue {
-                    it.addAll(project.provider { [ 'c', 'd' ] })
-                }
+                prop.appendAll(project.provider { [ 'c', 'd' ] })
                 expected = [ 'a', 'b', 'c', 'd' ]
                 assert prop.explicit
             }
@@ -511,5 +545,83 @@ task wrongPropertyElementTypeApi(type: MyTask) {
         collection | initializer
         "list" | "listProperty"
         "set" | "setProperty"
+    }
+
+    /**
+     * These tests are to verify that when a property is marked as disallowChanges during configuration time,
+     * this setting is properly restored by the CC and honored at task execution time.
+     */
+    static class DisallowChangesIntegrationTests extends AbstractIntegrationSpec {
+        def "cannot update list property marked disallowChanges"() {
+            given:
+            buildFile """
+                class Setter extends DefaultTask {
+                    @Internal
+                    final ListProperty<String> prop = project.objects.listProperty(String)
+
+                    @TaskAction
+                    def run() {
+                        prop.add("new content")
+                    }
+                }
+
+                tasks.register("setter", Setter) {
+                    prop.add("original content")
+                    prop.disallowChanges()
+                }
+            """
+
+            expect:
+            fails("setter")
+            failure.assertHasCause("The value for task ':setter' property 'prop' cannot be changed any further.")
+        }
+
+        def "cannot update set property marked disallowChanges"() {
+            given:
+            buildFile """
+                class Setter extends DefaultTask {
+                    @Internal
+                    final SetProperty<String> prop = project.objects.setProperty(String)
+
+                    @TaskAction
+                    def run() {
+                        prop.add("new content")
+                    }
+                }
+
+                tasks.register("setter", Setter) {
+                    prop.add("original content")
+                    prop.disallowChanges()
+                }
+            """
+
+            expect:
+            fails("setter")
+            failure.assertHasCause("The value for task ':setter' property 'prop' cannot be changed any further.")
+        }
+
+        def "cannot update map property marked disallowChanges"() {
+            given:
+            buildFile """
+                class Setter extends DefaultTask {
+                    @Internal
+                    final MapProperty<String, String> prop = project.objects.mapProperty(String, String)
+
+                    @TaskAction
+                    def run() {
+                        prop.set(["key": "new value"])
+                    }
+                }
+
+                tasks.register("setter", Setter) {
+                    prop.set(["key": "value"])
+                    prop.disallowChanges()
+                }
+            """
+
+            expect:
+            fails("setter")
+            failure.assertHasCause("The value for task ':setter' property 'prop' cannot be changed any further.")
+        }
     }
 }

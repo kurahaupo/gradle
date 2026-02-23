@@ -16,7 +16,6 @@
 
 package org.gradle.internal.execution.history.changes;
 
-import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedMap;
 import org.gradle.api.Describable;
@@ -35,7 +34,8 @@ public class DefaultExecutionStateChangeDetector implements ExecutionStateChange
         Describable executable,
         PreviousExecutionState lastExecution,
         BeforeExecutionState thisExecution,
-        IncrementalInputProperties incrementalInputProperties
+        IncrementalInputProperties incrementalInputProperties,
+        boolean hasOverlappingOutputs
     ) {
         // Capture changes in execution outcome
         ChangeContainer previousSuccessState = new PreviousSuccessChanges(
@@ -81,7 +81,7 @@ public class DefaultExecutionStateChangeDetector implements ExecutionStateChange
             thisExecution.getOutputFileLocationSnapshots().keySet(),
             "Output",
             executable);
-        ImmutableSortedMap<String, FileSystemSnapshot> remainingPreviouslyProducedOutputs = thisExecution.getDetectedOverlappingOutputs().isPresent()
+        ImmutableSortedMap<String, FileSystemSnapshot> remainingPreviouslyProducedOutputs = hasOverlappingOutputs
             ? findOutputsStillPresentSincePreviousExecution(lastExecution.getOutputFilesProducedByWork(), thisExecution.getOutputFileLocationSnapshots())
             : thisExecution.getOutputFileLocationSnapshots();
         OutputFileChanges outputFileChanges = new OutputFileChanges(
@@ -125,10 +125,9 @@ public class DefaultExecutionStateChangeDetector implements ExecutionStateChange
     }
 
     private static ImmutableList<String> collectChanges(ChangeContainer changes) {
-        ImmutableList.Builder<String> builder = ImmutableList.builder();
-        MessageCollectingChangeVisitor visitor = new MessageCollectingChangeVisitor(builder, ExecutionStateChangeDetector.MAX_OUT_OF_DATE_MESSAGES);
+        MessageCollectingChangeVisitor visitor = new MessageCollectingChangeVisitor(ExecutionStateChangeDetector.MAX_OUT_OF_DATE_MESSAGES);
         changes.accept(visitor);
-        return builder.build();
+        return visitor.getMessages();
     }
 
     private static InputFileChanges caching(InputFileChanges wrapped) {
@@ -162,23 +161,6 @@ public class DefaultExecutionStateChangeDetector implements ExecutionStateChange
         @Override
         public boolean accept(ChangeVisitor visitor) {
             return changeContainerDelegate.accept(visitor);
-        }
-    }
-
-    private static class MessageCollectingChangeVisitor implements ChangeVisitor {
-        private final ImmutableCollection.Builder<String> messages;
-        private final int max;
-        private int count;
-
-        public MessageCollectingChangeVisitor(ImmutableCollection.Builder<String> messages, int max) {
-            this.messages = messages;
-            this.max = max;
-        }
-
-        @Override
-        public boolean visitChange(Change change) {
-            messages.add(change.getMessage());
-            return ++count < max;
         }
     }
 }

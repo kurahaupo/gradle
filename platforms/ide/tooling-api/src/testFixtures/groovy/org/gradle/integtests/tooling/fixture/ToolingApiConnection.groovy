@@ -21,9 +21,13 @@ import org.gradle.tooling.BuildAction
 import org.gradle.tooling.BuildActionExecuter
 import org.gradle.tooling.BuildLauncher
 import org.gradle.tooling.ConfigurableLauncher
+import org.gradle.tooling.IntermediateResultHandler
 import org.gradle.tooling.ModelBuilder
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.TestLauncher
+
+import static org.gradle.util.DebugUtil.DAEMON_DEBUG_PORT
+import static org.gradle.util.DebugUtil.isDebuggerAttached
 
 trait ToolingApiConfigurableLauncher<T extends ConfigurableLauncher<T>> {
     T configurableLauncher
@@ -36,6 +40,9 @@ trait ToolingApiConfigurableLauncher<T extends ConfigurableLauncher<T>> {
         configurableLauncher.standardError = stderr
         this.stdout = stdout
         this.stderr = stderr
+        if(isDebuggerAttached()){
+            configurableLauncher.setJvmArguments("-agentlib:jdwp=transport=dt_socket,server=n,suspend=y,address=${DAEMON_DEBUG_PORT}")
+        }
     }
 
     T setStandardOutput(OutputStream outputStream) {
@@ -89,21 +96,50 @@ class ToolingApiModelBuilder<T> implements ModelBuilder<T>, ToolingApiConfigurab
     }
 }
 
+class BuildActionExecuterBuilder implements BuildActionExecuter.Builder {
+
+    private final BuildActionExecuter.Builder delegate
+    private final OutputStream stderr
+    private final OutputStream stdout
+
+    BuildActionExecuterBuilder(BuildActionExecuter.Builder delegate, OutputStream stdout, OutputStream stderr) {
+        this.delegate = delegate
+        this.stdout = stdout
+        this.stderr = stderr
+    }
+
+    @Override
+    <T> BuildActionExecuter.Builder projectsLoaded(BuildAction<T> buildAction, IntermediateResultHandler<? super T> handler) throws IllegalArgumentException {
+        delegate.projectsLoaded(buildAction, handler)
+        this
+    }
+
+    @Override
+    <T> BuildActionExecuter.Builder buildFinished(BuildAction<T> buildAction, IntermediateResultHandler<? super T> handler) throws IllegalArgumentException {
+        delegate.buildFinished(buildAction, handler)
+        this
+    }
+
+    @Override
+    BuildActionExecuter<Void> build() {
+        new ToolingApiBuildActionExecuter(delegate.build(), stdout, stderr)
+    }
+}
+
 /**
  * This trait is used to add the missing methods to the ToolingApiConnection class without actually deriving from ProjectConnection.
  * While still allowing the ToolingApiConnection to be used as a ProjectConnection.
- * This avoids loading the ProjectConnection class from the test code and postbones loading to the tooling api magic.
+ * This avoids loading the ProjectConnection class from the test code and postpones loading to the tooling api magic.
  */
-
 trait ProjectConnectionTrait implements ProjectConnection {
 }
 
 class ToolingApiConnection {
-    private final Object projectConnection
+    private final ProjectConnection projectConnection
     private final OutputStream stderr
     private final OutputStream stdout
 
-    ToolingApiConnection(Object projectConnection, OutputStream stdout, OutputStream stderr) {
+    ToolingApiConnection(ProjectConnection projectConnection, OutputStream stdout, OutputStream stderr) {
         this.stdout = stdout
         this.stderr = stderr
         this.projectConnection = projectConnection
@@ -115,7 +151,7 @@ class ToolingApiConnection {
     }
 
     BuildActionExecuter.Builder action() {
-        projectConnection.action()
+        new BuildActionExecuterBuilder(projectConnection.action(), stdout, stderr)
     }
 
     BuildLauncher newBuild() {

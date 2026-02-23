@@ -2,7 +2,7 @@
 // and make available to all Kotlin DSL users
 package gradlebuild.basics.kotlindsl
 
-import org.gradle.api.Project
+import org.gradle.process.ExecOperations
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -16,7 +16,7 @@ operator fun File.div(child: String): File =
     resolve(child)
 
 
-fun Project.execAndGetStdout(workingDir: File, ignoreExitValue: Boolean, vararg args: String): String {
+fun ExecOperations.execAndGetStdout(workingDir: File, ignoreExitValue: Boolean, vararg args: String): String {
     val out = ByteArrayOutputStream()
     exec {
         isIgnoreExitValue = ignoreExitValue
@@ -28,7 +28,7 @@ fun Project.execAndGetStdout(workingDir: File, ignoreExitValue: Boolean, vararg 
 }
 
 
-fun Project.execAndGetStdoutIgnoringError(vararg args: String) = execAndGetStdout(File("."), true, *args)
+fun ExecOperations.execAndGetStdoutIgnoringError(vararg args: String) = execAndGetStdout(File("."), true, *args)
 
 
-fun Project.execAndGetStdout(vararg args: String) = execAndGetStdout(File("."), false, *args)
+fun ExecOperations.execAndGetStdout(vararg args: String) = execAndGetStdout(File("."), false, *args)

@@ -19,6 +19,7 @@ import org.gradle.api.internal.ConventionTask;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 import org.gradle.process.CommandLineArgumentProvider;
 import org.gradle.process.ExecResult;
 import org.gradle.process.ExecSpec;
@@ -27,8 +28,8 @@ import org.gradle.process.internal.DefaultExecSpec;
 import org.gradle.process.internal.ExecAction;
 import org.gradle.process.internal.ExecActionFactory;
 import org.gradle.work.DisableCachingByDefault;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.io.InputStream;
@@ -55,14 +56,10 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
     }
 
     @Inject
-    protected ObjectFactory getObjectFactory() {
-        throw new UnsupportedOperationException();
-    }
+    protected abstract ObjectFactory getObjectFactory();
 
     @Inject
-    protected ExecActionFactory getExecActionFactory() {
-        throw new UnsupportedOperationException();
-    }
+    protected abstract ExecActionFactory getExecActionFactory();
 
     @TaskAction
     protected void exec() {
@@ -120,7 +117,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      * {@inheritDoc}
      */
     @Override
-    public T setArgs(@Nullable Iterable<?> arguments) {
+    public T setArgs(Iterable<?> arguments) {
         execSpec.setArgs(arguments);
         return taskType.cast(this);
     }
@@ -128,10 +125,10 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
     /**
      * {@inheritDoc}
      */
-    @Nullable
     @Optional
     @Input
     @Override
+    @ToBeReplacedByLazyProperty(unreported = true, comment = "Unreported since setter is using generics")
     public List<String> getArgs() {
         return execSpec.getArgs();
     }
@@ -141,6 +138,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      */
     @Nested
     @Override
+    @ToBeReplacedByLazyProperty
     public List<CommandLineArgumentProvider> getArgumentProviders() {
         return execSpec.getArgumentProviders();
     }
@@ -150,6 +148,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      */
     @Internal
     @Override
+    @ToBeReplacedByLazyProperty
     public List<String> getCommandLine() {
         return execSpec.getCommandLine();
     }
@@ -185,6 +184,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
     @Optional
     @Input
     @Override
+    @ToBeReplacedByLazyProperty
     public String getExecutable() {
         return execSpec.getExecutable();
     }
@@ -219,6 +219,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      */
     @Override
     @Internal
+    @ToBeReplacedByLazyProperty
     // TODO:LPTR Should be a content-less @InputDirectory
     public File getWorkingDir() {
         return execSpec.getWorkingDir();
@@ -254,6 +255,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      */
     @Internal
     @Override
+    @ToBeReplacedByLazyProperty
     public Map<String, Object> getEnvironment() {
         return execSpec.getEnvironment();
     }
@@ -307,6 +309,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      */
     @Internal
     @Override
+    @ToBeReplacedByLazyProperty(unreported = true, comment = "Unreported since setter is using generics")
     public InputStream getStandardInput() {
         return execSpec.getStandardInput();
     }
@@ -325,6 +328,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      */
     @Internal
     @Override
+    @ToBeReplacedByLazyProperty(unreported = true)
     public OutputStream getStandardOutput() {
         return execSpec.getStandardOutput();
     }
@@ -343,6 +347,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      */
     @Internal
     @Override
+    @ToBeReplacedByLazyProperty(comment = "Should this be lazy? Probably not because it's a stream", unreported = true)
     public OutputStream getErrorOutput() {
         return execSpec.getErrorOutput();
     }
@@ -361,6 +366,7 @@ public abstract class AbstractExecTask<T extends AbstractExecTask> extends Conve
      */
     @Input
     @Override
+    @ToBeReplacedByLazyProperty(unreported = true, comment = "Unreported since setter is using generics")
     public boolean isIgnoreExitValue() {
         return execSpec.isIgnoreExitValue();
     }

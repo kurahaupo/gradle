@@ -21,35 +21,49 @@ plugins {
 description = "Public types for unit testing plugins"
 
 dependencies {
-    api(libs.jsr305)
-    api(project(":base-services"))
-    api(project(":build-operations"))
-    api(project(":concurrent"))
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":persistent-cache"))
-    api(project(":serialization"))
-    api(project(":time"))
-    api(project(":build-process-services"))
+    api(projects.buildOperations)
+    api(projects.buildProcessServices)
+    api(projects.concurrent)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.persistentCache)
+    api(projects.serialization)
+    api(projects.serviceLookup)
+    api(projects.serviceProvider)
+    api(projects.time)
 
-    implementation(projects.serviceProvider)
-    implementation(project(":build-state"))
-    implementation(project(":file-collections"))
-    implementation(project(":file-temp"))
-    implementation(project(":java-language-extensions"))
-    implementation(project(":logging"))
-    implementation(project(":model-core"))
-    implementation(project(":daemon-protocol"))
-    implementation(project(":daemon-services"))
-    implementation(project(":native"))
+    api(libs.jspecify)
 
-    testImplementation(project(":testing-base"))
+    implementation(projects.baseServices)
+    implementation(projects.buildDiscoveryImpl)
+    implementation(projects.buildOption)
+    implementation(projects.buildState)
+    implementation(projects.classloaders)
+    implementation(projects.daemonServices)
+    implementation(projects.fileCollections)
+    implementation(projects.fileTemp)
+    implementation(projects.instrumentationAgentServices)
+    implementation(projects.logging)
+    implementation(projects.loggingApi)
+    implementation(projects.modelCore)
+    implementation(projects.native)
+    implementation(projects.problemsApi)
+    implementation(projects.serviceRegistryBuilder)
+    implementation(projects.stdlibJavaExtensions)
 
-    testRuntimeOnly(project(":distributions-core")) {
+    testImplementation(testFixtures(projects.core))
+    testImplementation(projects.testingBase)
+
+    testRuntimeOnly(projects.distributionsCore) {
         because("ProjectBuilder loads services from a Gradle distribution.")
     }
-    integTestRuntimeOnly(project(":distributions-core")) {
-        because("ProjectBuilder loads services from a Gradle distribution.")
-    }
-    integTestDistributionRuntimeClasspath(project(":distributions-core"))
+
+    integTestImplementation(testFixtures(projects.buildProcessServices))
+    integTestImplementation(testFixtures(projects.testingBase))
+    integTestCompileOnly(libs.jetbrainsAnnotations)
+
+    integTestDistributionRuntimeOnly(projects.distributionsFull)
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

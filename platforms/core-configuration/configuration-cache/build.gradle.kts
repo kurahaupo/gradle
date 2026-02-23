@@ -6,129 +6,137 @@ plugins {
 
 description = "Configuration cache implementation"
 
-val configurationCacheReportPath by configurations.creating {
-    isVisible = false
-    isCanBeConsumed = false
-    attributes { attribute(DocsType.DOCS_TYPE_ATTRIBUTE, objects.named("configuration-cache-report")) }
-}
-
-// You can have a faster feedback loop by running `configuration-cache-report` as an included build
-// See https://github.com/gradle/configuration-cache-report#development-with-gradlegradle-and-composite-build
-dependencies {
-    configurationCacheReportPath(libs.configurationCacheReport)
-}
-
-tasks.processResources {
-    from(zipTree(configurationCacheReportPath.elements.map { it.first().asFile })) {
-        into("org/gradle/configurationcache/problems")
-        exclude("META-INF/**")
-    }
-}
-
 // The integration tests in this project do not need to run in 'config cache' mode.
 tasks.configCacheIntegTest {
     enabled = false
 }
 
+// The integration tests in this project do not need to run in 'isolated projects' mode.
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}
+
 dependencies {
+    api(projects.baseServices)
+    api(projects.buildOperations)
+    api(projects.buildOption)
     api(projects.concurrent)
-    api(projects.javaLanguageExtensions)
-    api(projects.serviceProvider)
+    api(projects.configurationCacheBase)
     api(projects.configurationProblemsBase)
-    api(project(":base-services"))
-    api(project(":build-operations"))
-    // TODO - it might be good to allow projects to contribute state to save and restore, rather than have this project know about everything
-    api(project(":build-option"))
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":dependency-management"))
-    api(project(":enterprise-operations"))
-    api(project(":file-collections"))
-    api(project(":file-temp"))
-    api(project(":functional"))
+    api(projects.coreSerializationCodecs)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.dependencyManagement)
+    api(projects.fileTemp)
     api(projects.graphSerialization)
-    api(project(":hashing"))
-    api(project(":logging"))
-    api(project(":logging-api"))
-    api(project(":messaging"))
-    api(project(":model-core"))
-    // TODO - it might be good to allow projects to contribute state to save and restore, rather than have this project know about everything
-    api(project(":native"))
-    api(project(":persistent-cache"))
-    api(project(":plugin-use"))
-    api(project(":resources"))
-    api(project(":snapshots"))
+    api(projects.loggingApi)
+    api(projects.native)
+    api(projects.pluginUse)
+    api(projects.resources)
+    api(projects.serviceLookup)
+    api(projects.serviceProvider)
+    api(projects.snapshots)
+    api(projects.stdlibJavaExtensions)
 
     api(libs.groovy)
     api(libs.inject)
     api(libs.kotlinStdlib)
 
     // TODO - it might be good to allow projects to contribute state to save and restore, rather than have this project know about everything
-    implementation(project(":base-services-groovy"))
-    implementation(project(":build-events"))
+    implementation(projects.buildDiscovery)
+    implementation(projects.buildDiscoveryImpl)
+    implementation(projects.buildEvents)
+    implementation(projects.buildProcessServices)
+    implementation(projects.classloaders)
+    implementation(projects.coreFlowServicesApi)
     implementation(projects.coreKotlinExtensions)
-    implementation(project(":execution"))
-    implementation(project(":files"))
-    implementation(project(":file-watching"))
+    implementation(projects.dependencyManagementSerializationCodecs)
+    implementation(projects.encryptionServices)
+    implementation(projects.enterpriseOperations)
+    implementation(projects.execution)
+    implementation(projects.fileCollections)
+    implementation(projects.fileOperations)
+    implementation(projects.fileWatching)
+    implementation(projects.files)
     implementation(projects.flowServices)
-    implementation(projects.guavaSerializationCodecs)
-    implementation(project(":input-tracking"))
-    implementation(project(":platform-jvm"))
+    implementation(projects.functional)
+    implementation(projects.hashing)
+    implementation(projects.inputTracking)
+    implementation(projects.instrumentationAgentServices)
+    implementation(projects.logging)
+    implementation(projects.messaging)
+    implementation(projects.modelCore)
+    implementation(projects.persistentCache)
     implementation(projects.problemsApi)
-    implementation(project(":process-services"))
-    implementation(project(":publish"))
+    implementation(projects.scopedPersistentCache)
     implementation(projects.serialization)
     implementation(projects.stdlibKotlinExtensions)
     implementation(projects.stdlibSerializationCodecs)
-    implementation(project(":tooling-api"))
+    implementation(projects.toolingApi)
 
-    implementation(libs.asm)
-    implementation(libs.fastutil)
-    implementation(libs.groovyJson)
     implementation(libs.guava)
+    implementation(libs.fastutil)
+    implementation(libs.kryo)
     implementation(libs.slf4jApi)
 
-    runtimeOnly(project(":composite-builds"))
-    runtimeOnly(project(":resources-http"))
+    compileOnly(libs.jspecify)
+
+    runtimeOnly(projects.beanSerializationServices)
+    runtimeOnly(projects.compositeBuilds)
+    runtimeOnly(projects.resourcesHttp)
     // TODO - move the isolatable serializer to model-core to live with the isolatable infrastructure
-    runtimeOnly(project(":workers"))
+    runtimeOnly(projects.workers)
 
     runtimeOnly(libs.kotlinReflect)
 
+    testImplementation(projects.beanSerializationServices)
+    testImplementation(testFixtures(projects.beanSerializationServices))
     testImplementation(projects.io)
-    testImplementation(testFixtures(project(":core")))
-    testImplementation(libs.mockitoKotlin2)
-    testImplementation(libs.kotlinCoroutinesDebug)
+    testImplementation(testFixtures(projects.core))
+    testImplementation(testLibs.mockitoKotlin)
+    testImplementation(testLibs.kotlinxCoroutinesDebug)
 
-    integTestImplementation(project(":jvm-services"))
-    integTestImplementation(project(":tooling-api"))
-    integTestImplementation(project(":platform-jvm"))
-    integTestImplementation(project(":test-kit"))
-    integTestImplementation(project(":launcher"))
-    integTestImplementation(project(":cli"))
-    integTestImplementation(project(":workers"))
-
-    integTestImplementation(libs.guava)
-    integTestImplementation(libs.ant)
-    integTestImplementation(libs.inject)
-    integTestImplementation("com.microsoft.playwright:playwright:1.20.1")
-
-    integTestImplementation(testFixtures(project(":tooling-api")))
-    integTestImplementation(testFixtures(project(":dependency-management")))
-    integTestImplementation(testFixtures(project(":jacoco")))
-    integTestImplementation(testFixtures(project(":model-core")))
-
-    crossVersionTestImplementation(project(":cli"))
-
-    testRuntimeOnly(project(":distributions-core")) {
+    testRuntimeOnly(projects.distributionsCore) {
         because("Tests instantiate DefaultClassLoaderRegistry which requires a 'gradle-plugins.properties' through DefaultPluginModuleRegistry")
     }
-    integTestDistributionRuntimeOnly(project(":distributions-full")) {
+
+    integTestImplementation(projects.cli)
+    integTestImplementation(projects.ide)
+    integTestImplementation(projects.jvmServices)
+    integTestImplementation(projects.launcher)
+    integTestImplementation(projects.platformJvm)
+    integTestImplementation(projects.testKit)
+    integTestImplementation(projects.toolingApi)
+    integTestImplementation(projects.workers)
+
+    integTestImplementation(libs.ant)
+    integTestImplementation(libs.guava)
+    integTestImplementation(libs.inject)
+    integTestImplementation(testLibs.playwright)
+
+    integTestImplementation(testFixtures(projects.toolingApi))
+    integTestImplementation(testFixtures(projects.dependencyManagement))
+    integTestImplementation(testFixtures(projects.jacoco))
+    integTestImplementation(testFixtures(projects.modelReflect))
+
+    integTestDistributionRuntimeOnly(projects.distributionsFull) {
         because("Includes tests for builds with the enterprise plugin and TestKit involved; ConfigurationCacheJacocoIntegrationTest requires JVM distribution")
     }
-    crossVersionTestDistributionRuntimeOnly(project(":distributions-core"))
+
+    crossVersionTestImplementation(projects.cli)
+    crossVersionTestImplementation(projects.internalIntegTesting)
+
+    crossVersionTestDistributionRuntimeOnly(projects.distributionsCore)
+}
+
+jvmCompile {
+    compilations {
+        named("main") {
+            targetJvmVersion = 17
+        }
+    }
 }
 
 packageCycles {
-    excludePatterns.add("org/gradle/configurationcache/**")
+    excludePatterns.add("org/gradle/internal/cc/**")
 }

@@ -22,7 +22,6 @@ import org.gradle.api.tasks.OutputFiles
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.BuildOperationsFixture
 import org.gradle.integtests.fixtures.DirectoryBuildCacheFixture
-import org.gradle.integtests.fixtures.ToBeFixedForIsolatedProjects
 import org.gradle.operations.execution.CachingDisabledReasonCategory
 import org.gradle.test.fixtures.Flaky
 import org.gradle.test.precondition.Requires
@@ -170,12 +169,13 @@ class TaskCacheabilityReasonIntegrationTest extends AbstractIntegrationSpec impl
         buildFile """
             task untrackedTrackWithReason(type: UnspecifiedCacheabilityTask) {
                 doNotTrackState("Untracked for testing from API")
+                doNotTrackStateIf("Untracked for testing conditional") { true }
             }
         """
         when:
         withBuildCache().run "untrackedTrackWithReason"
         then:
-        assertCachingDisabledFor NOT_ENABLED_FOR_TASK, "Task is untracked because: Untracked for testing from API"
+        assertCachingDisabledFor NOT_ENABLED_FOR_TASK, "Task is untracked because: Untracked for testing from API; Untracked for testing conditional"
     }
 
 
@@ -255,7 +255,6 @@ class TaskCacheabilityReasonIntegrationTest extends AbstractIntegrationSpec impl
         annotation << [OutputFiles.simpleName, OutputDirectories.simpleName]
     }
 
-    @ToBeFixedForIsolatedProjects(because = "Investigate")
     @Flaky(because = "https://github.com/gradle/gradle-private/issues/4206")
     def "cacheability for a task with overlapping outputs is OVERLAPPING_OUTPUTS"() {
         buildFile """

@@ -16,7 +16,8 @@
 package org.gradle.launcher
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.internal.agents.AgentUtils
+import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
+import org.gradle.internal.instrumentation.agent.AgentUtils
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
 
@@ -48,8 +49,6 @@ class SystemClassLoaderTest extends AbstractIntegrationSpec {
                 doLast {
                     def systemLoader = ClassLoader.systemClassLoader
 
-                    systemLoader.loadClass("org.gradle.launcher.daemon.bootstrap.GradleDaemon") // this should be on the classpath, it's from the launcher package
-
                     def nonLauncherOrCoreClass = "org.gradle.api.reporting.Report"
 
                     // Check that this is a dependency (to verify that the class is not accidentally removed and so make the test verify nothing)
@@ -57,7 +56,7 @@ class SystemClassLoaderTest extends AbstractIntegrationSpec {
 
                     try {
                         def clazz = systemLoader.loadClass(nonLauncherOrCoreClass)
-                        assert clazz == null : "ClassNotFoundException should have been thrown trying to load a “\${nonLauncherOrCoreClass}” class from the system classloader as its not a launcher or core class (loaded class: \$clazz)"
+                        assert clazz == null : "ClassNotFoundException should have been thrown trying to load a '\${nonLauncherOrCoreClass}' class from the system classloader as its not a launcher or core class (loaded class: \$clazz)"
                     } catch (ClassNotFoundException e) {
                         // expected
                     }
@@ -94,7 +93,11 @@ class SystemClassLoaderTest extends AbstractIntegrationSpec {
 
         def libraries = lines[headingIndex + 2..<headingIndex + 2 + classpathSize]
         libraries.any {
-            it.contains("gradle-daemon-main")
+            if (GradleContextualExecuter.isNoDaemon()) {
+                it.contains("gradle-cli-main")
+            } else {
+                it.contains("gradle-daemon-main")
+            }
         }
         !maybeHasAgent || libraries.any {
             it.contains(AgentUtils.AGENT_MODULE_NAME)

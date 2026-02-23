@@ -25,7 +25,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
 
     def "values of primitive types and boxed primitive types are widened as usual when using groovy"() {
         when:
-        buildScript '''
+        buildFile '''
             @Managed
             interface PrimitiveTypes {
                 Long getLongPropertyFromInt()
@@ -63,7 +63,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
 
     def "can view property with scalar type as ModelElement"() {
         given:
-        buildScript '''
+        buildFile '''
             @Managed
             interface PrimitiveTypes {
                 int getIntProp()
@@ -106,7 +106,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
 
     def "mismatched types error in managed type are propagated to the user"() {
         when:
-        buildScript '''
+        buildFile '''
             @Managed
             interface PrimitiveTypes {
                 Long getLongProperty()
@@ -121,6 +121,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
             }
 
             apply type: RulePlugin
+            apply plugin: 'model-reporting-tasks'
         '''
 
         then:
@@ -176,7 +177,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
             }
         '''
 
-        buildScript '''
+        buildFile '''
             apply type: RulePlugin
         '''
 
@@ -186,7 +187,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
 
     def "can set/get properties of all supported scalar types using Groovy"() {
         when:
-        buildScript '''
+        buildFile '''
             @Managed
             interface AllSupportedUnmanagedTypes {
                 Boolean getBooleanProperty()
@@ -361,7 +362,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
         '''
 
         when:
-        buildScript '''
+        buildFile '''
             apply type: RulePlugin
         '''
 
@@ -371,7 +372,9 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
 
     def "can specify managed models with file types"() {
         when:
-        buildScript '''
+        buildFile '''
+            apply plugin: 'model-reporting-tasks'
+            
             @Managed
             interface FileContainer {
                 File getFile()
@@ -428,7 +431,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
              check     : "assert p.$propName == $value"]
         }
 
-        buildScript """
+        buildFile """
             import org.gradle.api.artifacts.Configuration.State
 
             @Managed
@@ -531,7 +534,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
             }
         """
 
-        buildScript '''
+        buildFile '''
             apply type: RulePlugin
         '''
 
@@ -580,7 +583,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
                     }"""]
         }
 
-        buildScript """
+        buildFile """
             import org.gradle.api.artifacts.Configuration.State
 
             @Managed
@@ -616,7 +619,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
 
     def "read-only backing set preserves order of insertion"() {
         given: "a managed type that uses a Set of strings"
-        buildScript '''
+        buildFile '''
             @Managed
             interface User {
                 Set<String> getGroups()
@@ -654,7 +657,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
 
     def "read-write backing set preserves order of insertion"() {
         given: "a managed type that uses a read-write Set of strings"
-        buildScript '''
+        buildFile '''
             @Managed
             interface User {
                 Set<String> getGroups()
@@ -693,7 +696,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
     }
 
     def "read-write backing set retains null value"() {
-        buildScript '''
+        buildFile '''
             @Managed
             interface User {
                 Set<String> getGroups()
@@ -726,7 +729,7 @@ class ScalarTypesInManagedModelIntegrationTest extends AbstractIntegrationSpec {
 
     def "cannot mutate read-write scalar collection when not target of a rule"() {
         given: "a managed type that uses a read-write Set of strings"
-        buildScript '''
+        buildFile '''
             @Managed
             interface User {
                 Set<String> getGroups()

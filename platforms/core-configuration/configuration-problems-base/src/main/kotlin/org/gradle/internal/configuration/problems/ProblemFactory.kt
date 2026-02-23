@@ -18,8 +18,10 @@ package org.gradle.internal.configuration.problems
 
 import org.gradle.internal.service.scopes.EventScope
 import org.gradle.internal.service.scopes.Scope
+import org.gradle.internal.service.scopes.ServiceScope
 
 
+@ServiceScope(Scope.BuildTree::class)
 @EventScope(Scope.BuildTree::class)
 interface ProblemFactory {
     /**
@@ -32,7 +34,7 @@ interface ProblemFactory {
      *
      * Problem has no documentation, and a default location is inferred from the calling thread's state.
      */
-    fun problem(message: StructuredMessage, exception: Throwable? = null, documentationSection: DocumentationSection? = null): PropertyProblem
+    fun problem(message: StructuredMessage, exception: Throwable? = null, documentationSection: DocumentationSection? = null, getStackTrace: Boolean = true): PropertyProblem
 
     /**
      * Creates a problem with the given message.

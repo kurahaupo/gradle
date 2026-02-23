@@ -40,8 +40,8 @@ class ReservedProjectNamesCrossVersionSpec extends ToolingApiSpecification {
         """
         settingsFile << """
         rootProject.name = 'root'
-        include ':a', ':b'
         """
+        includeProjects("a", "b")
     }
 
     def "externally used project names can be supplied and are deduplicated"() {
@@ -137,10 +137,8 @@ class ReservedProjectNamesCrossVersionSpec extends ToolingApiSpecification {
         ])
 
         when:
-        def eclipseModels = withConnection { con ->
-            def builder = con.action(new SupplyRuntimeAndLoadCompositeEclipseModels(workspace))
-            collectOutputs(builder)
-            builder.run()
+        def eclipseModels = withConnection { connection ->
+            connection.action(new SupplyRuntimeAndLoadCompositeEclipseModels(workspace)).run()
         }
 
         then:

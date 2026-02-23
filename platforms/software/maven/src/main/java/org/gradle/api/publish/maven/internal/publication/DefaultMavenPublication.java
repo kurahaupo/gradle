@@ -32,8 +32,8 @@ import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier;
 import org.gradle.api.internal.artifacts.Module;
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MavenVersionUtils;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.component.SoftwareComponentInternal;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.project.ProjectInternal;
@@ -66,8 +66,8 @@ import org.gradle.internal.DisplayName;
 import org.gradle.internal.typeconversion.NotationParser;
 import org.gradle.util.internal.CollectionUtils;
 import org.gradle.util.internal.GUtil;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.util.HashSet;
@@ -81,7 +81,7 @@ import static java.util.stream.Collectors.toMap;
 public abstract class DefaultMavenPublication implements MavenPublicationInternal {
 
     private final String name;
-    private final ImmutableAttributesFactory immutableAttributesFactory;
+    private final AttributesFactory attributesFactory;
     private final TaskDependencyFactory taskDependencyFactory;
     private final String projectDisplayName;
     private final Directory buildDir;
@@ -92,7 +92,7 @@ public abstract class DefaultMavenPublication implements MavenPublicationInterna
     private final PublicationArtifactSet<MavenArtifact> metadataArtifacts;
     private final PublicationArtifactSet<MavenArtifact> derivedArtifacts;
     private final PublicationArtifactSet<MavenArtifact> publishableArtifacts;
-    private final SetProperty<MavenArtifact> componentArtifacts;
+
     private final Set<String> silencedVariants = new HashSet<>();
     private MavenArtifact pomArtifact;
     private SingleOutputTaskMavenArtifact moduleMetadataArtifact;
@@ -111,7 +111,7 @@ public abstract class DefaultMavenPublication implements MavenPublicationInterna
         NotationParser<Object, MavenArtifact> mavenArtifactParser,
         ObjectFactory objectFactory,
         FileCollectionFactory fileCollectionFactory,
-        ImmutableAttributesFactory immutableAttributesFactory,
+        AttributesFactory attributesFactory,
         CollectionCallbackActionDecorator collectionCallbackActionDecorator,
         VersionMappingStrategyInternal versionMappingStrategy,
         TaskDependencyFactory taskDependencyFactory,
@@ -119,7 +119,7 @@ public abstract class DefaultMavenPublication implements MavenPublicationInterna
         Project project
     ) {
         this.name = name;
-        this.immutableAttributesFactory = immutableAttributesFactory;
+        this.attributesFactory = attributesFactory;
         this.versionMappingStrategy = versionMappingStrategy;
         this.taskDependencyFactory = taskDependencyFactory;
         this.projectDisplayName = project.getDisplayName();
@@ -127,16 +127,15 @@ public abstract class DefaultMavenPublication implements MavenPublicationInterna
 
         MavenComponentParser mavenComponentParser = objectFactory.newInstance(MavenComponentParser.class, mavenArtifactParser);
 
-        this.componentArtifacts = objectFactory.setProperty(MavenArtifact.class);
-        this.componentArtifacts.convention(getComponent().map(mavenComponentParser::parseArtifacts));
-        this.componentArtifacts.finalizeValueOnRead();
+        getComponentArtifacts().convention(getComponent().map(mavenComponentParser::parseArtifacts));
+        getComponentArtifacts().finalizeValueOnRead();
 
         this.mainArtifacts = objectFactory.newInstance(DefaultMavenArtifactSet.class, name, mavenArtifactParser, fileCollectionFactory, collectionCallbackActionDecorator);
         this.metadataArtifacts = new DefaultPublicationArtifactSet<>(MavenArtifact.class, "metadata artifacts for " + name, fileCollectionFactory, collectionCallbackActionDecorator);
         this.derivedArtifacts = new DefaultPublicationArtifactSet<>(MavenArtifact.class, "derived artifacts for " + name, fileCollectionFactory, collectionCallbackActionDecorator);
         this.publishableArtifacts = new CompositePublicationArtifactSet<>(taskDependencyFactory, MavenArtifact.class, Cast.uncheckedCast(new PublicationArtifactSet<?>[]{mainArtifacts, metadataArtifacts, derivedArtifacts}));
 
-        this.pom = objectFactory.newInstance(DefaultMavenPom.class, objectFactory);
+        this.pom = objectFactory.newInstance(DefaultMavenPom.class);
         this.pom.getWriteGradleMetadataMarker().set(providerFactory.provider(this::writeGradleMetadataMarker));
         this.pom.getPackagingProperty().convention(providerFactory.provider(this::determinePackagingFromArtifacts));
         this.pom.getDependencies().set(
@@ -261,10 +260,12 @@ public abstract class DefaultMavenPublication implements MavenPublicationInterna
             return;
         }
         populated = true;
-        if (!artifactsOverridden && componentArtifacts.isPresent()) {
-            mainArtifacts.addAll(componentArtifacts.get());
+        if (!artifactsOverridden && getComponentArtifacts().isPresent()) {
+            mainArtifacts.addAll(getComponentArtifacts().get());
         }
     }
+
+    protected abstract SetProperty<MavenArtifact> getComponentArtifacts();
 
     @Override
     public MavenArtifact artifact(Object source) {
@@ -538,7 +539,7 @@ public abstract class DefaultMavenPublication implements MavenPublicationInterna
     public ImmutableAttributes getAttributes() {
         String version = pom.getCoordinates().getVersion().get();
         String status = MavenVersionUtils.inferStatusFromVersionNumber(version);
-        return immutableAttributesFactory.of(ProjectInternal.STATUS_ATTRIBUTE, status);
+        return attributesFactory.of(ProjectInternal.STATUS_ATTRIBUTE, status);
     }
 
     private String getPublishedUrl(PublishArtifact source) {

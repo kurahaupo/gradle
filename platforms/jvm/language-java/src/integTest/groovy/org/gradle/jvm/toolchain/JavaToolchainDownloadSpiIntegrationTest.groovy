@@ -16,12 +16,18 @@
 
 package org.gradle.jvm.toolchain
 
-
 import org.gradle.api.JavaVersion
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.AvailableJavaHomes
 import org.gradle.integtests.fixtures.executer.DocumentationUtils
 import org.gradle.integtests.fixtures.executer.ExecutionResult
-import spock.lang.Unroll
+import org.gradle.internal.jvm.Jvm
+import org.gradle.internal.os.OperatingSystem
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.IntegTestPreconditions
+import org.gradle.test.preconditions.UnitTestPreconditions
+import org.junit.Assume
+import spock.lang.Issue
 
 import static JavaToolchainDownloadUtil.applyToolchainResolverPlugin
 import static JavaToolchainDownloadUtil.noUrlResolverCode
@@ -56,24 +62,23 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
 
         when:
         failure = executer
-                .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .withTasks("compileJava", "-s")
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
         then:
         failure.assertHasDescription("Could not determine the dependencies of task ':compileJava'.")
                .assertHasCause("Failed to calculate the value of task ':compileJava' property 'javaCompiler'.")
-               .assertHasCause("Cannot find a Java installation on your machine matching this tasks requirements: {languageVersion=99, vendor=matching('exotic'), implementation=vendor-specific} for ")
-               .assertHasCause("No matching toolchain could be found in the locally installed toolchains or the configured toolchain download repositories. " +
+               .assertHasCause("Cannot find a Java installation on your machine (${OperatingSystem.current()}) matching: {languageVersion=99, vendor=vendor matching('exotic'), implementation=vendor-specific, nativeImageCapable=false}. " +
                    "Some toolchain resolvers had provisioning failures: custom (Unable to download toolchain matching the requirements " +
-                   "({languageVersion=99, vendor=matching('exotic'), implementation=vendor-specific}) from 'https://exoticJavaToolchain.com/java-99', " +
-                   "due to: Could not HEAD 'https://exoticJavaToolchain.com/java-99'.).")
+                   "({languageVersion=99, vendor=vendor matching('exotic'), implementation=vendor-specific, nativeImageCapable=false}) from 'https://exoticJavaToolchain.invalid/java-99', " +
+                   "due to: Could not HEAD 'https://exoticJavaToolchain.invalid/java-99'.).")
     }
 
     def "downloaded JDK is checked against the spec"() {
         given:
-        def jdkRepository = new JdkRepository(JavaVersion.VERSION_17)
+        def jdkRepository = new JdkRepository(Jvm.current().javaVersion)
         def uri = jdkRepository.start()
         jdkRepository.reset()
 
@@ -96,7 +101,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         when:
         failure = executer
                 .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
@@ -106,10 +111,53 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         then:
         failure.assertHasDescription("Could not determine the dependencies of task ':compileJava'.")
                .assertHasCause("Failed to calculate the value of task ':compileJava' property 'javaCompiler'.")
-               .assertHasCause("Cannot find a Java installation on your machine matching this tasks requirements: {languageVersion=11, vendor=any, implementation=vendor-specific} for")
-               .assertHasCause("No matching toolchain could be found in the locally installed toolchains or the configured toolchain download repositories. " +
-                   "Some toolchain resolvers had provisioning failures: custom (Unable to download toolchain matching the requirements ({languageVersion=11, vendor=any, implementation=vendor-specific}) " +
-                   "from '$uri', due to: Toolchain provisioned from '$uri' doesn't satisfy the specification: {languageVersion=11, vendor=any, implementation=vendor-specific}.).")
+               .assertHasCause("Cannot find a Java installation on your machine (${OperatingSystem.current()}) matching: {languageVersion=11, vendor=any vendor, implementation=vendor-specific, nativeImageCapable=false}. " +
+                   "Some toolchain resolvers had provisioning failures: custom (Unable to download toolchain matching the requirements ({languageVersion=11, vendor=any vendor, implementation=vendor-specific, nativeImageCapable=false}) " +
+                   "from '$uri', due to: Toolchain provisioned from '$uri' doesn't satisfy the specification: {languageVersion=11, vendor=any vendor, implementation=vendor-specific, nativeImageCapable=false} and must have the executable 'javac', the executable 'javadoc', and the executable 'jar'.)")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/30409")
+    def "no temporary JDK path is logged when provisioning a JDK"() {
+        given:
+        def otherJavaVersion = JavaVersion.current() == JavaVersion.VERSION_17 ? JavaVersion.VERSION_21 : JavaVersion.VERSION_17
+        def jdkRepository = new JdkRepository(otherJavaVersion)
+        def uri = jdkRepository.start()
+        jdkRepository.reset()
+
+        settingsFile << """
+            ${applyToolchainResolverPlugin("CustomToolchainResolver", singleUrlResolverCode(uri))}
+        """
+
+        buildFile << """
+            apply plugin: "java"
+
+            java {
+                toolchain {
+                    languageVersion = JavaLanguageVersion.of(${otherJavaVersion.majorVersion})
+                }
+            }
+        """
+
+        file("src/main/java/Foo.java") << "public class Foo {}"
+
+        when:
+        result = executer
+            .withTasks("compileJava", "-s")
+            .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
+            .withToolchainDownloadEnabled()
+            .run()
+
+        and:
+        jdkRepository.stop()
+
+
+        then:
+        // There is no reason we should log the temporary JDK path, unless we're reporting a warning to the user that we shouldn't be
+        def testPath = ".tmp/jdks/"
+        if (OperatingSystem.current().isWindows()) {
+            testPath = testPath.replace('/', '\\')
+        }
+        result.assertNotOutput(testPath)
     }
 
     def "custom toolchain registries are consulted in order"() {
@@ -149,18 +197,17 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         when:
         failure = executer
                 .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
         then:
         failure.assertHasDescription("Could not determine the dependencies of task ':compileJava'.")
                .assertHasCause("Failed to calculate the value of task ':compileJava' property 'javaCompiler'.")
-               .assertHasCause("Cannot find a Java installation on your machine matching this tasks requirements: {languageVersion=99, vendor=matching('exotic'), implementation=vendor-specific} for ")
-               .assertHasCause("No matching toolchain could be found in the locally installed toolchains or the configured toolchain download repositories. " +
+               .assertHasCause("Cannot find a Java installation on your machine (${OperatingSystem.current()}) matching: {languageVersion=99, vendor=vendor matching('exotic'), implementation=vendor-specific, nativeImageCapable=false}. " +
                    "Some toolchain resolvers had provisioning failures: custom (Unable to download toolchain matching the requirements " +
-                   "({languageVersion=99, vendor=matching('exotic'), implementation=vendor-specific}) from 'https://exoticJavaToolchain.com/java-99', " +
-                   "due to: Could not HEAD 'https://exoticJavaToolchain.com/java-99'.).")
+                   "({languageVersion=99, vendor=vendor matching('exotic'), implementation=vendor-specific, nativeImageCapable=false}) from 'https://exoticJavaToolchain.invalid/java-99', " +
+                   "due to: Could not HEAD 'https://exoticJavaToolchain.invalid/java-99'.).")
     }
 
     def "fails on registration collision"() {
@@ -198,7 +245,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         when:
         failure = executer
                 .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
@@ -242,7 +289,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         when:
         failure = executer
                 .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
@@ -286,7 +333,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         when:
         failure = executer
                 .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
@@ -333,7 +380,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         when:
         failure = executer
                 .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
@@ -385,7 +432,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         when:
         failure = executer
                 .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
@@ -429,16 +476,17 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         when:
         failure = executer
                 .withTasks("compileJava")
-                .requireOwnGradleUserHomeDir()
+                .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
                 .withToolchainDownloadEnabled()
                 .runWithFailure()
 
         then:
         failure.assertHasDescription("Could not determine the dependencies of task ':compileJava'.")
                .assertHasCause("Failed to calculate the value of task ':compileJava' property 'javaCompiler'.")
-               .assertHasCause("No locally installed toolchains match and toolchain download repositories have not been configured.")
+               .assertHasCause("Cannot find a Java installation on your machine (${OperatingSystem.current()}) matching: {languageVersion=99, vendor=any vendor, implementation=vendor-specific, nativeImageCapable=false}. " +
+                   "Toolchain download repositories have not been configured.")
                .assertHasResolutions(
-                   DocumentationUtils.normalizeDocumentationLink("Learn more about toolchain auto-detection at https://docs.gradle.org/current/userguide/toolchains.html#sec:auto_detection."),
+                   DocumentationUtils.normalizeDocumentationLink("Learn more about toolchain auto-detection and auto-provisioning at https://docs.gradle.org/current/userguide/toolchains.html#sec:auto_detection."),
                    DocumentationUtils.normalizeDocumentationLink("Learn more about toolchain repositories at https://docs.gradle.org/current/userguide/toolchains.html#sub:download_repositories."),
                    STACKTRACE_MESSAGE,
                    INFO_DEBUG,
@@ -446,9 +494,11 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
                    GET_HELP)
     }
 
-    @Unroll("#logLevel logging")
-    def "logs informative warning message if some repositories fail to resolve the toolchain spec"(String logLevel, Closure<ExecutionResult> test) {
+    @Requires(IntegTestPreconditions.Java11HomeAvailable)
+    def "logs informative warning message if some repositories fail to resolve the toolchain spec #logLevel"(String logLevel, Closure<ExecutionResult> test) {
         given:
+        Assume.assumeFalse(JavaVersion.current() == JavaVersion.VERSION_11)
+
         def jdkRepository = new JdkRepository(JavaVersion.VERSION_11)
         def uri = jdkRepository.start()
         jdkRepository.reset()
@@ -493,7 +543,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         def result = executer
             .withTasks("compileJava")
             .withArgument("--$logLevel")
-            .requireOwnGradleUserHomeDir()
+            .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
             .withToolchainDownloadEnabled()
             .withStackTraceChecksDisabled()
             .run()
@@ -507,12 +557,48 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         where:
         logLevel | test
         "warn"   | { ExecutionResult r -> r.assertOutputContains("Some toolchain resolvers had internal failures: failsOnResolve (Ooops!). " +
-            "Some toolchain resolvers had provisioning failures: failsOnProvision (Unable to download toolchain matching the requirements ({languageVersion=11, vendor=any, implementation=vendor-specific}) from 'http://exoticJavaToolchain.com/java-11', due to: Attempting to download a file from an insecure URI http://exoticJavaToolchain.com/java-11. This is not supported, use a secure URI instead.). " +
-            "Switch logging level to DEBUG (--debug) for further information.")}
-        "debug"  | { ExecutionResult r -> r.assertOutputContains("java.lang.Exception: Some toolchain resolvers had internal failures: failsOnResolve (Ooops!). Some toolchain resolvers had provisioning failures: failsOnProvision (Unable to download toolchain matching the requirements ({languageVersion=11, vendor=any, implementation=vendor-specific}) from 'http://exoticJavaToolchain.com/java-11', due to: Attempting to download a file from an insecure URI http://exoticJavaToolchain.com/java-11. This is not supported, use a secure URI instead.).")
-            .assertOutputContains("Suppressed: java.lang.Exception: Ooops!")
-            .assertOutputContains("Suppressed: org.gradle.jvm.toolchain.internal.install.DefaultJavaToolchainProvisioningService\$MissingToolchainException: Unable to download toolchain matching the requirements ({languageVersion=11, vendor=any, implementation=vendor-specific}) from 'http://exoticJavaToolchain.com/java-11', due to: Attempting to download a file from an insecure URI http://exoticJavaToolchain.com/java-11. This is not supported, use a secure URI instead.")
+            "Some toolchain resolvers had provisioning failures: failsOnProvision (Unable to download toolchain matching the requirements ({languageVersion=11, vendor=any vendor, implementation=vendor-specific, nativeImageCapable=false}) from 'http://exoticJavaToolchain.invalid/java-11', due to: Attempting to download java toolchain from an insecure URI http://exoticJavaToolchain.invalid/java-11. This is not supported, use a secure URI instead.). Switch logging level to DEBUG (--debug) for further information.")
         }
+        "debug"  | { ExecutionResult r -> r.assertOutputContains("Some toolchain resolvers had internal failures: failsOnResolve (Ooops!). Some toolchain resolvers had provisioning failures: failsOnProvision (Unable to download toolchain matching the requirements ({languageVersion=11, vendor=any vendor, implementation=vendor-specific, nativeImageCapable=false}) from 'http://exoticJavaToolchain.invalid/java-11', due to: Attempting to download java toolchain from an insecure URI http://exoticJavaToolchain.invalid/java-11. This is not supported, use a secure URI instead.)")
+            .assertOutputContains("Suppressed: java.lang.Exception: Ooops!")
+            .assertOutputContains("Suppressed: org.gradle.jvm.toolchain.internal.install.exceptions.ToolchainDownloadException: Unable to download toolchain matching the requirements ({languageVersion=11, vendor=any vendor, implementation=vendor-specific, nativeImageCapable=false}) from 'http://exoticJavaToolchain.invalid/java-11', due to: Attempting to download java toolchain from an insecure URI http://exoticJavaToolchain.invalid/java-11. This is not supported, use a secure URI instead.")
+        }
+    }
+
+    // We can create directories and files that exceed Windows max path, but Java cannot execute processes from them https://bugs.openjdk.org/browse/JDK-8315405
+    @Requires(UnitTestPreconditions.NotWindows)
+    def "downloaded archive filename is truncated to meet generic file-system limits"() {
+        def jvm = AvailableJavaHomes.getDifferentVersion()
+        given:
+        def jdkRepository = new JdkRepository(jvm, "jdk-" + ("A" * 300) + ".zip")
+        def uri = jdkRepository.start()
+        jdkRepository.expectHead()
+        jdkRepository.expectGet()
+
+        executer
+            .requireOwnGradleUserHomeDir("needs to not have cached toolchains")
+            .withToolchainDownloadEnabled()
+
+        settingsFile << """
+            ${applyToolchainResolverPlugin("CustomToolchainResolver", singleUrlResolverCode(uri))}
+        """
+
+        buildFile << """
+            apply plugin: "java"
+
+            java {
+                toolchain {
+                    languageVersion = JavaLanguageVersion.of(${jvm.javaVersionMajor})
+                }
+            }
+        """
+
+        file("src/main/java/Foo.java") << "public class Foo {}"
+
+        expect:
+        succeeds("compileJava")
+        cleanup:
+        jdkRepository.stop()
     }
 
     private static String failsToResolveResolverCode() {
@@ -530,7 +616,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         """
             @Override
             public Optional<JavaToolchainDownload> resolve(JavaToolchainRequest request) {
-                URI uri = URI.create("http://exoticJavaToolchain.com/java-" + request.getJavaToolchainSpec().getLanguageVersion().get());
+                URI uri = URI.create("http://exoticJavaToolchain.invalid/java-" + request.getJavaToolchainSpec().getLanguageVersion().get());
                 return Optional.of(JavaToolchainDownload.fromUri(uri));
             }
         """
@@ -540,7 +626,7 @@ class JavaToolchainDownloadSpiIntegrationTest extends AbstractIntegrationSpec {
         """
             @Override
             public Optional<JavaToolchainDownload> resolve(JavaToolchainRequest request) {
-                URI uri = URI.create("https://exoticJavaToolchain.com/java-" + request.getJavaToolchainSpec().getLanguageVersion().get());
+                URI uri = URI.create("https://exoticJavaToolchain.invalid/java-" + request.getJavaToolchainSpec().getLanguageVersion().get());
                 return Optional.of(JavaToolchainDownload.fromUri(uri));
             }
         """

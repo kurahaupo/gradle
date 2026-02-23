@@ -26,7 +26,6 @@ import org.gradle.api.file.CopySpec;
 import org.gradle.api.file.DeleteSpec;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.initialization.dsl.ScriptHandler;
-import org.gradle.api.internal.ProcessOperations;
 import org.gradle.api.internal.file.DefaultFileOperations;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileLookup;
@@ -35,7 +34,6 @@ import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.HasScriptServices;
 import org.gradle.api.internal.initialization.ClassLoaderScope;
 import org.gradle.api.internal.initialization.ScriptHandlerFactory;
-import org.gradle.api.internal.model.InstantiatorBackedObjectFactory;
 import org.gradle.api.internal.plugins.DefaultObjectConfigurationAction;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
@@ -46,13 +44,8 @@ import org.gradle.api.resources.ResourceHandler;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.configuration.ScriptPluginFactory;
 import org.gradle.internal.Actions;
-import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.resource.TextUriResourceLoader;
 import org.gradle.internal.service.ServiceRegistry;
-import org.gradle.process.ExecResult;
-import org.gradle.process.ExecSpec;
-import org.gradle.process.JavaExecSpec;
-import org.gradle.process.internal.ExecFactory;
 import org.gradle.util.internal.ConfigureUtil;
 
 import java.io.File;
@@ -64,7 +57,6 @@ public abstract class DefaultScript extends BasicScript {
     private static final Logger LOGGER = Logging.getLogger(Script.class);
 
     private FileOperations fileOperations;
-    private ProcessOperations processOperations;
     private ProviderFactory providerFactory;
     private LoggingManager loggingManager;
 
@@ -78,9 +70,7 @@ public abstract class DefaultScript extends BasicScript {
         if (target instanceof HasScriptServices) {
             HasScriptServices scriptServices = (HasScriptServices) target;
             fileOperations = scriptServices.getFileOperations();
-            processOperations = scriptServices.getProcessOperations();
         } else {
-            Instantiator instantiator = services.get(Instantiator.class);
             FileLookup fileLookup = services.get(FileLookup.class);
             FileCollectionFactory fileCollectionFactory = services.get(FileCollectionFactory.class);
             File sourceFile = getScriptSource().getResource().getLocation().getFile();
@@ -88,15 +78,8 @@ public abstract class DefaultScript extends BasicScript {
                 FileResolver resolver = fileLookup.getFileResolver(sourceFile.getParentFile());
                 FileCollectionFactory fileCollectionFactoryWithBase = fileCollectionFactory.withResolver(resolver);
                 fileOperations = DefaultFileOperations.createSimple(resolver, fileCollectionFactoryWithBase, services);
-                processOperations = services.get(ExecFactory.class).forContext()
-                    .withFileResolver(resolver)
-                    .withFileCollectionFactory(fileCollectionFactoryWithBase)
-                    .withInstantiator(instantiator)
-                    .withObjectFactory(new InstantiatorBackedObjectFactory(instantiator))
-                    .build();
             } else {
                 fileOperations = DefaultFileOperations.createSimple(fileLookup.getFileResolver(), fileCollectionFactory, services);
-                processOperations = services.get(ExecFactory.class);
             }
         }
 
@@ -237,26 +220,6 @@ public abstract class DefaultScript extends BasicScript {
 
     public WorkResult delete(Action<? super DeleteSpec> action) {
         return fileOperations.delete(action);
-    }
-
-    @Override
-    public ExecResult javaexec(Closure closure) {
-        return processOperations.javaexec(ConfigureUtil.configureUsing(closure));
-    }
-
-    @Override
-    public ExecResult javaexec(Action<? super JavaExecSpec> action) {
-        return processOperations.javaexec(action);
-    }
-
-    @Override
-    public ExecResult exec(Closure closure) {
-        return processOperations.exec(ConfigureUtil.configureUsing(closure));
-    }
-
-    @Override
-    public ExecResult exec(Action<? super ExecSpec> action) {
-        return processOperations.exec(action);
     }
 
     @Override

@@ -16,7 +16,12 @@
 
 package org.gradle.api.problems.internal;
 
+import org.gradle.api.Action;
+import org.gradle.api.problems.AdditionalData;
+import org.gradle.api.problems.DocLink;
+import org.gradle.api.problems.Problem;
 import org.gradle.api.problems.ProblemGroup;
+import org.gradle.api.problems.ProblemId;
 import org.gradle.api.problems.Severity;
 
 public interface InternalProblemBuilder extends InternalProblemSpec {
@@ -26,16 +31,16 @@ public interface InternalProblemBuilder extends InternalProblemSpec {
      *
      * @return the new problem
      */
-    Problem build();
+    InternalProblem build();
 
     @Override
-    InternalProblemBuilder id(String name, String displayName);
+    InternalProblemBuilder id(ProblemId problemId);
 
     @Override
     InternalProblemBuilder id(String name, String displayName, ProblemGroup parent);
 
     @Override
-    InternalProblemBuilder taskPathLocation(String buildTreePath);
+    InternalProblemBuilder taskLocation(String buildTreePath);
 
     @Override
     InternalProblemBuilder documentedAt(DocLink doc);
@@ -59,9 +64,6 @@ public interface InternalProblemBuilder extends InternalProblemSpec {
     InternalProblemBuilder offsetInFileLocation(String path, int offset, int length);
 
     @Override
-    InternalProblemBuilder pluginLocation(String pluginId);
-
-    @Override
     InternalProblemBuilder stackLocation();
 
     @Override
@@ -71,11 +73,17 @@ public interface InternalProblemBuilder extends InternalProblemSpec {
     InternalProblemBuilder solution(String solution);
 
     @Override
-    InternalProblemBuilder additionalData(String key, Object value);
+    <U extends AdditionalDataSpec> InternalProblemBuilder additionalDataInternal(Class<? extends U> specType, Action<? super U> config);
+
+    // interface should be public <T> void additionalData(Class<T> type, Action<? super T> config)
+    @Override
+    <T extends AdditionalData> InternalProblemBuilder additionalData(Class<T> type, Action<? super T> config);
 
     @Override
-    InternalProblemBuilder withException(RuntimeException e);
+    InternalProblemBuilder withException(Throwable t);
 
     @Override
     InternalProblemBuilder severity(Severity severity);
+
+    ProblemsInfrastructure getInfrastructure();
 }

@@ -17,15 +17,23 @@
 package org.gradle.internal.component.local.model;
 
 import org.gradle.api.artifacts.component.ProjectComponentSelector;
+import org.gradle.api.internal.artifacts.component.ComponentSelectorInternal;
+import org.gradle.api.internal.project.ProjectIdentity;
 import org.gradle.util.Path;
 
 /**
  * Internal counterpart to {@link ProjectComponentSelector}
  */
-public interface ProjectComponentSelectorInternal extends ProjectComponentSelector {
+public interface ProjectComponentSelectorInternal extends ProjectComponentSelector, ComponentSelectorInternal {
 
     /**
      * Returns a unique path for the target project within the current build tree.
      */
     Path getIdentityPath();
+
+    /**
+     * Returns the identity of the target project.
+     */
+    ProjectIdentity getProjectIdentity();
+
 }

@@ -26,8 +26,8 @@ import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.ConfigurationVariantInternal;
 import org.gradle.api.internal.artifacts.DefaultPublishArtifactSet;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.attributes.FreezableAttributeContainer;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.collections.DomainObjectCollectionFactory;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.tasks.TaskDependencyFactory;
@@ -36,42 +36,37 @@ import org.gradle.internal.DisplayName;
 import org.gradle.internal.Factory;
 import org.gradle.internal.typeconversion.NotationParser;
 
-import javax.annotation.Nullable;
+import javax.inject.Inject;
 import java.util.List;
-import java.util.Optional;
 
-public class DefaultVariant implements ConfigurationVariantInternal {
-    private final Describable parentDisplayName;
+public abstract class DefaultVariant implements ConfigurationVariantInternal {
+
     private final String name;
-    private final FreezableAttributeContainer attributes;
     private final NotationParser<Object, ConfigurablePublishArtifact> artifactNotationParser;
+
+    private final DisplayName displayName;
+    private final FreezableAttributeContainer attributes;
     private final PublishArtifactSet artifacts;
+
     private Factory<List<PublishArtifact>> lazyArtifacts;
-    @Nullable private String description;
 
-    public DefaultVariant(Describable parentDisplayName,
-                          String name,
-                          AttributeContainerInternal parentAttributes,
-                          NotationParser<Object, ConfigurablePublishArtifact> artifactNotationParser,
-                          FileCollectionFactory fileCollectionFactory,
-                          ImmutableAttributesFactory cache,
-                          DomainObjectCollectionFactory domainObjectCollectionFactory,
-                          TaskDependencyFactory taskDependencyFactory) {
-        this.parentDisplayName = parentDisplayName;
+    @Inject
+    public DefaultVariant(
+        Describable parentDisplayName,
+        String name,
+        AttributeContainerInternal parentAttributes,
+        NotationParser<Object, ConfigurablePublishArtifact> artifactNotationParser,
+        FileCollectionFactory fileCollectionFactory,
+        AttributesFactory attributesFactory,
+        DomainObjectCollectionFactory domainObjectCollectionFactory,
+        TaskDependencyFactory taskDependencyFactory
+    ) {
         this.name = name;
-        this.attributes = new FreezableAttributeContainer(cache.mutable(parentAttributes), parentDisplayName);
         this.artifactNotationParser = artifactNotationParser;
-        artifacts = new DefaultPublishArtifactSet(getDisplayName(), domainObjectCollectionFactory.newDomainObjectSet(PublishArtifact.class), fileCollectionFactory, taskDependencyFactory);
-    }
 
-    @Override
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    @Override
-    public Optional<String> getDescription() {
-        return Optional.ofNullable(description);
+        this.displayName = Describables.of(parentDisplayName, "variant", name);
+        this.attributes = new FreezableAttributeContainer(attributesFactory.mutable(parentAttributes), displayName);
+        this.artifacts = new DefaultPublishArtifactSet(displayName, domainObjectCollectionFactory.newDomainObjectSet(PublishArtifact.class), fileCollectionFactory, taskDependencyFactory);
     }
 
     @Override
@@ -81,7 +76,7 @@ public class DefaultVariant implements ConfigurationVariantInternal {
 
     @Override
     public DisplayName getDisplayName() {
-        return Describables.of(parentDisplayName, "variant", name);
+        return displayName;
     }
 
     @Override

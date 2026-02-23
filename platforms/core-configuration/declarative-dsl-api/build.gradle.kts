@@ -6,5 +6,9 @@ plugins {
 description = "Annotation classes used by the Declarative DSL"
 
 dependencies {
-    implementation(projects.javaLanguageExtensions)
+    compileOnly(libs.jspecify)
+}
+
+errorprone {
+    nullawayEnabled = true
 }

@@ -7,50 +7,41 @@ description = """This project contains the Build Init plugin, which is automatic
 
 This project should NOT be used as an implementation dependency anywhere (except when building a Gradle distribution)."""
 
-errorprone {
-    disabledChecks.addAll(
-        "DefaultCharset", // 6 occurrences
-        "GetClassOnEnum", // 1 occurrences
-        "HidingField", // 2 occurrences
-        "ImmutableEnumChecker", // 2 occurrences
-        "InconsistentCapitalization", // 1 occurrences
-        "ReferenceEquality", // 1 occurrences
-        "StringCaseLocaleUsage", // 5 occurrences
-        "StringSplitter", // 4 occurrences
-        "UnusedMethod", // 1 occurrences
-    )
-}
-
 dependencies {
+    api(libs.guava)
     api(libs.inject)
-    api(libs.jsr305)
+    api(libs.jspecify)
     api(libs.maven3Settings)
 
-    api(projects.javaLanguageExtensions)
+    api(projects.baseServices)
+    api(projects.buildInitSpecs)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.daemonServerWorker)
+    api(projects.daemonServices)
+    api(projects.dependencyManagement)
+    api(projects.fileCollections)
+    api(projects.logging)
+    api(projects.platformJvm)
     api(projects.serviceProvider)
-    api(project(":base-services"))
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":dependency-management"))
-    api(project(":file-collections"))
-    api(project(":logging"))
-    api(project(":platform-jvm"))
-    api(project(":toolchains-jvm-shared"))
-    api(project(":workers"))
-    api(project(":daemon-services"))
+    api(projects.stdlibJavaExtensions)
+    api(projects.jvmServices)
+    api(projects.workers)
 
-    implementation(project(":logging-api"))
-    implementation(project(":platform-native"))
-    implementation(project(":plugins-application")) {
+    implementation(projects.buildInitSpecsApi)
+    implementation(projects.fileOperations)
+    implementation(projects.loggingApi)
+    implementation(projects.platformNative)
+    implementation(projects.pluginsApplication) {
         because("Needs access to StartScriptGenerator.")
     }
-    implementation(project(":plugins-jvm-test-suite"))
-    implementation(project(":wrapper-main"))
-    implementation(project(":wrapper-shared"))
+    implementation(projects.pluginsJvmTestSuite)
+    implementation(projects.serviceLookup)
+    implementation(projects.wrapperShared)
+    implementation(projects.resources)
 
     implementation(libs.groovy)
     implementation(libs.groovyTemplates)
-    implementation(libs.guava)
     implementation(libs.gson)
     implementation(libs.commonsLang)
     implementation(libs.maven3SettingsBuilder)
@@ -60,49 +51,60 @@ dependencies {
 
     // We need to handle the Maven dependencies specially otherwise it breaks some cross version tests
     // TODO Figure out why and fix it - Move the two deps below to implementation and api and run ProjectTheExtensionCrossVersionSpec
-    compileOnly(libs.eclipseSisuPlexus) {
+    compileOnly(providedLibs.eclipseSisuPlexus) {
         exclude(module = "cdi-api") // To respect the Maven exclusion
     }
-    compileOnly(libs.maven3Compat)
+    compileOnly(providedLibs.maven3Compat)
 
     // 3 dependencies below are recommended as implementation but doing so adds them to the distribution
     // TODO Check why we reference them and if so, why they don't need to be in the distribution
-    compileOnly(libs.maven3Artifact)
-    compileOnly(libs.mavenResolverApi)
-    compileOnly(libs.plexusClassworlds)
+    compileOnly(providedLibs.maven3Artifact)
+    compileOnly(providedLibs.mavenResolverApi)
+    compileOnly(providedLibs.plexusClassworlds)
 
-    compileOnly(libs.maven3Core)
-    compileOnly(libs.maven3PluginApi)
+    compileOnly(providedLibs.maven3Core)
+    compileOnly(providedLibs.maven3PluginApi)
 
-    compileOnly(project(":platform-base"))
+    compileOnly(projects.platformBase)
 
-    testRuntimeOnly(libs.maven3Compat)
-    testRuntimeOnly(libs.maven3PluginApi)
+    runtimeOnly(projects.wrapperMain) {
+        because("WrapperGenerator uses the /gradle-wrapper.jar resource")
+    }
 
-    testImplementation(project(":cli"))
-    testImplementation(project(":base-services-groovy"))
-    testImplementation(project(":native"))
-    testImplementation(project(":snapshots"))
-    testImplementation(project(":process-services"))
-    testImplementation(testFixtures(project(":core")))
-    testImplementation(testFixtures(project(":platform-native")))
+    testFixturesImplementation(projects.baseServices)
+    testFixturesImplementation(projects.platformBase)
+    testFixturesImplementation(projects.coreApi)
+    testFixturesImplementation(projects.logging)
+    testFixturesImplementation(projects.pluginsJava)
+    testFixturesImplementation(projects.testingBase)
+    testFixturesImplementation(projects.testSuitesBase)
+    testFixturesImplementation(projects.pluginsJvmTestSuite)
 
-    testFixturesImplementation(project(":base-services"))
-    testFixturesImplementation(project(":platform-base"))
-    testFixturesImplementation(project(":core-api"))
-    testFixturesImplementation(project(":logging"))
-    testFixturesImplementation(project(":plugins-java"))
-    testFixturesImplementation(project(":testing-base"))
-    testFixturesImplementation(project(":test-suites-base"))
-    testFixturesImplementation(project(":plugins-jvm-test-suite"))
 
-    integTestImplementation(project(":native"))
-    integTestImplementation(libs.jetty)
+    testImplementation(projects.baseServicesGroovy)
+    testImplementation(projects.cli)
+    testImplementation(projects.internalIntegTesting)
+    testImplementation(projects.native)
+    testImplementation(projects.snapshots)
+    testImplementation(projects.processServices)
+    testImplementation(projects.wrapperMain)
+    testImplementation(testFixtures(projects.core))
+    testImplementation(testFixtures(projects.platformNative))
+    testImplementation(testFixtures(projects.testingBase))
 
-    testRuntimeOnly(project(":distributions-jvm")) {
+    testRuntimeOnly(providedLibs.maven3Compat)
+    testRuntimeOnly(providedLibs.maven3PluginApi)
+
+    testRuntimeOnly(projects.distributionsFull) {
         because("ProjectBuilder tests load services from a Gradle distribution.  Toolchain usage requires JVM distribution.")
     }
-    integTestDistributionRuntimeOnly(project(":distributions-full"))
+
+    integTestImplementation(projects.native)
+    integTestImplementation(testLibs.jetty)
+
+    integTestRuntimeOnly(providedLibs.maven3Compat)
+
+    integTestDistributionRuntimeOnly(projects.distributionsFull)
 }
 
 packageCycles {
@@ -110,7 +112,3 @@ packageCycles {
 }
 
 integTest.testJvmXmx = "1g"
-
-tasks.isolatedProjectsIntegTest {
-    enabled = true
-}

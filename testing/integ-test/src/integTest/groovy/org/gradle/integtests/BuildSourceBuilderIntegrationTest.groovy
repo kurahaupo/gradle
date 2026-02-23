@@ -40,7 +40,7 @@ class BuildSourceBuilderIntegrationTest extends AbstractIntegrationSpec {
 
     @Issue("https://issues.gradle.org/browse/GRADLE-2032")
     def "can simultaneously run gradle on projects with buildSrc"() {
-        initScript """
+        initScriptFile """
             import ${BuildOperationListenerManager.name}
             import ${BuildOperationListener.name}
             import ${BuildOperationDescriptor.name}
@@ -110,8 +110,8 @@ class BuildSourceBuilderIntegrationTest extends AbstractIntegrationSpec {
         def blockingResult = runBlockingHandle.waitForFinish()
 
         then:
-        blockingResult.ignoreBuildSrc.assertTasksExecuted(":build1")
-        releaseResult.ignoreBuildSrc.assertTasksExecuted(":build2")
+        blockingResult.ignoreBuildSrc.assertTasksScheduled(":build1")
+        releaseResult.ignoreBuildSrc.assertTasksScheduled(":build2")
 
         cleanup:
         runReleaseHandle?.abort()

@@ -23,6 +23,7 @@ import org.gradle.api.ActionConfiguration;
 import org.gradle.api.attributes.AttributeDisambiguationRule;
 import org.gradle.api.attributes.DisambiguationRuleChain;
 import org.gradle.api.attributes.MultipleCandidatesDetails;
+import org.gradle.internal.action.ConfigurableRule;
 import org.gradle.internal.action.DefaultConfigurableRule;
 import org.gradle.internal.action.DefaultConfigurableRules;
 import org.gradle.internal.action.InstantiatingAction;
@@ -35,7 +36,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
-public class DefaultDisambiguationRuleChain<T> implements DisambiguationRuleChain<T>, DisambiguationRule<T> {
+public class DefaultDisambiguationRuleChain<T> implements DisambiguationRuleChain<T> {
+
     private final List<Action<? super MultipleCandidatesDetails<T>>> rules = new ArrayList<>();
     private final Instantiator instantiator;
     private final IsolatableFactory isolatableFactory;
@@ -46,15 +48,15 @@ public class DefaultDisambiguationRuleChain<T> implements DisambiguationRuleChai
     }
 
     @Override
-    public void add(final Class<? extends AttributeDisambiguationRule<T>> rule, Action<? super ActionConfiguration> configureAction) {
-        this.rules.add(new InstantiatingAction<>(DefaultConfigurableRules.of(DefaultConfigurableRule.of(rule, configureAction, isolatableFactory)),
-            instantiator, new ExceptionHandler<>(rule)));
+    public void add(final Class<? extends AttributeDisambiguationRule<T>> ruleClass, Action<? super ActionConfiguration> configureAction) {
+        ConfigurableRule<MultipleCandidatesDetails<T>> rule = DefaultConfigurableRule.of(ruleClass, configureAction, isolatableFactory);
+        rules.add(createAction(rule, instantiator));
     }
 
     @Override
-    public void add(final Class<? extends AttributeDisambiguationRule<T>> rule) {
-        this.rules.add(new InstantiatingAction<>(DefaultConfigurableRules.of(DefaultConfigurableRule.of(rule)),
-            instantiator, new ExceptionHandler<>(rule)));
+    public void add(final Class<? extends AttributeDisambiguationRule<T>> ruleClass) {
+        ConfigurableRule<MultipleCandidatesDetails<T>> rule = DefaultConfigurableRule.of(ruleClass);
+        rules.add(createAction(rule, instantiator));
     }
 
     @Override
@@ -69,27 +71,22 @@ public class DefaultDisambiguationRuleChain<T> implements DisambiguationRuleChai
         rules.add(rule);
     }
 
-    @Override
-    public void execute(MultipleCandidatesResult<T> details) {
-        for (Action<? super MultipleCandidatesDetails<T>> rule : rules) {
-            rule.execute(details);
-            if (details.hasResult()) {
-                return;
-            }
-        }
+    public List<Action<? super MultipleCandidatesDetails<T>>> getRules() {
+        return rules;
     }
 
-    @Override
-    public boolean doesSomething() {
-        return !rules.isEmpty();
+    public static <T> Action<MultipleCandidatesDetails<T>> createAction(
+        ConfigurableRule<MultipleCandidatesDetails<T>> rule,
+        Instantiator instantiator
+    ) {
+        return new InstantiatingAction<>(DefaultConfigurableRules.of(rule), instantiator, new ExceptionHandler<>(rule.getRuleClass()));
     }
 
     private static class ExceptionHandler<T> implements InstantiatingAction.ExceptionHandler<MultipleCandidatesDetails<T>> {
 
-        private final Class<? extends AttributeDisambiguationRule<T>> rule;
+        private final Class<?> rule;
 
-        private ExceptionHandler(Class<? extends AttributeDisambiguationRule<T>> rule) {
-
+        private ExceptionHandler(Class<?> rule) {
             this.rule = rule;
         }
 
@@ -101,4 +98,5 @@ public class DefaultDisambiguationRuleChain<T> implements DisambiguationRuleChai
         }
 
     }
+
 }

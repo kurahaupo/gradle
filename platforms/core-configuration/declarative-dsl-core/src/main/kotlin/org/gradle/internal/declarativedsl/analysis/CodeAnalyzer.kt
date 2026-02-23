@@ -1,7 +1,9 @@
 package org.gradle.internal.declarativedsl.analysis
 
 
+import org.gradle.declarative.dsl.evaluation.AnalysisStatementFilter
 import org.gradle.internal.declarativedsl.language.Assignment
+import org.gradle.internal.declarativedsl.language.AugmentingAssignment
 import org.gradle.internal.declarativedsl.language.DataStatement
 import org.gradle.internal.declarativedsl.language.Expr
 import org.gradle.internal.declarativedsl.language.LocalValue
@@ -21,16 +23,20 @@ class CodeAnalyzerImpl(
         elements: List<DataStatement>
     ) {
         for (element in elements) {
-            if (analysisStatementFilter.shouldAnalyzeStatement(element, context.currentScopes)) {
+            if (analysisStatementFilter.shouldAnalyzeStatement(element, context.isTopLevelScope)) {
                 doResolveStatement(context, element)
             }
         }
     }
 
+    private val AnalysisContextView.isTopLevelScope get() =
+        currentScopes.last().receiver is ObjectOrigin.TopLevelReceiver
+
     private
     fun doResolveStatement(context: AnalysisContext, statement: DataStatement) {
         when (statement) {
             is Assignment -> statementResolver.doResolveAssignment(context, statement)
+            is AugmentingAssignment -> statementResolver.doResolveAugmentingAssignment(context, statement)
             is LocalValue -> statementResolver.doResolveLocalValue(context, statement)
             is Expr -> statementResolver.doResolveExpressionStatement(context, statement)
         }

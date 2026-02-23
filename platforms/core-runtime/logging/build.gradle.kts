@@ -5,56 +5,42 @@ plugins {
 
 description = "Logging infrastructure"
 
-gradlebuildJava.usedInWorkers()
-
-errorprone {
-    disabledChecks.addAll(
-        "AnnotateFormatMethod", // 1 occurrences
-        "DefaultCharset", // 3 occurrences
-        "DoubleBraceInitialization", // 1 occurrences
-        "FutureReturnValueIgnored", // 2 occurrences
-        "InlineFormatString", // 1 occurrences
-        "MixedMutabilityReturnType", // 1 occurrences
-        "NullableVoid", // 1 occurrences
-        "OverridingMethodInconsistentArgumentNamesChecker", // 15 occurrences
-        "ReferenceEquality", // 1 occurrences
-        "SameNameButDifferent", // 11 occurrences
-        "StringCaseLocaleUsage", // 12 occurrences
-        "StringSplitter", // 4 occurrences
-        "ThreadLocalUsage", // 1 occurrences
-        "TypeParameterUnusedInFormals", // 1 occurrences
-        "UnusedMethod", // 3 occurrences
-    )
+gradleModule {
+    targetRuntimes {
+        usedInWorkers = true
+    }
 }
 
 dependencies {
-    api(projects.javaLanguageExtensions)
+    api(projects.stdlibJavaExtensions)
     api(projects.serialization)
+    api(projects.serviceLookup)
+    api(projects.serviceProvider)
     api(projects.time)
-    api(project(":base-services"))
-    api(project(":build-operations"))
-    api(project(":build-option"))
-    api(project(":cli"))
-    api(project(":enterprise-logging"))
-    api(project(":enterprise-workers"))
-    api(project(":logging-api"))
-    api(project(":native"))
-    api(project(":problems-api"))
-    api(project(":functional"))
+    api(projects.baseServices)
+    api(projects.buildOperations)
+    api(projects.buildOption)
+    api(projects.cli)
+    api(projects.enterpriseLogging)
+    api(projects.enterpriseWorkers)
+    api(projects.loggingApi)
+    api(projects.native)
+    api(projects.problemsApi)
 
     api(libs.jansi)
+    api(libs.jspecify)
     api(libs.jsr305)
     api(libs.slf4jApi)
 
     implementation(projects.concurrent)
     implementation(projects.io)
     implementation(projects.messaging)
+    implementation(projects.serviceRegistryBuilder)
 
-    implementation(libs.julToSlf4j)
-    implementation(libs.ant)
     implementation(libs.commonsLang)
-    implementation(libs.commonsIo)
+    implementation(libs.errorProneAnnotations)
     implementation(libs.guava)
+    implementation(libs.julToSlf4j)
 
     // GSon is not strictly required here but removing it moves the dependency in the distribution from lib to lib/plugins
     // TODO Check if this is an issue
@@ -62,22 +48,29 @@ dependencies {
     runtimeOnly(libs.jclToSlf4j)
     runtimeOnly(libs.log4jToSlf4j)
 
-    testImplementation(testFixtures(project(":core")))
-    testImplementation(testFixtures(project(":testing-jvm")))
+    testImplementation(testFixtures(projects.core))
+    testImplementation(testFixtures(projects.time))
+    testImplementation(testFixtures(projects.testingJvm))
     testImplementation(libs.groovyDatetime)
     testImplementation(libs.groovyDateUtil)
 
-    integTestImplementation(libs.ansiControlSequenceUtil)
+    integTestImplementation(projects.problems)
 
-    testFixturesImplementation(project(":base-services"))
-    testFixturesImplementation(project(":enterprise-workers"))
-    testFixturesImplementation(testFixtures(project(":core")))
+    integTestImplementation(testLibs.ansiControlSequenceUtil)
+
+    testFixturesImplementation(projects.baseServices)
+    testFixturesImplementation(projects.enterpriseWorkers)
+    testFixturesImplementation(testFixtures(projects.core))
+    testFixturesImplementation(testFixtures(projects.time))
     testFixturesImplementation(libs.slf4jApi)
 
-    integTestDistributionRuntimeOnly(project(":distributions-core"))
+    integTestDistributionRuntimeOnly(projects.distributionsCore)
 }
 
 packageCycles {
     excludePatterns.add("org/gradle/internal/featurelifecycle/**")
     excludePatterns.add("org/gradle/util/**")
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

@@ -29,18 +29,21 @@ import org.gradle.internal.operations.BuildOperationContext;
 import org.gradle.internal.operations.BuildOperationDescriptor;
 import org.gradle.internal.operations.BuildOperationRunner;
 import org.gradle.internal.operations.CallableBuildOperation;
+import org.gradle.internal.service.scopes.Scope;
+import org.gradle.internal.service.scopes.ServiceScope;
 import org.gradle.tooling.provider.model.ParameterizedToolingModelBuilder;
 import org.gradle.tooling.provider.model.ToolingModelBuilder;
 import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry;
 import org.gradle.tooling.provider.model.UnknownModelException;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.AbstractCollection;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
+@ServiceScope({Scope.Build.class, Scope.Project.class})
 public class DefaultToolingModelBuilderRegistry implements ToolingModelBuilderRegistry, ToolingModelBuilderLookup {
     private final ToolingModelBuilderLookup parent;
 
@@ -91,11 +94,15 @@ public class DefaultToolingModelBuilderRegistry implements ToolingModelBuilderRe
     }
 
     @Override
-    public Builder locateForClientOperation(String modelName, boolean parameter, ProjectState target) throws UnknownModelException {
+    public Builder locateForClientOperation(String modelName, boolean parameter, ProjectState target, ProjectInternal project) throws UnknownModelException {
         return new BuildOperationWrappingBuilder(
-            new LockSingleProjectBuilder(
-                locateForClientOperation(modelName, target.getMutableModel(), parameter), target),
-            modelName, target.getOwner(), target, target.getDisplayName(), buildOperationRunner);
+            new LockProjectStateBuilder(locateForClientOperation(modelName, project, parameter), target),
+            modelName,
+            target.getOwner(),
+            target,
+            target.getDisplayName(),
+            buildOperationRunner
+        );
     }
 
     @Nullable
@@ -292,17 +299,17 @@ public class DefaultToolingModelBuilderRegistry implements ToolingModelBuilderRe
         }
     }
 
-    private static class LockSingleProjectBuilder extends DelegatingBuilder {
+    private static class LockProjectStateBuilder extends DelegatingBuilder {
         private final ProjectState target;
 
-        public LockSingleProjectBuilder(Builder delegate, ProjectState target) {
+        public LockProjectStateBuilder(Builder delegate, ProjectState target) {
             super(delegate);
             this.target = target;
         }
 
         @Override
         public Object build(Object parameter) {
-            return target.fromMutableState(p -> delegate.build(parameter));
+            return target.runWithModelLock(() -> delegate.build(parameter));
         }
     }
 
@@ -344,14 +351,14 @@ public class DefaultToolingModelBuilderRegistry implements ToolingModelBuilderRe
                         progressDisplayName("Building model '" + modelName + "'").details(new QueryToolingModelBuildOperationType.Details() {
                             @Override
                             public String getBuildPath() {
-                                return targetBuild.getIdentityPath().getPath();
+                                return targetBuild.getIdentityPath().asString();
                             }
 
                             @Nullable
                             @Override
                             public String getProjectPath() {
                                 if (targetProject != null) {
-                                    return targetProject.getProjectPath().getPath();
+                                    return targetProject.getProjectPath().asString();
                                 } else {
                                     return null;
                                 }

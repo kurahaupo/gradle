@@ -40,13 +40,15 @@ import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.authentication.Authentication;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 import org.gradle.internal.serialization.Cached;
 import org.gradle.internal.serialization.Transient;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.work.DisableCachingByDefault;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
+import java.io.Serializable;
 import java.net.URI;
 import java.util.Collection;
 import java.util.Set;
@@ -64,15 +66,14 @@ public abstract class PublishToIvyRepository extends DefaultTask {
     private final Transient.Var<IvyPublicationInternal> publication = varOf();
     private final Transient.Var<DefaultIvyArtifactRepository> repository = varOf();
     private final Cached<PublishSpec> spec = Cached.of(this::computeSpec);
-    private final Property<Credentials> credentials = getProject().getObjects().property(Credentials.class);
 
     public PublishToIvyRepository() {
 
         // Allow the publication to participate in incremental build
         getInputs().files((Callable<FileCollection>) () -> {
-            IvyPublicationInternal publicationInternal = getPublicationInternal();
-            return publicationInternal == null ? null : publicationInternal.getPublishableArtifacts().getFiles();
-        })
+                IvyPublicationInternal publicationInternal = getPublicationInternal();
+                return publicationInternal == null ? null : publicationInternal.getPublishableArtifacts().getFiles();
+            })
             .withPropertyName("publication.publishableFiles")
             .withPathSensitivity(PathSensitivity.NAME_ONLY);
 
@@ -89,6 +90,7 @@ public abstract class PublishToIvyRepository extends DefaultTask {
      * @return The publication to be published
      */
     @Internal
+    @ToBeReplacedByLazyProperty
     public IvyPublication getPublication() {
         return publication.get();
     }
@@ -128,15 +130,14 @@ public abstract class PublishToIvyRepository extends DefaultTask {
      * @return The repository to publish to
      */
     @Internal
+    @ToBeReplacedByLazyProperty
     public IvyArtifactRepository getRepository() {
         return repository.get();
     }
 
     @Nested
     @Optional
-    Property<Credentials> getCredentials() {
-        return credentials;
-    }
+    abstract Property<Credentials> getCredentials();
 
     /**
      * Sets the repository to publish to.
@@ -145,7 +146,7 @@ public abstract class PublishToIvyRepository extends DefaultTask {
      */
     public void setRepository(IvyArtifactRepository repository) {
         this.repository.set((DefaultIvyArtifactRepository) repository);
-        this.credentials.set(((DefaultIvyArtifactRepository) repository).getConfiguredCredentials());
+        this.getCredentials().set(((DefaultIvyArtifactRepository) repository).getConfiguredCredentials());
     }
 
     @TaskAction
@@ -175,9 +176,7 @@ public abstract class PublishToIvyRepository extends DefaultTask {
     }
 
     @Inject
-    protected IvyPublisher getIvyPublisher() {
-        throw new UnsupportedOperationException();
-    }
+    protected abstract IvyPublisher getIvyPublisher();
 
     private void doPublish(final IvyNormalizedPublication normalizedPublication, final IvyArtifactRepository repository) {
         new PublishOperation(normalizedPublication.getName(), repository.getName()) {
@@ -211,7 +210,7 @@ public abstract class PublishToIvyRepository extends DefaultTask {
 
         abstract IvyArtifactRepository get(ServiceRegistry services);
 
-        static class Configured extends RepositorySpec implements java.io.Serializable {
+        static class Configured extends RepositorySpec implements Serializable {
             final DefaultIvyArtifactRepository repository;
 
             public Configured(DefaultIvyArtifactRepository repository) {
@@ -307,8 +306,6 @@ public abstract class PublishToIvyRepository extends DefaultTask {
     }
 
     @Inject
-    protected IvyDuplicatePublicationTracker getDuplicatePublicationTracker() {
-        throw new UnsupportedOperationException();
-    }
+    protected abstract IvyDuplicatePublicationTracker getDuplicatePublicationTracker();
 
 }

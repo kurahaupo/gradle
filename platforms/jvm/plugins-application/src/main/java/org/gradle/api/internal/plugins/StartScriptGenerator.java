@@ -17,8 +17,8 @@ package org.gradle.api.internal.plugins;
 
 import org.apache.tools.ant.taskdefs.Chmod;
 import org.gradle.api.Action;
-import org.gradle.api.UncheckedIOException;
 import org.gradle.internal.IoActions;
+import org.gradle.internal.UncheckedException;
 import org.gradle.internal.os.OperatingSystem;
 import org.gradle.jvm.application.scripts.JavaAppStartScriptGenerationDetails;
 import org.gradle.jvm.application.scripts.ScriptGenerator;
@@ -38,9 +38,10 @@ import java.util.Set;
 public class StartScriptGenerator {
 
     private String applicationName;
+    private String gitRef;
     private String optsEnvironmentVar;
     private String exitEnvironmentVar;
-    private String mainClassName;
+    private AppEntryPoint entryPoint;
     private Iterable<String> defaultJvmOpts = Collections.emptyList();
     private Iterable<String> classpath;
     private Iterable<String> modulePath = Collections.emptyList();
@@ -55,6 +56,10 @@ public class StartScriptGenerator {
         this.applicationName = applicationName;
     }
 
+    public void setGitRef(String gitRef) {
+        this.gitRef = gitRef;
+    }
+
     public void setOptsEnvironmentVar(String optsEnvironmentVar) {
         this.optsEnvironmentVar = optsEnvironmentVar;
     }
@@ -63,8 +68,30 @@ public class StartScriptGenerator {
         this.exitEnvironmentVar = exitEnvironmentVar;
     }
 
+    /**
+     * Sets the main class name to be used when generating the start script.
+     *
+     * <p>
+     * Mutually exclusive with {@link #setEntryPoint(AppEntryPoint)}.
+     * </p>
+     *
+     * @param mainClassName the main class name to be used when generating the start script
+     */
     public void setMainClassName(String mainClassName) {
-        this.mainClassName = mainClassName;
+        this.entryPoint = new MainClass(mainClassName);
+    }
+
+    /**
+     * Sets the entry point to be used when generating the start script.
+     *
+     * <p>
+     * Mutually exclusive with {@link #setMainClassName(String)}.
+     * </p>
+     *
+     * @param entryPoint the entry point to be used when generating the start script
+     */
+    public void setEntryPoint(AppEntryPoint entryPoint) {
+        this.entryPoint = entryPoint;
     }
 
     public void setDefaultJvmOpts(Iterable<String> defaultJvmOpts) {
@@ -102,7 +129,7 @@ public class StartScriptGenerator {
     }
 
     private JavaAppStartScriptGenerationDetails createStartScriptGenerationDetails() {
-        return new DefaultJavaAppStartScriptGenerationDetails(applicationName, optsEnvironmentVar, exitEnvironmentVar, mainClassName, CollectionUtils.toStringList(defaultJvmOpts), CollectionUtils.toStringList(classpath), CollectionUtils.toStringList(modulePath), scriptRelPath, appNameSystemProperty);
+        return new DefaultJavaAppStartScriptGenerationDetails(applicationName, gitRef, optsEnvironmentVar, exitEnvironmentVar, entryPoint, CollectionUtils.toStringList(defaultJvmOpts), CollectionUtils.toStringList(classpath), CollectionUtils.toStringList(modulePath), scriptRelPath, appNameSystemProperty);
     }
 
     public void generateUnixScript(final File unixScript) {
@@ -149,7 +176,7 @@ public class StartScriptGenerator {
                 permissions.add(PosixFilePermission.OTHERS_EXECUTE);
                 Files.setPosixFilePermissions(path, permissions);
             } catch (IOException e) {
-                throw new UncheckedIOException(e);
+                throw UncheckedException.throwAsUncheckedException(e);
             }
         }
     }

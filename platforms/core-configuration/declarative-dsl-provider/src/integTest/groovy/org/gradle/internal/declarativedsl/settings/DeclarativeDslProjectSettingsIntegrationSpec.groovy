@@ -16,8 +16,11 @@
 
 package org.gradle.internal.declarativedsl.settings
 
-
+import org.gradle.declarative.dsl.model.annotations.VisibleInDefinition
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+
+import static org.hamcrest.CoreMatchers.allOf
+import static org.hamcrest.CoreMatchers.containsString
 
 class DeclarativeDslProjectSettingsIntegrationSpec extends AbstractIntegrationSpec {
 
@@ -131,7 +134,7 @@ class DeclarativeDslProjectSettingsIntegrationSpec extends AbstractIntegrationSp
         where:
         order                                     | content
         'a plugins block but no pluginManagement' | 'plugins { }\nrootProject.name = "test-project"'
-        'a pluginManagement block but no plugins' | 'pluginManagement { }\nrootProject.name = "test-project'
+        'a pluginManagement block but no plugins' | 'pluginManagement { }\nrootProject.name = "test-project"'
         'no special blocks'                       | 'rootProject.name = "test-project"'
     }
 
@@ -154,14 +157,11 @@ class DeclarativeDslProjectSettingsIntegrationSpec extends AbstractIntegrationSp
         file("included-settings-plugin/src/main/java/com/example/restricted/Extension.java") << """
             package com.example.restricted;
 
-            import org.gradle.declarative.dsl.model.annotations.Restricted;
             import org.gradle.api.provider.Property;
+            import ${VisibleInDefinition.name};
 
-            import javax.inject.Inject;
-
-            @Restricted
+            @${VisibleInDefinition.simpleName}
             public abstract class Extension {
-                @Restricted
                 public abstract Property<String> getId();
             }
         """
@@ -214,7 +214,30 @@ class DeclarativeDslProjectSettingsIntegrationSpec extends AbstractIntegrationSp
         def failure = fails(":projects")
 
         then:
-        failure.assertHasErrorOutput('2:1: Value reassigned in (this:(top-level-object)).rootProject.name := "bar"')
-        failure.assertHasErrorOutput('3:1: Value reassigned in (this:(top-level-object)).rootProject.name := "baz"')
+        failure.assertHasErrorOutput('2:1: reassigned value in \'rootProject.name = "bar"\'')
+        failure.assertHasErrorOutput('3:1: reassigned value in \'rootProject.name = "baz"\'')
+    }
+
+    def "resolution failures are reported nicely"() {
+        given:
+        file("settings.gradle.dcl") << """
+            rootProject.name = "test-value"
+
+            dependencyResolutionManagement {
+                repositoriesMode = RepositoriesMode.PREFER_PROJECT
+            }
+        """
+        buildFile << "println('name = ' + rootProject.name)"
+
+        expect:
+        def result = runAndFail(":help")
+        result.assertThatAllDescriptions(allOf(
+            containsString("Failures in resolution:\n" +
+                "    5:36: unresolved reference 'RepositoriesMode'\n" +
+                "    5:53: unresolved reference 'PREFER_PROJECT'\n" +
+                "    5:17: unresolved assigned value"),
+            containsString("Failures in document checks:\n" +
+                "    5:17: unsupported syntax (NamedReferenceWithExplicitReceiver)")
+        ))
     }
 }

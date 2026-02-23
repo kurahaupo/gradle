@@ -16,7 +16,6 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.nativeplatform.fixtures.app.CppLib
 import org.gradle.nativeplatform.fixtures.app.SourceElement
 
@@ -54,7 +53,6 @@ class CppBothLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest {
         return new CppLib()
     }
 
-    @ToBeFixedForConfigurationCache
     def "creates shared library binary by default when both linkage specified"() {
         def library = new CppLib()
         makeSingleProject()
@@ -67,11 +65,10 @@ class CppBothLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest {
         succeeds('assemble')
 
         then:
-        result.assertTasksExecuted(':compileDebugSharedCpp', ':linkDebugShared', ':assemble')
+        result.assertTasksScheduled(':compileDebugSharedCpp', ':linkDebugShared', ':assemble')
         sharedLibrary('build/lib/main/debug/shared/foo').assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can assemble static library followed by shared library"() {
         def library = new CppLib()
         makeSingleProject()
@@ -84,14 +81,14 @@ class CppBothLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest {
         succeeds('assembleDebugStatic')
 
         then:
-        result.assertTasksExecuted(':compileDebugStaticCpp', ':createDebugStatic', ':assembleDebugStatic')
+        result.assertTasksScheduled(':compileDebugStaticCpp', ':createDebugStatic', ':assembleDebugStatic')
         staticLibrary('build/lib/main/debug/static/foo').assertExists()
 
         when:
         succeeds('assembleDebugShared')
 
         then:
-        result.assertTasksExecuted(':compileDebugSharedCpp', ':linkDebugShared', ':assembleDebugShared')
+        result.assertTasksScheduled(':compileDebugSharedCpp', ':linkDebugShared', ':assembleDebugShared')
         sharedLibrary('build/lib/main/debug/shared/foo').assertExists()
     }
 }

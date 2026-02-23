@@ -40,7 +40,7 @@ import static org.gradle.internal.component.external.model.DefaultModuleComponen
 class DefaultMavenModuleResolveMetadataTest extends AbstractLazyModuleComponentResolveMetadataTest {
 
     private
-    final mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), AttributeTestUtil.attributesFactory(), TestUtil.objectInstantiator(), DependencyManagementTestUtil.defaultSchema())
+    final mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), AttributeTestUtil.attributesFactory(), TestUtil.objectInstantiator(), DependencyManagementTestUtil.preferJavaRuntimeVariant())
 
     @Override
     ModuleComponentResolveMetadata createMetadata(ModuleComponentIdentifier id, List<Configuration> configurations, List dependencies) {
@@ -84,8 +84,8 @@ class DefaultMavenModuleResolveMetadataTest extends AbstractLazyModuleComponentR
         def runtime = metadata.getConfiguration("runtime")
 
         then:
-        runtime.variants.size() == 1
-        def firstVariant = runtime.variants.first()
+        runtime.artifactVariants.size() == 1
+        def firstVariant = runtime.artifactVariants.first()
         assertHasOnlyStatusAttribute(firstVariant.attributes)
         firstVariant.artifacts == runtime.artifacts
     }
@@ -127,7 +127,7 @@ class DefaultMavenModuleResolveMetadataTest extends AbstractLazyModuleComponentR
         metadata.packaging = packaging
 
         when:
-        def immutableMetadata = metadata.asImmutable().withDerivationStrategy(JavaEcosystemVariantDerivationStrategy.getInstance())
+        def immutableMetadata = metadata.asImmutable().withDerivationStrategy(AttributeTestUtil.javaEcosystemVariantDerivationStrategy())
         def variantsForGraphTraversal = immutableMetadata.getVariantsForGraphTraversal()
         def compileConf = immutableMetadata.getConfiguration("compile")
         def runtimeConf = immutableMetadata.getConfiguration("runtime")

@@ -16,13 +16,11 @@
 package org.gradle.java.compile.daemon
 
 import org.gradle.integtests.fixtures.AvailableJavaHomes
-import org.gradle.java.compile.JavaCompilerIntegrationSpec
+import org.gradle.java.compile.AbstractJavaCompilerIntegrationSpec
 import org.gradle.test.precondition.Requires
-import org.gradle.test.preconditions.UnitTestPreconditions
-import org.gradle.util.internal.TextUtil
-import spock.lang.Issue
+import org.gradle.test.preconditions.IntegTestPreconditions
 
-class DaemonJavaCompilerIntegrationTest extends JavaCompilerIntegrationSpec {
+class DaemonJavaCompilerIntegrationTest extends AbstractJavaCompilerIntegrationSpec {
 
     @Override
     String compilerConfiguration() {
@@ -55,10 +53,10 @@ class DaemonJavaCompilerIntegrationTest extends JavaCompilerIntegrationSpec {
 
                 doLast {
                     assert services.get(WorkerDaemonClientsManager).idleClients.find {
-                        new File(it.forkOptions.javaForkOptions.executable).canonicalPath == Jvm.current().javaExecutable.canonicalPath &&
-                        it.forkOptions.javaForkOptions.minHeapSize == "128m" &&
-                        it.forkOptions.javaForkOptions.maxHeapSize == "256m" &&
-                        it.forkOptions.javaForkOptions.systemProperties['foo'] == "bar"
+                        new File(it.forkOptions.executable).canonicalPath == Jvm.current().javaExecutable.canonicalPath &&
+                        it.forkOptions.jvmOptions.minHeapSize == "128m" &&
+                        it.forkOptions.jvmOptions.maxHeapSize == "256m" &&
+                        it.forkOptions.jvmOptions.mutableSystemProperties['foo'] == "bar"
                     }
                 }
             }
@@ -80,23 +78,28 @@ class DaemonJavaCompilerIntegrationTest extends JavaCompilerIntegrationSpec {
         succeeds "compileJava"
     }
 
-    @Issue("https://github.com/gradle/gradle/issues/3098")
-    @Requires([
-        UnitTestPreconditions.Jdk8OrEarlier,
-        UnitTestPreconditions.JdkOracle
-    ])
-    def "handles -bootclasspath being specified"() {
-        def jre = AvailableJavaHomes.getBestJre()
-        def bootClasspath = TextUtil.escapeString(jre.absolutePath) + "/lib/rt.jar"
+    @Requires(IntegTestPreconditions.JavaHomeWithDifferentVersionAvailable)
+    def "computes target jvm version when using toolchain"() {
+        given:
+        def jdk = AvailableJavaHomes.differentVersion
+        def javaVersion = jdk.javaVersion.getMajorVersion()
+
+        and:
         goodCode()
         buildFile << """
-            tasks.withType(JavaCompile) {
-                options.bootstrapClasspath = project.layout.files("$bootClasspath")
+            java.toolchain {
+                languageVersion = JavaLanguageVersion.of(${javaVersion})
             }
+
+            assert configurations.apiElements.attributes.getAttribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE) == ${javaVersion}
+            assert configurations.runtimeElements.attributes.getAttribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE) == ${javaVersion}
+            assert configurations.compileClasspath.attributes.getAttribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE) == ${javaVersion}
+            assert configurations.runtimeClasspath.attributes.getAttribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE) == ${javaVersion}
         """
 
         expect:
-        succeeds "compileJava"
+        executer.withArgument("-Dorg.gradle.java.installations.paths=" + jdk.javaHome.absolutePath)
+        succeeds("compileJava")
     }
 
 }

@@ -7,16 +7,15 @@ description = "Provides plugins to configure Kotlin DSL and patch the Kotlin com
 dependencies {
     implementation("gradlebuild:basics")
 
-    implementation(project(":dependency-modules"))
-    implementation(project(":jvm"))
-    implementation(project(":kotlin-dsl-shared-runtime"))
+    implementation(projects.dependencyModules)
+    implementation(projects.jvm)
+    implementation(projects.kotlinDslSharedRuntime)
 
-    implementation("org.gradle.kotlin:gradle-kotlin-dsl-conventions")
-    implementation(kotlin("gradle-plugin"))
-    implementation(kotlin("sam-with-receiver"))
-    implementation("org.ow2.asm:asm")
-    implementation("com.thoughtworks.qdox:qdox")
+    implementation(buildLibs.kgp)
+    implementation(buildLibs.kotlinSamWithReceiver)
+    implementation(libs.asm)
+    implementation(buildLibs.qdox)
 
-    testImplementation("junit:junit")
-    testImplementation("com.nhaarman:mockito-kotlin")
+    testImplementation(testLibs.junit)
+    testImplementation(testLibs.mockitoKotlin)
 }

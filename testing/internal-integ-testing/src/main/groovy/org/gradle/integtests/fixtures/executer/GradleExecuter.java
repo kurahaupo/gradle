@@ -23,6 +23,7 @@ import org.gradle.api.logging.configuration.ConsoleOutput;
 import org.gradle.api.logging.configuration.WarningMode;
 import org.gradle.integtests.fixtures.RichConsoleStyling;
 import org.gradle.internal.concurrent.Stoppable;
+import org.gradle.internal.jvm.Jvm;
 import org.gradle.test.fixtures.file.TestDirectoryProvider;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.util.GradleVersion;
@@ -36,9 +37,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import static org.gradle.integtests.fixtures.executer.DocumentationUtils.normalizeDocumentationLink;
-
 public interface GradleExecuter extends Stoppable {
+
     /**
      * Sets the working directory to use. Defaults to the test's temporary directory.
      */
@@ -85,8 +85,15 @@ public interface GradleExecuter extends Stoppable {
      */
     GradleExecuter withEnvironmentVars(Map<String, ?> environment);
 
-    @Deprecated
-    GradleExecuter usingSettingsFile(File settingsFile);
+    /**
+     * Sets the additional environment variables to use when executing the build, allowing to pass JAVA_HOME as well.
+     * <p>
+     * The provided environment is added to the environment variables of this process, so it is only possible to add new variables or modify values of existing ones.
+     * Not propagating a variable of this process to the executed build at all is not supported.
+     * <p>
+     * Setting "JAVA_HOME" this way is not supported.
+     */
+    GradleExecuter withEnvironmentVarsIncludingJavaHome(Map<String, ?> environment);
 
     GradleExecuter usingInitScript(File initScript);
 
@@ -94,12 +101,6 @@ public interface GradleExecuter extends Stoppable {
      * Uses the given project directory
      */
     GradleExecuter usingProjectDirectory(File projectDir);
-
-    /**
-     * Uses the given build script
-     */
-    @Deprecated
-    GradleExecuter usingBuildScript(File buildScript);
 
     /**
      * Sets the user's home dir to use when running the build. Implementations are not 100% accurate.
@@ -124,14 +125,20 @@ public interface GradleExecuter extends Stoppable {
     GradleExecuter withGradleVersionOverride(GradleVersion gradleVersion);
 
     /**
-     * Sets the java home dir. Setting to null requests that the executer use the real default java home dir rather than the default used for testing.
+     * Sets the java home dir. Replaces any value set by {@link #withJvm(Jvm)}.
+     * <p>
+     * In general, prefer using {@link #withJvm(Jvm)} over this method. This method should be used
+     * when testing non-standard JVMs, like embedded JREs, or those not provided by
+     * {@link org.gradle.integtests.fixtures.AvailableJavaHomes}.
      */
     GradleExecuter withJavaHome(String userHomeDir);
 
     /**
-     * Sets the java home dir. Setting to null requests that the executer use the real default java home dir rather than the default used for testing.
+     * Sets the JVM to execute Gradle with. Replaces any value set by {@link #withJavaHome(String)}.
+     *
+     * @throws IllegalArgumentException If the given JVM is not probed, for example JVMs created by {@link Jvm#forHome(File)}
      */
-    GradleExecuter withJavaHome(File userHomeDir);
+    GradleExecuter withJvm(Jvm jvm);
 
     /**
      * Sets the executable to use. Set to null to use the real default executable (if any) rather than the default used for testing.
@@ -212,6 +219,13 @@ public interface GradleExecuter extends Stoppable {
     GradleExecuter withBuildCacheEnabled();
 
     /**
+     * Activates the configuration cache
+     *
+     * @return this executer
+     */
+    GradleExecuter withConfigurationCacheEnabled();
+
+    /**
      * Don't set native services dir explicitly.
      */
     GradleExecuter withNoExplicitNativeServicesDir();
@@ -220,6 +234,8 @@ public interface GradleExecuter extends Stoppable {
      * Enables the rendering of stack traces for deprecation logging.
      */
     GradleExecuter withFullDeprecationStackTraceEnabled();
+
+    GradleExecuter withoutInternalDeprecationStackTraceFlag();
 
     /**
      * Downloads and sets up the JVM arguments for running the Gradle daemon with the file leak detector: https://github.com/jenkinsci/lib-file-leak-detector
@@ -343,60 +359,56 @@ public interface GradleExecuter extends Stoppable {
     TestDirectoryProvider getTestDirectoryProvider();
 
     /**
-     * Expects exactly one deprecation warning in the build output. If more than one warning is produced,
-     * or no warning is produced at all, the assertion fails.
+     * Expects the given deprecation warning.
      *
-     * @see #expectDeprecationWarnings(int)
-     * @deprecated Use {@link #expectDeprecationWarning(String)} instead.
+     * @implNote URLs to documentation should use /current/ as the version. This fixture will automatically replace it with the actual version tested.
      */
-    @Deprecated
-    GradleExecuter expectDeprecationWarning();
+    GradleExecuter expectDocumentedDeprecationWarning(String warning);
 
     /**
-     * Expects exactly the given deprecation warning.
+     * Do not call this method directly.
      *
-     * This may show up with a strikethrough in IntelliJ as if it were deprecated.  This method is still okay to use.  You can
-     * also switch to the more specific {@link #expectDocumentedDeprecationWarning(String)} if the warning includes a documentation
-     * link and you don't want to (ironically) see code testing deprecation appearing as if it itself were deprecated.
+     * @see #expectDocumentedDeprecationWarning(String)
      */
-    default GradleExecuter expectDeprecationWarning(String warning) {
-        return expectDeprecationWarning(ExpectedDeprecationWarning.withMessage(warning));
-    }
-
-    default GradleExecuter expectDeprecationWarningWithPattern(String pattern) {
-        return expectDeprecationWarning(ExpectedDeprecationWarning.withSingleLinePattern(pattern));
-    }
-
-    default GradleExecuter expectDeprecationWarningWithMultilinePattern(String pattern) {
-        return expectDeprecationWarningWithMultilinePattern(pattern, pattern.split("\n").length);
-    }
-
-    default GradleExecuter expectDeprecationWarningWithMultilinePattern(String pattern, int numLines) {
-        return expectDeprecationWarning(ExpectedDeprecationWarning.withMultiLinePattern(pattern, numLines));
-    }
-
     GradleExecuter expectDeprecationWarning(ExpectedDeprecationWarning warning);
 
     /**
-     * Expects the given deprecation warning, allowing to pass documentation url with /current/ version and asserting against the actual current version instead.
-     */
-    default GradleExecuter expectDocumentedDeprecationWarning(String warning) {
-        return expectDeprecationWarning(normalizeDocumentationLink(warning));
-    }
-
-    /**
-     * Expects exactly the given number of deprecation warnings. If fewer or more warnings are produced during
-     * the execution, the assertion fails.
+     * Some lines cause false positives for our deprecation detection, and because of their nature
+     * are not easily admitted into the normal expected deprecation warnings mechanism.
+     * <p>
+     * For example: (1) [INFO] The JUnit Vintage engine is deprecated and should only be used temporarily while migrating tests to JUnit Jupiter or another testing framework with native JUnit Platform support.
+     * <p>
+     * They come from frameworks like JUnit and there's nothing Gradle can do about them.  So this
+     * ignore mechanism has been added to allow us to always ignore them as we process output.
      *
-     * @deprecated Use {@link #expectDeprecationWarning(String)} instead.
+     * @param lines the exact lines to always ignore when processing output for deprecation warnings
+     * @return {@code this} executer
      */
-    @Deprecated
-    GradleExecuter expectDeprecationWarnings(int count);
+    GradleExecuter ignoreLines(List<String> lines);
 
     /**
      * Disable deprecation warning checks.
      */
     GradleExecuter noDeprecationChecks();
+
+    /**
+     * Expects a message that contains the word "deprecated" in the output.
+     *
+     * This is not intended to test for Gradle deprecation warnings. Use {@link #expectDocumentedDeprecationWarning(String)} instead.
+     *
+     * This method is used to document builds that emit deprecation messages from external tools like javac or the Kotlin compiler.
+     */
+    GradleExecuter expectExternalDeprecatedMessage(String warning);
+
+    /**
+     * Disable automatic Java version deprecation warning filtering.
+     * <p>
+     * By default, the executor will ignore all deprecation warnings related to running a build
+     * on a Java version that will no longer be supported in future versions of Gradle. In most
+     * cases we do not care about this warning, but when we want to explicitly test that a build
+     * does emit this warning, we disable this filter.
+     */
+    GradleExecuter disableDaemonJavaVersionDeprecationFiltering();
 
     /**
      * Disable crash daemon checks
@@ -468,6 +480,11 @@ public interface GradleExecuter extends Stoppable {
      * The distribution used to execute.
      */
     GradleDistribution getDistribution();
+
+    /**
+     * Get the build context that this executer was created with.
+     */
+    IntegrationTestBuildContext getBuildContext();
 
     /**
      * Copies the settings from this executer to the given executer.

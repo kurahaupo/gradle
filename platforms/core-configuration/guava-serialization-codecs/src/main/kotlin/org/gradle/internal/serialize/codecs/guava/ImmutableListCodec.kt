@@ -32,8 +32,11 @@ object ImmutableListCodec : Codec<ImmutableList<Any>> {
 
     override suspend fun ReadContext.decode(): ImmutableList<Any>? {
         val size = readSmallInt()
+        if (size == 0) {
+            return ImmutableList.of()
+        }
         val builder = ImmutableList.builderWithExpectedSize<Any>(size)
-        for (i in 0 until size) {
+        repeat(size) {
             val value = readNonNull<Any>()
             builder.add(value)
         }

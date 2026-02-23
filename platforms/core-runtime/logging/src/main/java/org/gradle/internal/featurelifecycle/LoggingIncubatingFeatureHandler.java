@@ -22,11 +22,12 @@ import org.slf4j.LoggerFactory;
 import java.util.HashSet;
 import java.util.Set;
 
+import static org.gradle.util.internal.IncubationLogger.INCUBATION_MESSAGE;
+
 public class LoggingIncubatingFeatureHandler implements FeatureHandler<IncubatingFeatureUsage> {
-    private static final String INCUBATION_MESSAGE = "%s is an incubating feature.";
     private static final Logger LOGGER = LoggerFactory.getLogger(LoggingIncubatingFeatureHandler.class);
 
-    private final Set<String> features = new HashSet<String>();
+    private final Set<String> features = new HashSet<>();
 
     @Override
     public void featureUsed(IncubatingFeatureUsage usage) {

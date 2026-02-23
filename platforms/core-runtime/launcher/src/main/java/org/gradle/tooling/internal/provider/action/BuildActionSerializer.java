@@ -23,6 +23,7 @@ import org.gradle.api.launcher.cli.WelcomeMessageConfiguration;
 import org.gradle.api.launcher.cli.WelcomeMessageDisplayMode;
 import org.gradle.api.logging.LogLevel;
 import org.gradle.api.logging.configuration.ConsoleOutput;
+import org.gradle.api.logging.configuration.ConsoleUnicodeSupport;
 import org.gradle.api.logging.configuration.ShowStacktrace;
 import org.gradle.api.logging.configuration.WarningMode;
 import org.gradle.initialization.StartParameterBuildOptions.ConfigurationCacheProblemsOption;
@@ -30,7 +31,6 @@ import org.gradle.internal.DefaultTaskExecutionRequest;
 import org.gradle.internal.RunDefaultTasksExecutionRequest;
 import org.gradle.internal.build.event.BuildEventSubscriptions;
 import org.gradle.internal.buildoption.Option;
-import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.invocation.BuildAction;
 import org.gradle.internal.serialize.BaseSerializerFactory;
 import org.gradle.internal.serialize.Decoder;
@@ -80,6 +80,7 @@ public class BuildActionSerializer {
         private final Serializer<LogLevel> logLevelSerializer;
         private final Serializer<ShowStacktrace> showStacktraceSerializer;
         private final Serializer<ConsoleOutput> consoleOutputSerializer;
+        private final Serializer<ConsoleUnicodeSupport> consoleUnicodeSupportSerializer;
         private final Serializer<WarningMode> warningModeSerializer;
         private final Serializer<File> nullableFileSerializer = new NullableFileSerializer();
         private final Serializer<List<String>> stringListSerializer = new ListSerializer<>(BaseSerializerFactory.STRING_SERIALIZER);
@@ -92,6 +93,7 @@ public class BuildActionSerializer {
             logLevelSerializer = serializerFactory.getSerializerFor(LogLevel.class);
             showStacktraceSerializer = serializerFactory.getSerializerFor(ShowStacktrace.class);
             consoleOutputSerializer = serializerFactory.getSerializerFor(ConsoleOutput.class);
+            consoleUnicodeSupportSerializer = serializerFactory.getSerializerFor(ConsoleUnicodeSupport.class);
             warningModeSerializer = serializerFactory.getSerializerFor(WarningMode.class);
         }
 
@@ -101,6 +103,7 @@ public class BuildActionSerializer {
             logLevelSerializer.write(encoder, startParameter.getLogLevel());
             showStacktraceSerializer.write(encoder, startParameter.getShowStacktrace());
             consoleOutputSerializer.write(encoder, startParameter.getConsoleOutput());
+            consoleUnicodeSupportSerializer.write(encoder, startParameter.getConsoleUnicodeSupport());
             warningModeSerializer.write(encoder, startParameter.getWarningMode());
 
             // Parallel configuration
@@ -112,13 +115,7 @@ public class BuildActionSerializer {
             stringSetSerializer.write(encoder, startParameter.getExcludedTaskNames());
 
             // Layout
-            @SuppressWarnings("deprecation")
-            File customBuildFile = DeprecationLogger.whileDisabled(startParameter::getBuildFile);
-            nullableFileSerializer.write(encoder, customBuildFile);
             nullableFileSerializer.write(encoder, startParameter.getProjectDir());
-            @SuppressWarnings("deprecation")
-            File customSettingsFile = DeprecationLogger.whileDisabled(startParameter::getSettingsFile);
-            nullableFileSerializer.write(encoder, customSettingsFile);
             FILE_SERIALIZER.write(encoder, startParameter.getCurrentDir());
             FILE_SERIALIZER.write(encoder, startParameter.getGradleUserHomeDir());
             nullableFileSerializer.write(encoder, startParameter.getGradleHomeDir());
@@ -126,7 +123,7 @@ public class BuildActionSerializer {
             fileListSerializer.write(encoder, startParameter.getIncludedBuilds());
 
             // Other stuff
-            NO_NULL_STRING_MAP_SERIALIZER.write(encoder, startParameter.getProjectProperties());
+            NO_NULL_STRING_MAP_SERIALIZER.write(encoder, startParameter.getProjectPropertiesUntracked());
             NO_NULL_STRING_MAP_SERIALIZER.write(encoder, startParameter.getSystemPropertiesArgs());
             fileListSerializer.write(encoder, startParameter.getInitScripts());
             stringListSerializer.write(encoder, startParameter.getLockedDependenciesToUpdate());
@@ -142,17 +139,23 @@ public class BuildActionSerializer {
             encoder.writeBoolean(startParameter.isBuildCacheEnabled());
             encoder.writeBoolean(startParameter.isBuildCacheDebugLogging());
             encoder.writeString(startParameter.getWatchFileSystemMode().name());
-            encoder.writeBoolean(startParameter.isWatchFileSystemDebugLogging());
             encoder.writeBoolean(startParameter.isVfsVerboseLogging());
             valueSerializer.write(encoder, startParameter.getConfigurationCache());
             valueSerializer.write(encoder, startParameter.getIsolatedProjects());
             encoder.writeString(startParameter.getConfigurationCacheProblems().name());
-            encoder.writeBoolean(startParameter.isConfigurationCacheIgnoreInputsInTaskGraphSerialization());
+            encoder.writeBoolean(startParameter.isConfigurationCacheIgnoreInputsDuringStore());
+            encoder.writeBoolean(startParameter.isConfigurationCacheIgnoreUnsupportedBuildEventsListeners());
             encoder.writeSmallInt(startParameter.getConfigurationCacheMaxProblems());
             encoder.writeNullableString(startParameter.getConfigurationCacheIgnoredFileSystemCheckInputs());
             encoder.writeBoolean(startParameter.isConfigurationCacheDebug());
             encoder.writeBoolean(startParameter.isConfigurationCacheRecreateCache());
+            encoder.writeBoolean(startParameter.isConfigurationCacheParallel());
+            encoder.writeBoolean(startParameter.isConfigurationCacheReadOnly());
             encoder.writeBoolean(startParameter.isConfigurationCacheQuiet());
+            encoder.writeBoolean(startParameter.isConfigurationCacheIntegrityCheckEnabled());
+            encoder.writeSmallInt(startParameter.getConfigurationCacheEntriesPerKey());
+            encoder.writeNullableString(startParameter.getConfigurationCacheHeapDumpDir());
+            encoder.writeBoolean(startParameter.isConfigurationCacheFineGrainedPropertyTracking());
             encoder.writeBoolean(startParameter.isConfigureOnDemand());
             encoder.writeBoolean(startParameter.isContinuous());
             encoder.writeLong(startParameter.getContinuousBuildQuietPeriod().toMillis());
@@ -164,6 +167,11 @@ public class BuildActionSerializer {
             encoder.writeBoolean(startParameter.isRefreshKeys());
             encoder.writeBoolean(startParameter.isExportKeys());
             encoder.writeString(startParameter.getWelcomeMessageConfiguration().getWelcomeMessageDisplayMode().name());
+            encoder.writeBoolean(startParameter.isPropertyUpgradeReportEnabled());
+            encoder.writeBoolean(startParameter.isProblemReportGenerationEnabled());
+            encoder.writeBoolean(startParameter.isTaskGraph());
+            encoder.writeBoolean(startParameter.isDaemonJvmCriteriaConfigured());
+            valueSerializer.write(encoder, startParameter.getParallelToolingModelBuilding());
         }
 
         private void writeTaskRequests(Encoder encoder, List<TaskExecutionRequest> taskRequests) throws Exception {
@@ -192,6 +200,7 @@ public class BuildActionSerializer {
             startParameter.setLogLevel(logLevelSerializer.read(decoder));
             startParameter.setShowStacktrace(showStacktraceSerializer.read(decoder));
             startParameter.setConsoleOutput(consoleOutputSerializer.read(decoder));
+            startParameter.setConsoleUnicodeSupport(consoleUnicodeSupportSerializer.read(decoder));
             startParameter.setWarningMode(warningModeSerializer.read(decoder));
 
             // Parallel configuration
@@ -203,13 +212,7 @@ public class BuildActionSerializer {
             startParameter.setExcludedTaskNames(stringSetSerializer.read(decoder));
 
             // Layout
-            DeprecationLogger.whileDisabledThrowing(() ->
-                startParameter.setBuildFile(nullableFileSerializer.read(decoder))
-            );
             startParameter.setProjectDir(nullableFileSerializer.read(decoder));
-            DeprecationLogger.whileDisabledThrowing(() ->
-                startParameter.setSettingsFile(nullableFileSerializer.read(decoder))
-            );
             startParameter.setCurrentDir(FILE_SERIALIZER.read(decoder));
             startParameter.setGradleUserHomeDir(FILE_SERIALIZER.read(decoder));
             startParameter.setGradleHomeDir(nullableFileSerializer.read(decoder));
@@ -233,17 +236,23 @@ public class BuildActionSerializer {
             startParameter.setBuildCacheEnabled(decoder.readBoolean());
             startParameter.setBuildCacheDebugLogging(decoder.readBoolean());
             startParameter.setWatchFileSystemMode(WatchMode.valueOf(decoder.readString()));
-            startParameter.setWatchFileSystemDebugLogging(decoder.readBoolean());
             startParameter.setVfsVerboseLogging(decoder.readBoolean());
             startParameter.setConfigurationCache(valueSerializer.read(decoder));
             startParameter.setIsolatedProjects(valueSerializer.read(decoder));
             startParameter.setConfigurationCacheProblems(ConfigurationCacheProblemsOption.Value.valueOf(decoder.readString()));
-            startParameter.setConfigurationCacheIgnoreInputsInTaskGraphSerialization(decoder.readBoolean());
+            startParameter.setConfigurationCacheIgnoreInputsDuringStore(decoder.readBoolean());
+            startParameter.setConfigurationCacheIgnoreUnsupportedBuildEventsListeners(decoder.readBoolean());
             startParameter.setConfigurationCacheMaxProblems(decoder.readSmallInt());
             startParameter.setConfigurationCacheIgnoredFileSystemCheckInputs(decoder.readNullableString());
             startParameter.setConfigurationCacheDebug(decoder.readBoolean());
             startParameter.setConfigurationCacheRecreateCache(decoder.readBoolean());
+            startParameter.setConfigurationCacheParallel(decoder.readBoolean());
+            startParameter.setConfigurationCacheReadOnly(decoder.readBoolean());
             startParameter.setConfigurationCacheQuiet(decoder.readBoolean());
+            startParameter.setConfigurationCacheIntegrityCheckEnabled(decoder.readBoolean());
+            startParameter.setConfigurationCacheEntriesPerKey(decoder.readSmallInt());
+            startParameter.setConfigurationCacheHeapDumpDir(decoder.readNullableString());
+            startParameter.setConfigurationCacheFineGrainedPropertyTracking(decoder.readBoolean());
             startParameter.setConfigureOnDemand(decoder.readBoolean());
             startParameter.setContinuous(decoder.readBoolean());
             startParameter.setContinuousBuildQuietPeriod(Duration.ofMillis(decoder.readLong()));
@@ -258,6 +267,11 @@ public class BuildActionSerializer {
             startParameter.setRefreshKeys(decoder.readBoolean());
             startParameter.setExportKeys(decoder.readBoolean());
             startParameter.setWelcomeMessageConfiguration(new WelcomeMessageConfiguration(WelcomeMessageDisplayMode.valueOf(decoder.readString())));
+            startParameter.setPropertyUpgradeReportEnabled(decoder.readBoolean());
+            startParameter.enableProblemReportGeneration(decoder.readBoolean());
+            startParameter.setTaskGraph(decoder.readBoolean());
+            startParameter.setDaemonJvmCriteriaConfigured(decoder.readBoolean());
+            startParameter.setParallelToolingModelBuilding(valueSerializer.read(decoder));
 
             return startParameter;
         }

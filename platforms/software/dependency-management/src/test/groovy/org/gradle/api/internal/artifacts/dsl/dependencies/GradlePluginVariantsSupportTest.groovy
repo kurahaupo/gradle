@@ -17,11 +17,12 @@
 package org.gradle.api.internal.artifacts.dsl.dependencies
 
 import org.gradle.api.attributes.plugin.GradlePluginApiVersion
-import org.gradle.api.internal.attributes.AttributeContainerInternal
-import org.gradle.api.internal.attributes.DefaultAttributesSchema
-import org.gradle.internal.component.model.AttributeMatchingExplanationBuilder
+import org.gradle.api.internal.attributes.ImmutableAttributes
+import org.gradle.api.internal.attributes.immutable.ImmutableAttributesSchema
+import org.gradle.api.internal.attributes.matching.AttributeMatcher
+import org.gradle.api.internal.attributes.matching.AttributeMatchingCandidate
+import org.gradle.api.internal.attributes.matching.ImmutableAttributesBackedMatchingCandidate
 import org.gradle.util.AttributeTestUtil
-import org.gradle.util.SnapshotTestUtil
 import org.gradle.util.TestUtil
 import spock.lang.Specification
 
@@ -29,11 +30,13 @@ class GradlePluginVariantsSupportTest extends Specification {
 
     def attributes = AttributeTestUtil.attributesFactory()
     def objects = TestUtil.objectFactory()
-    def schema = new DefaultAttributesSchema(TestUtil.instantiatorFactory(), SnapshotTestUtil.isolatableFactory())
-    def ep = Stub(AttributeMatchingExplanationBuilder)
+    def matcher = newMatcher()
 
-    def setup() {
-        GradlePluginVariantsSupport.configureSchema(schema)
+    static AttributeMatcher newMatcher() {
+        def schema = AttributeTestUtil.immutableSchema {
+            GradlePluginVariantsSupport.configureSchema(it)
+        }
+        return AttributeTestUtil.services().getMatcher(schema, ImmutableAttributesSchema.EMPTY)
     }
 
     def "Gradle #currentGradleVersion #acceptsOrRejects 7.0 api"() {
@@ -41,12 +44,12 @@ class GradlePluginVariantsSupportTest extends Specification {
         def accepts = acceptsOrRejects == 'accepts'
 
         when:
-        def consumer = versionAttribute(currentGradleVersion)
+        def consumer = requestedVersion(currentGradleVersion)
         def producer = versionAttribute('7.0')
 
         then:
-        accepts == (schema.matcher().matches([producer], consumer, ep) == [producer])
-        accepts == schema.matcher().isMatching(producer, consumer)
+        accepts == (matcher.matchMultipleCandidates([producer], consumer) == [producer])
+        accepts == matcher.isMatchingCandidate(producer.attributes, consumer)
 
         where:
         currentGradleVersion       | acceptsOrRejects
@@ -64,7 +67,7 @@ class GradlePluginVariantsSupportTest extends Specification {
 
     def "chooses exact match API if available"() {
         when:
-        def consumer = versionAttribute('7.0')
+        def consumer = requestedVersion('7.0')
         def producer = [
             versionAttribute('6.0'),
             versionAttribute('7.0'),
@@ -74,13 +77,13 @@ class GradlePluginVariantsSupportTest extends Specification {
         ]
 
         then:
-        schema.matcher().matches(producer, consumer, ep) == [versionAttribute('7.0')]
+        matcher.matchMultipleCandidates(producer, consumer) == [versionAttribute('7.0')]
 
     }
 
     def "chooses closest API"() {
         when:
-        def consumer = versionAttribute('7.2')
+        def consumer = requestedVersion('7.2')
         def producer = [
             versionAttribute('6.0'),
             versionAttribute('7.0'),
@@ -92,12 +95,12 @@ class GradlePluginVariantsSupportTest extends Specification {
         ]
 
         then:
-        schema.matcher().matches(producer, consumer, ep) == [versionAttribute('7.1')]
+        matcher.matchMultipleCandidates(producer, consumer) == [versionAttribute('7.1')]
     }
 
     def "fails to select one candidate if there is no clear preference"() {
         when:
-        def consumer = versionAttribute('7.2')
+        def consumer = requestedVersion('7.2')
         def producer = [
             versionAttribute('6.0'),
             versionAttribute('7.0'),
@@ -107,10 +110,16 @@ class GradlePluginVariantsSupportTest extends Specification {
         ]
 
         then:
-        schema.matcher().matches(producer, consumer, ep) == [versionAttribute('7.1'), versionAttribute('7.1')]
+        matcher.matchMultipleCandidates(producer, consumer) == [versionAttribute('7.1'), versionAttribute('7.1')]
     }
 
-    private AttributeContainerInternal versionAttribute(String version) {
-        attributes.mutable().attribute(GradlePluginApiVersion.GRADLE_PLUGIN_API_VERSION_ATTRIBUTE, objects.named(GradlePluginApiVersion, version)) as AttributeContainerInternal
+    private ImmutableAttributes requestedVersion(String version) {
+        versionAttribute(version).attributes
+    }
+
+    private AttributeMatchingCandidate versionAttribute(String version) {
+        def attributes = attributes.mutable()
+        attributes.attribute(GradlePluginApiVersion.GRADLE_PLUGIN_API_VERSION_ATTRIBUTE, objects.named(GradlePluginApiVersion, version))
+        new ImmutableAttributesBackedMatchingCandidate(attributes.asImmutable())
     }
 }

@@ -17,15 +17,15 @@
 package org.gradle.smoketests
 
 import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
+import org.gradle.integtests.fixtures.UnsupportedWithConfigurationCache
 import org.gradle.internal.reflect.validation.ValidationMessageChecker
-import org.gradle.test.precondition.Requires
-import org.gradle.test.preconditions.UnitTestPreconditions
+import spock.lang.Ignore
 import spock.lang.Issue
 
 class NebulaPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implements ValidationMessageChecker {
 
     @Issue('https://plugins.gradle.org/plugin/com.netflix.nebula.dependency-recommender')
-    @ToBeFixedForConfigurationCache
+    @UnsupportedWithConfigurationCache(because = "https://github.com/nebula-plugins/nebula-dependency-recommender-plugin/issues/147")
     def 'nebula recommender plugin'() {
         when:
         buildFile << """
@@ -71,12 +71,11 @@ class NebulaPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implement
         """
 
         then:
-        runner('groovydoc', '-s')
-            .build()
+        runner('groovydoc', '-s').expectDeprecationWarning("The DomainObjectCollection.findAll(Closure) method has been deprecated. This is scheduled to be removed in Gradle 10. Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_9.html#findAll_removal", "https://github.com/nebula-plugins/gradle-info-plugin/issues/115").build()
     }
 
+    @Ignore("https://github.com/nebula-plugins/gradle-lint-plugin/issues/417")
     @Issue('https://plugins.gradle.org/plugin/nebula.lint')
-    @ToBeFixedForConfigurationCache(because = "Invocation of 'Task.project' by task ':autoLintGradle' at execution time")
     def 'nebula lint plugin'() {
         given:
         buildFile << """
@@ -87,6 +86,8 @@ class NebulaPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implement
             plugins {
                 id "com.netflix.nebula.lint" version "${TestedVersions.nebulaLint}"
             }
+
+            ${mavenCentralRepository()}
 
             apply plugin: 'java'
 
@@ -101,7 +102,7 @@ class NebulaPluginsSmokeTest extends AbstractPluginValidatingSmokeTest implement
         def result = runner('autoLintGradle').build()
 
         then:
-        int numOfRepoBlockLines = 14 + mavenCentralRepository().readLines().size()
+        int numOfRepoBlockLines = 15 + 2 * mavenCentralRepository().readLines().size()
         result.output.contains("parentheses are unnecessary for dependencies")
         result.output.contains("warning   dependency-parentheses")
         result.output.contains("build.gradle:$numOfRepoBlockLines")
@@ -131,7 +132,7 @@ testImplementation('junit:junit:4.7')""")
         runner('buildEnvironment', 'generateLock').build()
 
         where:
-        nebulaDepLockVersion << TestedVersions.nebulaDependencyLock.versions
+        nebulaDepLockVersion << [TestedVersions.nebulaDependencyLock]
     }
 
     @Issue("gradle/gradle#3798")
@@ -195,11 +196,10 @@ testImplementation('junit:junit:4.7')""")
         runner('resolve').build()
 
         where:
-        version << TestedVersions.nebulaDependencyLock
+        version << [TestedVersions.nebulaDependencyLock]
     }
 
     @Issue('https://plugins.gradle.org/plugin/com.netflix.nebula.resolution-rules')
-    @Requires(UnitTestPreconditions.Jdk11OrEarlier)
     def 'nebula resolution rules plugin'() {
         when:
         file('rules.json') << """
@@ -239,11 +239,12 @@ testImplementation('junit:junit:4.7')""")
     Map<String, Versions> getPluginsToValidate() {
         [
             'com.netflix.nebula.dependency-recommender': Versions.of(TestedVersions.nebulaDependencyRecommender),
-            // The plugin-plugin still has validation errors - see https://github.com/nebula-plugins/nebula-plugin-plugin/issues/72
-//            'com.netflix.nebula.plugin-plugin': Versions.of(TestedVersions.nebulaPluginPlugin),
+            'com.netflix.nebula.plugin-plugin': Versions.of(TestedVersions.nebulaPluginPlugin),
             'com.netflix.nebula.lint': Versions.of(TestedVersions.nebulaLint),
             'com.netflix.nebula.dependency-lock': TestedVersions.nebulaDependencyLock,
             'com.netflix.nebula.resolution-rules': Versions.of(TestedVersions.nebulaResolutionRules)
         ]
     }
 }
+
+

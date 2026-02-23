@@ -16,7 +16,6 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.nativeplatform.fixtures.app.CppLib
 import org.gradle.nativeplatform.fixtures.app.SourceElement
 
@@ -49,7 +48,6 @@ class CppSharedLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
         return new CppLib()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can create shared library binary when only shared linkage is specified"() {
         def library = new CppLib()
         buildFile << """
@@ -68,7 +66,7 @@ class CppSharedLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
         succeeds('assemble')
 
         then:
-        result.assertTasksExecuted(':compileDebugCpp', ':linkDebug', ':assemble')
+        result.assertTasksScheduled(':compileDebugCpp', ':linkDebug', ':assemble')
         sharedLibrary('build/lib/main/debug/foo').assertExists()
     }
 }

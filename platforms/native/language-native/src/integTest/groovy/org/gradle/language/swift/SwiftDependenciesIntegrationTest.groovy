@@ -16,14 +16,15 @@
 
 package org.gradle.language.swift
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
 import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.SwiftAppWithLibraries
+import org.gradle.test.fixtures.file.DoesNotSupportNonAsciiPaths
 import org.gradle.vcs.fixtures.GitFileRepository
 
 @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC)
+@DoesNotSupportNonAsciiPaths(reason = "swiftc does not support these paths")
 class SwiftDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
     def app = new SwiftAppWithLibraries()
 
@@ -53,7 +54,6 @@ class SwiftDependenciesIntegrationTest extends AbstractInstalledToolChainIntegra
         assertAppHasOutputFor("release")
     }
 
-    @ToBeFixedForConfigurationCache
     def "can depend on swift libraries from VCS"() {
         given:
         createDirs("app")
@@ -95,7 +95,7 @@ class SwiftDependenciesIntegrationTest extends AbstractInstalledToolChainIntegra
         if (buildType == "Release") {
             tasks << [ ":log:stripSymbols${buildType}", ":hello:stripSymbols${buildType}", ":app:stripSymbols${buildType}"]
         }
-        assert result.assertTasksExecuted(tasks)
+        assert result.assertTasksScheduled(tasks)
     }
 
     private void assertAppHasOutputFor(String buildType) {

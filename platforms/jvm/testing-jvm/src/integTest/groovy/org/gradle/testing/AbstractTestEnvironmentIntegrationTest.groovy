@@ -16,13 +16,12 @@
 
 package org.gradle.testing
 
-import org.gradle.integtests.fixtures.AvailableJavaHomes
+import org.gradle.api.tasks.testing.TestResult
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.UnitTestPreconditions
 import org.gradle.testing.fixture.AbstractTestingMultiVersionIntegrationTest
 import org.gradle.util.Matchers
-
 import org.junit.Assume
 
 abstract class AbstractTestEnvironmentIntegrationTest extends AbstractTestingMultiVersionIntegrationTest {
@@ -73,9 +72,9 @@ abstract class AbstractTestEnvironmentIntegrationTest extends AbstractTestingMul
         run 'test'
 
         then:
-        def result = new DefaultTestExecutionResult(testDirectory)
-        result.assertTestClassesExecuted('org.gradle.JUnitTest')
-        result.testClass('org.gradle.JUnitTest').assertTestPassed('mySystemClassLoaderIsUsed')
+        def results = resultsFor(testDirectory)
+        results.testPath('org.gradle.JUnitTest', 'mySystemClassLoaderIsUsed').onlyRoot()
+            .assertHasResult(TestResult.ResultType.SUCCESS)
     }
 
     def "can run tests referencing slf4j with custom system classloader"() {
@@ -117,14 +116,12 @@ abstract class AbstractTestEnvironmentIntegrationTest extends AbstractTestingMul
         run 'test'
 
         then:
-        def testResults = new DefaultTestExecutionResult(testDirectory)
-        testResults.assertTestClassesExecuted('org.gradle.TestUsingSlf4j')
-        with(testResults.testClass('org.gradle.TestUsingSlf4j')) {
-            assertTestPassed('mySystemClassLoaderIsUsed')
-            assertStderr(Matchers.containsText("ERROR via slf4j"))
-            assertStderr(Matchers.containsText("WARN via slf4j"))
-            assertStderr(Matchers.containsText("INFO via slf4j"))
-        }
+        def results = resultsFor(testDirectory)
+        results.testPath('org.gradle.TestUsingSlf4j', 'mySystemClassLoaderIsUsed').onlyRoot()
+            .assertHasResult(TestResult.ResultType.SUCCESS)
+            .assertStderr(Matchers.containsText("ERROR via slf4j"))
+            .assertStderr(Matchers.containsText("WARN via slf4j"))
+            .assertStderr(Matchers.containsText("INFO via slf4j"))
     }
 
     @Requires(UnitTestPreconditions.Jdk9OrLater)
@@ -168,14 +165,12 @@ abstract class AbstractTestEnvironmentIntegrationTest extends AbstractTestingMul
         run 'test'
 
         then:
-        def testResults = new DefaultTestExecutionResult(testDirectory)
-        testResults.assertTestClassesExecuted('org.gradle.example.TestUsingSlf4j')
-        with(testResults.testClass('org.gradle.example.TestUsingSlf4j')) {
-            assertTestPassed('testModular')
-            assertStderr(Matchers.containsText("ERROR via slf4j"))
-            assertStderr(Matchers.containsText("WARN via slf4j"))
-            assertStderr(Matchers.containsText("INFO via slf4j"))
-        }
+        def results = resultsFor(testDirectory)
+        results.testPath('org.gradle.example.TestUsingSlf4j', 'testModular').onlyRoot()
+            .assertHasResult(TestResult.ResultType.SUCCESS)
+            .assertStderr(Matchers.containsText("ERROR via slf4j"))
+            .assertStderr(Matchers.containsText("WARN via slf4j"))
+            .assertStderr(Matchers.containsText("INFO via slf4j"))
     }
 
     @Requires(
@@ -225,8 +220,8 @@ abstract class AbstractTestEnvironmentIntegrationTest extends AbstractTestingMul
 
             test {
                 dependsOn jar
-                systemProperties 'java.system.class.loader':'org.gradle.MySystemClassLoader'
-                jvmArgs "-javaagent:\${jar.archiveFile.asFile.get()}"
+                systemProperties('java.system.class.loader':'org.gradle.MySystemClassLoader')
+                jvmArgs("-javaagent:\${jar.archiveFile.asFile.get()}")
             }
         """.stripIndent()
 
@@ -234,63 +229,9 @@ abstract class AbstractTestEnvironmentIntegrationTest extends AbstractTestingMul
         run 'test'
 
         then:
-        def result = new DefaultTestExecutionResult(testDirectory)
+        def result = new DefaultTestExecutionResult(testDirectory, testFramework)
         result.assertTestClassesExecuted('org.gradle.JUnitTest')
         result.testClass('org.gradle.JUnitTest').assertTestPassed('mySystemClassLoaderIsUsed')
-    }
-
-    def "can run tests with custom security manager"() {
-        executer
-                .withArgument("-Porg.gradle.java.installations.paths=${AvailableJavaHomes.getAvailableJvms().collect { it.javaHome.absolutePath }.join(",")}")
-                .withToolchainDetectionEnabled()
-
-        given:
-        file('src/test/java/org/gradle/JUnitTest.java') << """
-            package org.gradle;
-
-            ${testFrameworkImports}
-
-            public class JUnitTest {
-                @Test
-                public void mySecurityManagerIsUsed() throws ClassNotFoundException {
-                    assertTrue(System.getSecurityManager() instanceof MySecurityManager);
-                    assertEquals(ClassLoader.getSystemClassLoader(), MySecurityManager.class.getClassLoader());
-                }
-            }
-        """.stripIndent()
-        file('src/test/java/org/gradle/MySecurityManager.java') << """
-            package org.gradle;
-
-            import java.security.Permission;
-
-            public class MySecurityManager extends SecurityManager {
-                public MySecurityManager() {
-                    assert getClass().getName().equals(System.getProperty("java.security.manager"));
-                }
-
-                @Override
-                public void checkPermission(Permission permission) {
-                }
-            }
-        """.stripIndent()
-        buildFile << """
-            java {
-                toolchain {
-                    languageVersion = JavaLanguageVersion.of(11)
-                }
-            }
-            test {
-                systemProperties 'java.security.manager': 'org.gradle.MySecurityManager'
-            }
-        """.stripIndent()
-
-        when:
-        run 'test'
-
-        then:
-        def result = new DefaultTestExecutionResult(testDirectory)
-        result.assertTestClassesExecuted('org.gradle.JUnitTest')
-        result.testClass('org.gradle.JUnitTest').assertTestPassed('mySecurityManagerIsUsed')
     }
 
     String getCustomSystemClassLoaderClass() {

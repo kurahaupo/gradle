@@ -20,7 +20,7 @@ import com.google.common.collect.AbstractIterator;
 import org.gradle.api.internal.file.archive.ZipEntry;
 import org.gradle.api.internal.file.archive.ZipInput;
 import org.gradle.internal.file.FileException;
-import org.gradle.internal.io.IoFunction;
+import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,7 +39,7 @@ public class StreamZipInput implements ZipInput {
     public Iterator<ZipEntry> iterator() {
         return new AbstractIterator<ZipEntry>() {
             @Override
-            protected ZipEntry computeNext() {
+            protected @Nullable ZipEntry computeNext() {
                 java.util.zip.ZipEntry nextEntry;
                 try {
                     nextEntry = inputStream.getNextEntry();

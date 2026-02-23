@@ -16,17 +16,20 @@
 
 package org.gradle.model.internal.asm;
 
+import org.jspecify.annotations.Nullable;
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
 
-import javax.annotation.Nullable;
-
-import static org.gradle.internal.classanalysis.AsmConstants.ASM_LEVEL;
+import static org.gradle.model.internal.asm.AsmConstants.ASM_LEVEL;
+import static org.objectweb.asm.Opcodes.ACC_ABSTRACT;
 import static org.objectweb.asm.Opcodes.ACC_PRIVATE;
 import static org.objectweb.asm.Opcodes.ACC_PUBLIC;
+import static org.objectweb.asm.Opcodes.ACC_STATIC;
 import static org.objectweb.asm.Opcodes.ACC_SYNTHETIC;
 import static org.objectweb.asm.Type.getDescriptor;
+import static org.objectweb.asm.Type.getType;
 
 /**
  * Simplifies the usage of {@link ClassVisitor}.
@@ -37,6 +40,12 @@ public class ClassVisitorScope extends ClassVisitor {
         super(ASM_LEVEL, cv);
     }
 
+    protected AnnotationVisitor visitAnnotation(Class<?> clazz) {
+        return visitAnnotation(
+            getType(clazz).getDescriptor(),
+            true
+        );
+    }
     /**
      * Adds a field to the generated type.
      */
@@ -75,8 +84,22 @@ public class ClassVisitorScope extends ClassVisitor {
     /**
      * Adds a public method to the generated type.
      */
-    protected void publicMethod(String name, String descriptor, String signature, BytecodeFragment body) {
+    protected void publicMethod(String name, String descriptor, @Nullable String signature, BytecodeFragment body) {
         addMethod(ACC_PUBLIC, name, descriptor, signature, body);
+    }
+
+    /**
+     * Adds a public abstract method to the generated type.
+     */
+    protected void publicAbstractMethod(String name, String descriptor, String signature, BytecodeFragment body) {
+        addMethod(ACC_PUBLIC | ACC_ABSTRACT, name, descriptor, signature, body);
+    }
+
+    /**
+     * Adds a public static method to the generated type.
+     */
+    protected void publicStaticMethod(String name, String descriptor, String signature, BytecodeFragment body) {
+        addMethod(ACC_PUBLIC | ACC_STATIC, name, descriptor, signature, body);
     }
 
     /**
@@ -89,7 +112,7 @@ public class ClassVisitorScope extends ClassVisitor {
     /**
      * Adds a method to the generated type.
      */
-    private void addMethod(int access, String name, String descriptor, String signature, BytecodeFragment body) {
+    private void addMethod(int access, String name, String descriptor, @Nullable String signature, BytecodeFragment body) {
         MethodVisitor methodVisitor = visitMethod(access, name, descriptor, signature, null);
         body.emit(methodVisitor);
         methodVisitor.visitMaxs(0, 0);
@@ -106,10 +129,15 @@ public class ClassVisitorScope extends ClassVisitor {
     /**
      * Adds a getter that returns the value that the given code leaves on the top of the stack.
      */
-    protected void addGetter(String methodName, Type returnType, String methodDescriptor, @Nullable String signature, BytecodeFragment body) {
-        publicMethod(methodName, methodDescriptor, signature, methodVisitor -> new MethodVisitorScope(methodVisitor) {{
-            emit(body);
-            _IRETURN_OF(returnType);
-        }});
+    protected void addGetter(final String methodName, final Type returnType, final String methodDescriptor, @Nullable final String signature, final BytecodeFragment body) {
+        publicMethod(methodName, methodDescriptor, signature, new BytecodeFragment() {
+            @Override
+            public void emit(MethodVisitor methodVisitor) {
+                new MethodVisitorScope(methodVisitor) {{
+                    emit(body);
+                    _IRETURN_OF(returnType);
+                }};
+            }
+        });
     }
 }

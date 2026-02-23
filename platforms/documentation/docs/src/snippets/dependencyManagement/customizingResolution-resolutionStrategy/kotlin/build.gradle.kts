@@ -1,5 +1,18 @@
+// tag::resolve-rules[]
+configurations.configureEach {
+    resolutionStrategy {
+        eachDependency {
+            if (requested.group == "com.example" && requested.name == "old-library") {
+                useTarget("com.example:new-library:1.0.0")
+                because("Our license only allows use of version 1")
+            }
+        }
+    }
+}
+// end::resolve-rules[]
+
 // tag::custom-versioning-scheme[]
-configurations.all {
+configurations.configureEach {
     resolutionStrategy.eachDependency {
         if (requested.version == "default") {
             val version = findDefaultVersionInCatalog(requested.group, requested.name)
@@ -18,7 +31,7 @@ fun findDefaultVersionInCatalog(group: String, name: String): DefaultVersion {
 // end::custom-versioning-scheme[]
 
 // tag::denying_version[]
-configurations.all {
+configurations.configureEach {
     resolutionStrategy.eachDependency {
         if (requested.group == "org.software" && requested.name == "some-library" && requested.version == "1.2") {
             useVersion("1.2.1")
@@ -29,10 +42,10 @@ configurations.all {
 // end::denying_version[]
 
 // tag::module_substitution[]
-configurations.all {
+configurations.configureEach {
     resolutionStrategy.eachDependency {
         if (requested.name == "groovy-all") {
-            useTarget(mapOf("group" to requested.group, "name" to "groovy", "version" to requested.version))
+            useTarget("${requested.group}:groovy:${requested.version}")
             because("""prefer "groovy" over "groovy-all"""")
         }
         if (requested.name == "log4j") {

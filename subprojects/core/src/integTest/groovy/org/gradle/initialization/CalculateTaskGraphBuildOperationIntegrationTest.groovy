@@ -24,8 +24,6 @@ import org.gradle.internal.operations.trace.BuildOperationRecord
 import org.gradle.internal.taskgraph.CalculateTaskGraphBuildOperationType
 import org.gradle.internal.taskgraph.CalculateTreeTaskGraphBuildOperationType
 
-import static org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache.Skip.INVESTIGATE
-
 class CalculateTaskGraphBuildOperationIntegrationTest extends AbstractIntegrationSpec {
 
     final buildOperations = new BuildOperationsFixture(executer, temporaryFolder)
@@ -33,7 +31,7 @@ class CalculateTaskGraphBuildOperationIntegrationTest extends AbstractIntegratio
     @SuppressWarnings("GroovyUnusedDeclaration")
     final operationNotificationsFixture = new BuildOperationNotificationsFixture(executer, temporaryFolder)
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeFixedForConfigurationCache(because = "Emits extra TaskGraph build operations when loading after store")
     def "requested and filtered tasks are exposed"() {
         createDirs("a", "b", "a/c")
         settingsFile << """
@@ -85,7 +83,7 @@ class CalculateTaskGraphBuildOperationIntegrationTest extends AbstractIntegratio
         operation().result.excludedTaskPaths == []
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeFixedForConfigurationCache(because = "Emits extra TaskGraph build operations when loading after store")
     def "task plan is exposed"() {
         createDirs("a", "b", "a/c")
         settingsFile << """
@@ -116,7 +114,7 @@ class CalculateTaskGraphBuildOperationIntegrationTest extends AbstractIntegratio
         operation().failure.contains("Task 'someNonexistent' not found in root project")
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeFixedForConfigurationCache(because = "Emits extra TaskGraph build operations when loading after store")
     def "build path for calculated task graph is exposed"() {
         createDirs("b")
         settingsFile << """
@@ -155,7 +153,7 @@ class CalculateTaskGraphBuildOperationIntegrationTest extends AbstractIntegratio
         taskGraphCalculations[2].result.requestedTaskPaths == [":compileJava", ":jar"]
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeFixedForConfigurationCache(because = "Emits extra TaskGraph build operations when loading after store")
     def "exposes task plan details"() {
         file("included-build").mkdir()
         file("included-build/settings.gradle")
@@ -205,8 +203,8 @@ class CalculateTaskGraphBuildOperationIntegrationTest extends AbstractIntegratio
         with(operations[0].result.taskPlan) {
             task.taskPath == [":compileJava", ":processResources", ":classes", ":independentTask", ":anotherTask", ":otherTask", ":someTask", ":lastTask"]
             task.buildPath == [":", ":", ":", ":", ":", ":", ":", ":"]
-            dependencies.taskPath.collect { it.sort() } == [[":compileJava"], [], [":compileJava", ":processResources"], [], [], [], [":anotherTask", ":otherTask"], []]
-            dependencies.buildPath == [[":included-build"], [], [":", ":"], [], [], [], [":", ":"], []]
+            nodeDependencies.taskPath.collect { it.sort() } == [[":compileJava"], [], [":compileJava", ":processResources"], [], [], [], [":anotherTask", ":otherTask"], []]
+            nodeDependencies.buildPath == [[":included-build"], [], [":", ":"], [], [], [], [":", ":"], []]
             finalizedBy.taskPath == [[], [], [], [], [], [], [":lastTask"], []]
             mustRunAfter.taskPath == [[], [], [], [], [], [], [":firstTask"], []]
             shouldRunAfter.taskPath == [[], [], [], [], [], [], [":secondTask"], []]
@@ -217,7 +215,7 @@ class CalculateTaskGraphBuildOperationIntegrationTest extends AbstractIntegratio
         }
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeFixedForConfigurationCache(because = "Emits extra TaskGraph build operations when loading after store")
     def "exposes plan details with nested artifact transforms"() {
         file('producer/src/main/java/artifact/transform/sample/producer/Producer.java') << """
             package artifact.transform.sample.producer;
@@ -325,7 +323,7 @@ class CalculateTaskGraphBuildOperationIntegrationTest extends AbstractIntegratio
         then:
         with(operations()[0].result.taskPlan) {
             task.taskPath == [":producer:compileJava", ":producer:processResources", ":producer:classes", ":producer:jar", ":compileJava", ":processResources", ":classes", ":jar", ":startScripts", ":distZip"]
-            dependencies.taskPath.collect { it.sort() } == [[], [], [":producer:compileJava", ":producer:processResources"], [":producer:classes", ":producer:compileJava"], [":producer:compileJava"], [], [":compileJava", ":processResources"], [":classes", ":compileJava"], [":jar", ":producer:jar"], [":jar", ":producer:jar", ":startScripts"]]
+            nodeDependencies.taskPath.collect { it.sort() } == [[], [], [":producer:compileJava", ":producer:processResources"], [":producer:classes", ":producer:compileJava"], [":producer:compileJava"], [], [":compileJava", ":processResources"], [":classes", ":compileJava"], [":jar", ":producer:jar"], [":jar", ":producer:jar", ":startScripts"]]
         }
     }
 

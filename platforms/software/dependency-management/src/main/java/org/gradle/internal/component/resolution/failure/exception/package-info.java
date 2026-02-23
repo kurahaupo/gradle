@@ -18,7 +18,7 @@
  * Exceptions thrown when variant selection fails.
  *
  * The hierarchy of exceptions here should be kept small, and in sync with the 2
- * main branches of the {@link org.gradle.internal.component.resolution.failure.type.ResolutionFailure ResolutionFailure}
+ * main branches of the {@link org.gradle.internal.component.resolution.failure.interfaces.ResolutionFailure ResolutionFailure}
  * hierarchy, which represent a failure to select a variant of a component, and a failure to select
  * a configuration by name.
  *
@@ -26,5 +26,7 @@
  * similar to graph selection failures, and the type of failure is more important that the type of
  * resolution being performed in this hierarchy.
  */
-@org.gradle.api.NonNullApi
+@NullMarked
 package org.gradle.internal.component.resolution.failure.exception;
+
+import org.jspecify.annotations.NullMarked;

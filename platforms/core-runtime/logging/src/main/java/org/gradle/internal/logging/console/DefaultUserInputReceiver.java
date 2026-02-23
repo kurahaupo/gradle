@@ -17,14 +17,13 @@
 package org.gradle.internal.logging.console;
 
 import com.google.common.base.CharMatcher;
-import org.apache.commons.lang.StringUtils;
-import org.gradle.internal.Either;
+import org.apache.commons.lang3.StringUtils;
 import org.gradle.internal.logging.events.OutputEventListener;
 import org.gradle.internal.logging.events.PromptOutputEvent;
 import org.gradle.internal.logging.events.ReadStdInEvent;
 import org.gradle.internal.logging.events.UserInputValidationProblemEvent;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class DefaultUserInputReceiver implements GlobalUserInputReceiver {
@@ -47,14 +46,14 @@ public class DefaultUserInputReceiver implements GlobalUserInputReceiver {
             @Nullable
             @Override
             public String normalize(String text) {
-                Either<?, String> result = event.convert(CharMatcher.javaIsoControl().removeFrom(StringUtils.trim(text)));
-                if (result.getRight().isPresent()) {
+                PromptOutputEvent.PromptResult<?> result = event.convert(CharMatcher.javaIsoControl().removeFrom(StringUtils.trim(text)));
+                if (result.newPrompt != null) {
                     // Need to prompt the user again
-                    console.onOutput(new UserInputValidationProblemEvent(event.getTimestamp(), result.getRight().get()));
+                    console.onOutput(new UserInputValidationProblemEvent(event.getTimestamp(), result.newPrompt));
                     return null;
                 } else {
                     // Send result
-                    return result.getLeft().get().toString();
+                    return result.response.toString();
                 }
             }
         });

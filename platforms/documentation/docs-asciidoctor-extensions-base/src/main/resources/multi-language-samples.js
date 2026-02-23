@@ -5,7 +5,7 @@ function postProcessCodeBlocks() {
   //  3) There is exactly 1 small set of languages to choose from. This does not allow for multiple language preferences. For example, users cannot prefer both Kotlin and ZSH.
   //  4) Only 1 sample of each language can exist in the same collection.
 
-  var GRADLE_DSLs = ["groovy", "kotlin"];
+  var GRADLE_DSLs = ["kotlin", "groovy"];
   var preferredBuildScriptLanguage = initPreferredBuildScriptLanguage();
 
   // Ensure preferred DSL is valid, defaulting to Kotlin DSL
@@ -131,6 +131,16 @@ function postProcessCodeBlocks() {
           el.classList.remove("hidden");
         }
       });
+
+    // Update all download links for selected language
+    document.querySelectorAll("a.download-project-link").forEach(link => {
+      const basePath = link.getAttribute("data-base-path");
+      if (basePath && languageId) {
+        const normalizedBase = basePath.endsWith("/") ? basePath : basePath + "/";
+        const fullUrl = "https://download-directory.github.io/?url=" + encodeURIComponent(normalizedBase + languageId);
+        link.setAttribute("href", fullUrl);
+      }
+    });
   }
 
   switchSampleLanguage(preferredBuildScriptLanguage);

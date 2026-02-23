@@ -26,7 +26,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "rule can mutate a managed type with a #type of scalar read-only property"() {
         given:
-        buildScript """
+        buildFile """
 
         @Managed
         interface Container {
@@ -62,7 +62,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "rule can mutate a managed type with a #type of scalar read-write property"() {
         given:
-        buildScript """
+        buildFile """
 
         @Managed
         interface Container {
@@ -104,7 +104,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "rule can nullify a managed type with a #type of scalar read-write property"() {
         given:
-        buildScript """
+        buildFile """
 
         @Managed
         interface Container {
@@ -145,7 +145,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "rule can overwrite value of a managed type with a #type of scalar read-write property"() {
         given:
-        buildScript """
+        buildFile """
 
         @Managed
         interface Container {
@@ -188,7 +188,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "rule can nullify and set value of a managed type #type in the same mutation block"() {
         given:
-        buildScript """
+        buildFile """
 
         @Managed
         interface Container {
@@ -230,7 +230,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "rule cannot mutate a managed type with a #type of scalar property when a rule input"() {
         when:
-        buildScript """
+        buildFile """
 
         @Managed
         interface Container {
@@ -267,7 +267,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "cannot mutate #type subject of a validation rule"() {
         when:
-        buildScript """
+        buildFile """
 
         @Managed
         interface Container {
@@ -303,7 +303,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "rule cannot mutate rule input even using iterator on #type"() {
         when:
-        buildScript """
+        buildFile """
 
         @Managed
         interface Container {
@@ -343,7 +343,9 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
 
     def "reports problem when managed type declares a #type of managed type"() {
         when:
-        buildScript """
+        buildFile """
+        apply plugin: 'model-reporting-tasks'
+
         @Managed
         interface Thing { }
 
@@ -361,7 +363,7 @@ class ManagedScalarCollectionsIntegrationTest extends AbstractIntegrationSpec {
         fails 'model'
 
         and:
-        failure.assertHasCause "Exception thrown while executing model rule: container(Container) @ build.gradle line 11, column 13"
+        failure.assertHasCause "Exception thrown while executing model rule: container(Container) @ build.gradle line 13, column 13"
         failure.assertHasCause("""A model element of type: 'Container' can not be constructed.
 Its property 'java.util.$type<Thing> items' is not a valid scalar collection
 A scalar collection can not contain 'Thing's
@@ -373,7 +375,9 @@ A valid scalar collection takes the form of List<T> or Set<T> where 'T' is one o
 
     def "reports problem when managed type declares a #type of subtype of scalar type"() {
         when:
-        buildScript """
+        buildFile """
+        apply plugin: 'model-reporting-tasks'
+
         class Thing extends File {
             Thing(String s) { super(s) }
         }
@@ -392,7 +396,7 @@ A valid scalar collection takes the form of List<T> or Set<T> where 'T' is one o
         fails 'model'
 
         and:
-        failure.assertHasCause "Exception thrown while executing model rule: container(Container) @ build.gradle line 12, column 13"
+        failure.assertHasCause "Exception thrown while executing model rule: container(Container) @ build.gradle line 14, column 13"
         failure.assertHasCause("""A model element of type: 'Container' can not be constructed.
 Its property 'java.util.$type<Thing> items' is not a valid scalar collection
 A scalar collection can not contain 'Thing's

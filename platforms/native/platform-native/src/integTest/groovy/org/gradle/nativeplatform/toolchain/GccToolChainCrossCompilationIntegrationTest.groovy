@@ -16,7 +16,6 @@
 
 package org.gradle.nativeplatform.toolchain
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
@@ -32,10 +31,10 @@ class GccToolChainCrossCompilationIntegrationTest extends AbstractInstalledToolC
         buildFile << """
 apply plugin: 'c'
 
-model {
     toolChains {
         ${toolChain.buildScriptConfig}
     }
+model {
     components {
         main(NativeExecutableSpec) {
             binaries.all {
@@ -51,7 +50,6 @@ model {
         helloWorldApp.library.writeSources(file("src/hello"))
     }
 
-    @ToBeFixedForConfigurationCache
     def "uses naming scheme of target platform when cross-compiling"() {
         // TODO - use linux as the target when running on windows
         buildFile << """

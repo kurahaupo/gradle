@@ -18,7 +18,7 @@ package gradlebuild.binarycompatibility
 
 import com.google.gson.Gson
 import org.gradle.testkit.runner.TaskOutcome
-import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 
@@ -26,7 +26,7 @@ class SortAcceptedApiChangesTaskIntegrationTest : AbstractAcceptedApiChangesMain
     @Test
     fun `verify misordered changes can be sorted`() {
         //language=JSON
-        acceptedApiChangesFile.writeText(
+        firstAcceptedApiChangesFile.writeText(
             """
                 {
                     "acceptedApiChanges": [
@@ -83,16 +83,43 @@ class SortAcceptedApiChangesTaskIntegrationTest : AbstractAcceptedApiChangesMain
             """.trimIndent()
         )
 
+        //language=JSON
+        secondAcceptedApiChangesFile.writeText(
+            """
+                {
+                    "acceptedApiChanges": [
+                        {
+                            "type": "org.gradle.api.tasks.testing.Test",
+                            "member": "Method org.gradle.api.tasks.testing.Test.setOutputDir(java.io.File)",
+                            "acceptation": "Deprecated method removed",
+                            "changes": [
+                                "Method has been removed"
+                            ]
+                        },
+                        {
+                            "type": "org.gradle.api.tasks.compile.JavaCompile",
+                            "member": "Method org.gradle.api.tasks.compile.JavaCompile.getSources()",
+                            "acceptation": "Deprecated method removed",
+                            "changes": [
+                                "Method has been removed"
+                            ]
+                        }
+                    ]
+                }
+            """.trimIndent()
+        )
+
         val initialVerifyResult = run(":verifyAcceptedApiChangesOrdering").buildAndFail()
-        Assertions.assertEquals(TaskOutcome.FAILED, initialVerifyResult.task(":verifyAcceptedApiChangesOrdering")!!.outcome)
+        assertEquals(TaskOutcome.FAILED, initialVerifyResult.task(":verifyAcceptedApiChangesOrdering")!!.outcome)
 
         val sortingResult = run(":sortAcceptedApiChanges").build()
-        Assertions.assertEquals(TaskOutcome.SUCCESS, sortingResult.task(":sortAcceptedApiChanges")!!.outcome)
+        assertEquals(TaskOutcome.SUCCESS, sortingResult.task(":sortAcceptedApiChanges")!!.outcome)
 
         val finalVerifyResult = run(":verifyAcceptedApiChangesOrdering").build()
-        Assertions.assertEquals(TaskOutcome.SUCCESS, finalVerifyResult.task(":verifyAcceptedApiChangesOrdering")!!.outcome)
+        assertEquals(TaskOutcome.SUCCESS, finalVerifyResult.task(":verifyAcceptedApiChangesOrdering")!!.outcome)
 
-        val expectedJson = loadChangesJson(
+        //language=JSON
+        val expectedFirstJson = loadChangesJson(
             """
                 {
                     "acceptedApiChanges": [
@@ -147,9 +174,35 @@ class SortAcceptedApiChangesTaskIntegrationTest : AbstractAcceptedApiChangesMain
                     ]
                 }
             """)
-        val actualJson = loadChangesJson(acceptedApiChangesFile.readText())
+        //language=JSON
+        val expectedSecondJson = loadChangesJson(
+            """
+                {
+                    "acceptedApiChanges": [
+                        {
+                            "type": "org.gradle.api.tasks.compile.JavaCompile",
+                            "member": "Method org.gradle.api.tasks.compile.JavaCompile.getSources()",
+                            "acceptation": "Deprecated method removed",
+                            "changes": [
+                                "Method has been removed"
+                            ]
+                        },
+                        {
+                            "type": "org.gradle.api.tasks.testing.Test",
+                            "member": "Method org.gradle.api.tasks.testing.Test.setOutputDir(java.io.File)",
+                            "acceptation": "Deprecated method removed",
+                            "changes": [
+                                "Method has been removed"
+                            ]
+                        }
+                    ]
+                }
+            """)
+        val actualFirstJson = loadChangesJson(firstAcceptedApiChangesFile.readText())
+        val actualSecondJson = loadChangesJson(secondAcceptedApiChangesFile.readText())
 
-        Assertions.assertEquals(expectedJson, actualJson)
+        assertEquals(expectedFirstJson, actualFirstJson)
+        assertEquals(expectedSecondJson, actualSecondJson)
     }
 
     private

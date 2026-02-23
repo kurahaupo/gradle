@@ -17,7 +17,6 @@
 package org.gradle.kotlin.dsl.support
 
 import org.gradle.api.Action
-import org.gradle.internal.scripts.GradleScript
 import org.gradle.api.PathValidation
 import org.gradle.api.Project
 import org.gradle.api.file.ConfigurableFileCollection
@@ -26,7 +25,6 @@ import org.gradle.api.file.CopySpec
 import org.gradle.api.file.DeleteSpec
 import org.gradle.api.file.FileTree
 import org.gradle.api.initialization.Settings
-import org.gradle.api.internal.ProcessOperations
 import org.gradle.api.internal.file.FileOperations
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.invocation.Gradle
@@ -35,11 +33,8 @@ import org.gradle.api.logging.Logging
 import org.gradle.api.logging.LoggingManager
 import org.gradle.api.resources.ResourceHandler
 import org.gradle.api.tasks.WorkResult
+import org.gradle.internal.scripts.GradleScript
 import org.gradle.kotlin.dsl.*
-import org.gradle.process.ExecResult
-import org.gradle.process.ExecSpec
-import org.gradle.process.JavaExecSpec
-
 import java.io.File
 import java.net.URI
 
@@ -57,7 +52,6 @@ open class DefaultKotlinScript internal constructor(
         fun getLogger(): Logger
         fun getLogging(): LoggingManager
         fun getFileOperations(): FileOperations
-        fun getProcessOperations(): ProcessOperations
     }
 
     override val logging: LoggingManager by unsafeLazy(host::getLogging)
@@ -121,17 +115,8 @@ open class DefaultKotlinScript internal constructor(
     override fun delete(configuration: Action<DeleteSpec>): WorkResult =
         fileOperations.delete(configuration)
 
-    override fun exec(configuration: Action<ExecSpec>): ExecResult =
-        processOperations.exec(configuration)
-
-    override fun javaexec(configuration: Action<JavaExecSpec>): ExecResult =
-        processOperations.javaexec(configuration)
-
     private
     val fileOperations by unsafeLazy(host::getFileOperations)
-
-    private
-    val processOperations by unsafeLazy(host::getProcessOperations)
 }
 
 
@@ -145,7 +130,6 @@ class ProjectScriptHost(val project: Project) : DefaultKotlinScript.Host {
     override fun getLogger(): Logger = project.logger
     override fun getLogging(): LoggingManager = project.logging
     override fun getFileOperations(): FileOperations = projectInternal().fileOperations
-    override fun getProcessOperations(): ProcessOperations = projectInternal().processOperations
     fun projectInternal() = (project as ProjectInternal)
 }
 
@@ -160,7 +144,6 @@ class SettingsScriptHost(val settings: Settings) : DefaultKotlinScript.Host {
     override fun getLogger(): Logger = Logging.getLogger(Settings::class.java)
     override fun getLogging(): LoggingManager = settings.serviceOf()
     override fun getFileOperations(): FileOperations = fileOperationsFor(settings)
-    override fun getProcessOperations(): ProcessOperations = settings.serviceOf()
 }
 
 
@@ -174,5 +157,4 @@ class GradleScriptHost(val gradle: Gradle) : DefaultKotlinScript.Host {
     override fun getLogger(): Logger = Logging.getLogger(Gradle::class.java)
     override fun getLogging(): LoggingManager = gradle.serviceOf()
     override fun getFileOperations(): FileOperations = fileOperationsFor(gradle, null)
-    override fun getProcessOperations(): ProcessOperations = gradle.serviceOf()
 }

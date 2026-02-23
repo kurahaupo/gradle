@@ -32,6 +32,7 @@ import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.bundling.Jar;
 import org.gradle.internal.execution.OutputChangeListener;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 import org.gradle.plugins.ear.descriptor.DeploymentDescriptor;
 import org.gradle.plugins.ear.descriptor.EarModule;
 import org.gradle.plugins.ear.descriptor.internal.DefaultDeploymentDescriptor;
@@ -40,11 +41,12 @@ import org.gradle.plugins.ear.descriptor.internal.DefaultEarWebModule;
 import org.gradle.util.internal.ConfigureUtil;
 import org.gradle.util.internal.GUtil;
 import org.gradle.work.DisableCachingByDefault;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.io.OutputStreamWriter;
+import java.util.Locale;
 
 import static java.util.Collections.singleton;
 import static org.gradle.api.internal.lambdas.SerializableLambdas.action;
@@ -64,6 +66,7 @@ public abstract class Ear extends Jar {
     private CopySpec lib;
     private final DirectoryProperty appDir;
 
+    @SuppressWarnings("DefaultCharset") //TODO: evaluate errorprone suppression (https://github.com/gradle/gradle/issues/35864)
     public Ear() {
         getArchiveExtension().set(EAR_EXTENSION);
         setMetadataCharset("UTF-8");
@@ -133,7 +136,7 @@ public abstract class Ear extends Jar {
         // since we might generate the deployment descriptor, record each top-level module
         if (deploymentDescriptor != null && details.getPath().lastIndexOf("/") <= 0) {
             EarModule module;
-            if (details.getPath().toLowerCase().endsWith(".war")) {
+            if (details.getPath().toLowerCase(Locale.ROOT).endsWith(".war")) {
                 module = new DefaultEarWebModule(details.getPath(), details.getPath().substring(0, details.getPath().lastIndexOf(".")));
             } else {
                 module = new DefaultEarModule(details.getPath());
@@ -153,11 +156,9 @@ public abstract class Ear extends Jar {
         }
     }
 
-    @Inject
     @Override
-    protected ObjectFactory getObjectFactory() {
-        throw new UnsupportedOperationException();
-    }
+    @Inject
+    protected abstract ObjectFactory getObjectFactory();
 
     /**
      * Configures the deployment descriptor for this EAR archive.
@@ -197,6 +198,7 @@ public abstract class Ear extends Jar {
      * A location for dependency libraries to include in the 'lib' directory of the EAR archive.
      */
     @Internal
+    @ToBeReplacedByLazyProperty(comment = "Should this be lazy?")
     public CopySpec getLib() {
         return ((CopySpecInternal) lib).addChild();
     }
@@ -234,6 +236,7 @@ public abstract class Ear extends Jar {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getLibDirName() {
         return libDirName;
     }
@@ -256,6 +259,7 @@ public abstract class Ear extends Jar {
      * The deployment descriptor configuration.
      */
     @Internal
+    @ToBeReplacedByLazyProperty
     public DeploymentDescriptor getDeploymentDescriptor() {
         return deploymentDescriptor;
     }

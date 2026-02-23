@@ -27,12 +27,12 @@ import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
 import org.gradle.integtests.fixtures.versions.AndroidGradlePluginVersions
 import org.gradle.integtests.fixtures.versions.KotlinGradlePluginVersions
+import org.gradle.integtests.fixtures.versions.SmokeTestedPluginVersions
 import org.gradle.internal.featurelifecycle.LoggingDeprecatedFeatureHandler
 import org.gradle.test.fixtures.dsl.GradleDsl
 import org.gradle.test.fixtures.file.TestFile
-import org.gradle.testkit.runner.GradleRunner
-import org.gradle.testkit.runner.internal.DefaultGradleRunner
 import org.gradle.util.internal.TextUtil
+import org.gradle.util.internal.VersionNumber
 import spock.lang.Specification
 import spock.lang.TempDir
 
@@ -47,157 +47,69 @@ abstract class AbstractSmokeTest extends Specification {
 
     protected static final KotlinGradlePluginVersions KOTLIN_VERSIONS = new KotlinGradlePluginVersions()
 
+    protected static final SmokeTestedPluginVersions SMOKE_TESTED_PLUGINS = new SmokeTestedPluginVersions()
+
     static class TestedVersions {
-        /**
-         * May also need to update
-         * @see BuildScanPluginSmokeTest
-         */
-
-        // https://plugins.gradle.org/plugin/biz.aQute.bnd
-        static bnd = "7.0.0"
-
-        // https://plugins.gradle.org/plugin/com.netflix.nebula.dependency-recommender
-        static nebulaDependencyRecommender = "12.4.0"
-
-        // https://plugins.gradle.org/plugin/com.netflix.nebula.plugin-plugin
-        static nebulaPluginPlugin = "20.11.0"
-
-        // https://plugins.gradle.org/plugin/com.netflix.nebula.lint
-        static nebulaLint = "19.0.1"
-
-        // https://plugins.gradle.org/plugin/org.jetbrains.gradle.plugin.idea-ext
-        static ideaExt = "1.1.8"
-
-        // https://plugins.gradle.org/plugin/com.netflix.nebula.dependency-lock
-        static nebulaDependencyLock = Versions.of("15.1.0")
-
-        // https://plugins.gradle.org/plugin/com.netflix.nebula.resolution-rules
-        static nebulaResolutionRules = "11.2.0"
-
-        // https://plugins.gradle.org/plugin/com.github.johnrengelman.shadow
-        static shadow = "8.1.1"
-
-        // https://plugins.gradle.org/plugin/io.github.goooler.shadow
-        static shadowFork = "8.1.7"
-
-        // https://github.com/asciidoctor/asciidoctor-gradle-plugin/tags
-        static asciidoctor = Versions.of("3.3.2", "4.0.2")
-
-        // https://plugins.gradle.org/plugin/com.github.spotbugs
-        static spotbugs = "6.0.10"
-
-        // https://plugins.gradle.org/plugin/com.bmuschko.docker-java-application
-        static docker = "9.4.0"
-
-        // https://plugins.gradle.org/plugin/io.spring.dependency-management
-        static springDependencyManagement = "1.1.4"
-
-        // https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-gradle-plugin
-        static springBoot = "3.2.4"
-
-        // https://developer.android.com/studio/releases/build-tools
-        static androidTools = "34.0.0"
-
         // https://developer.android.com/studio/releases/gradle-plugin
         // Update by running `./gradlew updateAgpVersions`
         static androidGradle = Versions.of(*AGP_VERSIONS.latestsPlusNightly)
+        static androidGradle9AndAbove = Versions.of(*AGP_VERSIONS.latests.findAll { v ->
+            VersionNumber.parse(v).major >= 9
+        })
+        static androidGradleBefore9 = Versions.of(*AGP_VERSIONS.latests.findAll { v ->
+            VersionNumber.parse(v).baseVersion < AndroidGradlePluginVersions.AGP_9_0
+        }.tap { versions ->
+            // This assertion will fail when we stop testing AGP 8.x
+            // It is time to remove the tests that reference this
+            // And to remove androidGradle9AndAbove in favor of simply androidGradle
+            assert !versions.isEmpty()
+        })
 
         // https://search.maven.org/search?q=g:org.jetbrains.kotlin%20AND%20a:kotlin-project&core=gav
         // Update by running `./gradlew updateKotlinVersions`
         static kotlin = Versions.of(*KOTLIN_VERSIONS.latests)
 
-        // https://plugins.gradle.org/plugin/org.gretty
+        // Update by running `./gradlew updateSmokeTestedPluginVersions`
+        static bnd = SMOKE_TESTED_PLUGINS.get("biz.aQute.bnd")
+        static nebulaDependencyRecommender = SMOKE_TESTED_PLUGINS.get("com.netflix.nebula.dependency-recommender")
+        static nebulaPluginPlugin = SMOKE_TESTED_PLUGINS.get("com.netflix.nebula.plugin-plugin")
+        static nebulaLint = SMOKE_TESTED_PLUGINS.get("com.netflix.nebula.lint")
+        static ideaExt = SMOKE_TESTED_PLUGINS.get("org.jetbrains.gradle.plugin.idea-ext")
+        static nebulaDependencyLock = SMOKE_TESTED_PLUGINS.get("com.netflix.nebula.dependency-lock")
+        static nebulaResolutionRules = SMOKE_TESTED_PLUGINS.get("com.netflix.nebula.resolution-rules")
+        static shadow = SMOKE_TESTED_PLUGINS.get("com.gradleup.shadow")
+        static asciidoctor = SMOKE_TESTED_PLUGINS.get("org.asciidoctor.jvm.convert")
+        static spotbugs = SMOKE_TESTED_PLUGINS.get("com.github.spotbugs")
+        static docker = SMOKE_TESTED_PLUGINS.get("com.bmuschko.docker-java-application")
+        static springDependencyManagement = SMOKE_TESTED_PLUGINS.get("io.spring.dependency-management")
+        static springBoot = SMOKE_TESTED_PLUGINS.get("org.springframework.boot")
         static gretty = [
-            [version: "3.1.2", servletContainer: "jetty9.4", javaMinVersion: JavaVersion.VERSION_1_8, javaMaxVersion: JavaVersion.VERSION_20],
-            [version: "4.1.3", servletContainer: "jetty11", javaMinVersion: JavaVersion.VERSION_11]
+            [version: SMOKE_TESTED_PLUGINS.get("org.gretty"), servletContainer: "jetty12", javaMinVersion: JavaVersion.VERSION_17]
         ]
-
-        // https://plugins.gradle.org/plugin/org.ajoberstar.grgit
-        static grgit = "4.1.1"
-
-        // https://plugins.gradle.org/plugin/com.github.ben-manes.versions
-        static gradleVersions = "0.51.0"
-
-        // https://plugins.gradle.org/plugin/org.gradle.playframework
-        static playframework = "0.13" // Can't upgrade to 0.14 as it breaks CC compat - see https://github.com/gradle/playframework/issues/184
-
-        // https://plugins.gradle.org/plugin/net.ltgt.errorprone
-        static errorProne = "3.1.0"
-
-        // https://plugins.gradle.org/plugin/com.google.protobuf
-        static protobufPlugin = "0.9.4"
-
-        // https://central.sonatype.com/artifact/com.google.protobuf/protobuf-java/versions
-        static protobufTools = "4.26.1"
-
-        // https://plugins.gradle.org/plugin/org.gradle.test-retry
-        static testRetryPlugin = "1.5.8"
-
-        // https://plugins.gradle.org/plugin/io.freefair.aspectj
-        static aspectj = "8.6"
-
-        // https://plugins.gradle.org/plugin/de.undercouch.download
-        static undercouchDownload = Versions.of("5.6.0")
-
-        // https://github.com/micronaut-projects/micronaut-gradle-plugin/releases
-        static micronaut = "4.3.6"
-
-        // https://plugins.gradle.org/plugin/com.gorylenko.gradle-git-properties
-        static gradleGitProperties = Versions.of("2.4.1")
-
-        // https://plugins.gradle.org/plugin/org.flywaydb.flyway
-        static flyway = Versions.of("10.11.0")
-
-        // https://plugins.gradle.org/plugin/net.ltgt.apt
-        static apt = Versions.of("0.21")
-
-        // https://plugins.gradle.org/plugin/io.gitlab.arturbosch.detekt
-        static detekt = Versions.of("1.23.6")
-
-        // https://plugins.gradle.org/plugin/com.diffplug.spotless
-        static spotless = Versions.of("6.25.0")
-
-        // https://plugins.gradle.org/plugin/com.google.cloud.tools.jib
-        static jib = Versions.of("3.4.2")
-
-        // https://plugins.gradle.org/plugin/io.freefair.lombok
-        static lombok = Versions.of("8.6")
-
-        // https://plugins.gradle.org/plugin/com.moowork.node
-        static node = Versions.of("1.3.1")
-
-        // https://plugins.gradle.org/plugin/com.github.node-gradle.node
-        static newNode = Versions.of("7.0.2")
-
-        // https://plugins.gradle.org/plugin/org.jlleitschuh.gradle.ktlint
-        static ktlint = Versions.of("12.1.0")
-
-        // https://plugins.gradle.org/plugin/org.jlleitschuh.gradle.ktlint-idea
-        static ktlintIdea = Versions.of("11.6.1")
-
-        // https://github.com/davidmc24/gradle-avro-plugin/releases
-        static avro = Versions.of("1.9.1")
-
-        // https://plugins.gradle.org/plugin/io.spring.nohttp
-        static nohttp = Versions.of("0.0.11")
-
-        // https://plugins.gradle.org/plugin/org.jenkins-ci.jpi
-        static jenkinsJpi = Versions.of("0.50.0")
-
-        // https://mvnrepository.com/artifact/com.guardsquare/proguard-gradle
-        static proguardGradle = "7.4.2"
-
-        // https://plugins.gradle.org/plugin/com.palantir.consistent-versions
-        static palantirConsistentVersions = "2.22.0"
-
-        // https://github.com/etiennestuder/teamcity-build-scan-plugin/releases
-        static teamCityGradlePluginRef = "v0.35"
-
-        // https://github.com/jenkinsci/gradle-plugin/releases
-        static jenkinsGradlePluginRef = "gradle-2.10"
-
-        // https://github.com/gradle/gradle-enterprise-bamboo-plugin/releases
-        static bambooGradlePluginRef = "gradle-enterprise-bamboo-plugin-1.2.0"
+        static gradleVersions = SMOKE_TESTED_PLUGINS.get("com.github.ben-manes.versions")
+        static playframework = SMOKE_TESTED_PLUGINS.get("org.gradle.playframework")
+        static errorProne = SMOKE_TESTED_PLUGINS.get("net.ltgt.errorprone")
+        static protobufPlugin = SMOKE_TESTED_PLUGINS.get("com.google.protobuf")
+        static testRetryPlugin = SMOKE_TESTED_PLUGINS.get("org.gradle.test-retry")
+        static aspectj = SMOKE_TESTED_PLUGINS.get("io.freefair.aspectj")
+        static undercouchDownload = SMOKE_TESTED_PLUGINS.get("de.undercouch.download")
+        static micronaut = SMOKE_TESTED_PLUGINS.get("io.micronaut.application")
+        static gradleGitProperties = SMOKE_TESTED_PLUGINS.get("com.gorylenko.gradle-git-properties")
+        static flyway = SMOKE_TESTED_PLUGINS.get("org.flywaydb.flyway")
+        static detekt = SMOKE_TESTED_PLUGINS.get("io.gitlab.arturbosch.detekt")
+        static spotless = SMOKE_TESTED_PLUGINS.get("com.diffplug.spotless")
+        static jib = SMOKE_TESTED_PLUGINS.get("com.google.cloud.tools.jib")
+        static lombok = SMOKE_TESTED_PLUGINS.get("io.freefair.lombok")
+        static node = SMOKE_TESTED_PLUGINS.get("com.moowork.node")
+        static newNode = SMOKE_TESTED_PLUGINS.get("com.github.node-gradle.node")
+        static ktlint = SMOKE_TESTED_PLUGINS.get("org.jlleitschuh.gradle.ktlint")
+        static ktlintIdea = SMOKE_TESTED_PLUGINS.get("org.jlleitschuh.gradle.ktlint-idea")
+        static avro = SMOKE_TESTED_PLUGINS.get("com.github.davidmc24.gradle.plugin.avro")
+        static nohttp = SMOKE_TESTED_PLUGINS.get("io.spring.nohttp")
+        static jenkinsJpi = SMOKE_TESTED_PLUGINS.get("org.jenkins-ci.jpi")
+        static paparazzi = SMOKE_TESTED_PLUGINS.get("app.cash.paparazzi")
+        static palantirConsistentVersions = SMOKE_TESTED_PLUGINS.get("com.palantir.consistent-versions")
+        static vanniktechMavenPublish = SMOKE_TESTED_PLUGINS.get("com.vanniktech.maven.publish")
     }
 
     static class Versions implements Iterable<String> {
@@ -248,17 +160,20 @@ abstract class AbstractSmokeTest extends Specification {
     }
 
     SmokeTestGradleRunner runner(String... tasks) {
-        def gradleRunner = GradleRunner.create()
-            .withGradleInstallation(IntegrationTestBuildContext.INSTANCE.gradleHomeDir)
-            .withTestKitDir(IntegrationTestBuildContext.INSTANCE.gradleUserHomeDir)
-            .withProjectDir(testProjectDir)
-            .forwardOutput()
-            .withArguments(
-                tasks.toList() + outputParameters() + repoMirrorParameters() + configurationCacheParameters() + toolchainParameters() + kotlinDslParameters()
-            ) as DefaultGradleRunner
-        gradleRunner.withJvmArguments(["-Xmx8g", "-XX:MaxMetaspaceSize=1024m", "-XX:+HeapDumpOnOutOfMemoryError"])
-        return new SmokeTestGradleRunner(gradleRunner)
-            .withBuildOperationTracing(file("operations").absolutePath)
+        def args = tasks.toList() +
+            outputParameters() +
+            repoMirrorParameters() +
+            configurationCacheParameters() +
+            toolchainParameters()
+
+        def jvmArgs = ["-Xmx8g", "-XX:MaxMetaspaceSize=1024m", "-XX:+HeapDumpOnOutOfMemoryError"]
+
+        return new SmokeTestGradleRunner(
+            IntegrationTestBuildContext.INSTANCE,
+            args,
+            jvmArgs,
+            testProjectDir
+        )
     }
 
     private List<String> configurationCacheParameters() {
@@ -284,27 +199,23 @@ abstract class AbstractSmokeTest extends Specification {
     }
 
     private static List<String> repoMirrorParameters() {
-        String mirrorInitScriptPath = createMirrorInitScript().absolutePath
-        return [
-            '--init-script', mirrorInitScriptPath,
-            "-D${PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}=${gradlePluginRepositoryMirrorUrl()}" as String,
-            "-D${INIT_SCRIPT_LOCATION}=${mirrorInitScriptPath}" as String,
-        ]
+        if (RepoScriptBlockUtil.isMirrorEnabled()) {
+            String mirrorInitScriptPath = createMirrorInitScript().absolutePath
+            return [
+                '--init-script', mirrorInitScriptPath,
+                "-D${PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}=${gradlePluginRepositoryMirrorUrl()}" as String,
+                "-D${INIT_SCRIPT_LOCATION}=${mirrorInitScriptPath}" as String,
+            ]
+        } else {
+            return []
+        }
     }
 
     private static List<String> toolchainParameters() {
         return [
-            "-Porg.gradle.java.installations.paths=${AvailableJavaHomes.getAvailableJvms().collect { it.javaHome.absolutePath }.join(",")}" as String,
-            '-Porg.gradle.java.installations.auto-detect=false',
-            '-Porg.gradle.java.installations.auto-download=false',
-        ]
-    }
-
-    private static List<String> kotlinDslParameters() {
-        return [
-            // Having this unset is now deprecated, will default to `false` in Gradle 9.0
-            // TODO remove - see https://github.com/gradle/gradle/issues/26810
-            '-Dorg.gradle.kotlin.dsl.skipMetadataVersionCheck=false',
+            "-Dorg.gradle.java.installations.paths=${AvailableJavaHomes.getAvailableJvms().collect { it.javaHome.absolutePath }.join(",")}" as String,
+            '-Dorg.gradle.java.installations.auto-detect=false',
+            '-Dorg.gradle.java.installations.auto-download=false',
         ]
     }
 
@@ -339,10 +250,6 @@ abstract class AbstractSmokeTest extends Specification {
         """
     }
 
-    protected static String jcenterRepository(GradleDsl dsl = GROOVY) {
-        RepoScriptBlockUtil.jcenterRepository(dsl)
-    }
-
     protected static String mavenCentralRepository(GradleDsl dsl = GROOVY) {
         RepoScriptBlockUtil.mavenCentralRepository(dsl)
     }
@@ -353,5 +260,20 @@ abstract class AbstractSmokeTest extends Specification {
 
     void copyRemoteProject(String remoteProject, File targetDir) {
         new TestFile(new File("build/$remoteProject")).copyTo(targetDir)
+    }
+}
+
+class SmokeTestedVersionsSanityCheck extends Specification {
+    def specialPlugins = [
+        AbstractSmokeTest.TestedVersions.androidGradle,
+        AbstractSmokeTest.TestedVersions.androidGradle9AndAbove,
+        AbstractSmokeTest.TestedVersions.androidGradleBefore9,
+        AbstractSmokeTest.TestedVersions.kotlin,
+    ].size()
+
+    def "all configured plugins are used"() {
+        def usedPlugins = AbstractSmokeTest.TestedVersions.declaredFields.findAll { !it.synthetic }.collect { it.name }
+        expect:
+        usedPlugins.size() - specialPlugins == AbstractSmokeTest.SMOKE_TESTED_PLUGINS.getPluginsCount()
     }
 }

@@ -16,7 +16,6 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.nativeplatform.fixtures.app.CppLib
 import org.gradle.nativeplatform.fixtures.app.SourceElement
 
@@ -49,7 +48,6 @@ class CppStaticLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
         return new CppLib()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can create static library binary when only static linkage is specified"() {
         def library = new CppLib()
         buildFile << """
@@ -68,11 +66,10 @@ class CppStaticLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
         succeeds('assemble')
 
         then:
-        result.assertTasksExecuted(':compileDebugCpp', ':createDebug', ':assemble')
+        result.assertTasksScheduled(':compileDebugCpp', ':createDebug', ':assemble')
         staticLibrary('build/lib/main/debug/foo').assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can create debug and release variants of library"() {
         def library = new CppLib()
         buildFile << """
@@ -91,18 +88,17 @@ class CppStaticLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
         succeeds('assembleRelease')
 
         then:
-        result.assertTasksExecuted(':compileReleaseCpp', ':createRelease', ':assembleRelease')
+        result.assertTasksScheduled(':compileReleaseCpp', ':createRelease', ':assembleRelease')
         staticLibrary('build/lib/main/release/foo').assertExists()
 
         when:
         succeeds('assembleDebug')
 
         then:
-        result.assertTasksExecuted(':compileDebugCpp', ':createDebug', ':assembleDebug')
+        result.assertTasksScheduled(':compileDebugCpp', ':createDebug', ':assembleDebug')
         staticLibrary('build/lib/main/debug/foo').assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can use link file as task dependency"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -124,11 +120,10 @@ class CppStaticLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
 
         expect:
         succeeds "assembleLinkDebug"
-        result.assertTasksExecuted(':compileDebugCpp', ':createDebug', ":assembleLinkDebug")
+        result.assertTasksScheduled(':compileDebugCpp', ':createDebug', ":assembleLinkDebug")
         staticLibrary("build/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can use objects as task dependency"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -150,7 +145,7 @@ class CppStaticLibraryLinkageIntegrationTest extends AbstractCppIntegrationTest 
 
         expect:
         succeeds "compileDebug"
-        result.assertTasksExecuted(":compileDebugCpp", ":compileDebug")
+        result.assertTasksScheduled(":compileDebugCpp", ":compileDebug")
         objectFiles(lib.sources)*.assertExists()
         staticLibrary("build/lib/main/debug/hello").assertDoesNotExist()
     }

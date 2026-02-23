@@ -18,7 +18,6 @@ package org.gradle.internal.component.model;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import org.gradle.api.attributes.HasAttributes;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.DisplayName;
 import org.gradle.internal.component.external.model.ImmutableCapabilities;
@@ -36,7 +35,7 @@ import java.util.Set;
  * @see VariantGraphResolveMetadata
  * @see ConfigurationGraphResolveMetadata
  */
-public interface ConfigurationMetadata extends VariantArtifactGraphResolveMetadata, HasAttributes {
+public interface ConfigurationMetadata {
     /**
      * The set of configurations that this configuration extends. Includes this configuration.
      *
@@ -50,10 +49,6 @@ public interface ConfigurationMetadata extends VariantArtifactGraphResolveMetada
 
     DisplayName asDescribable();
 
-    /**
-     * Attributes are immutable on ConfigurationMetadata
-     */
-    @Override
     ImmutableAttributes getAttributes();
 
     /**
@@ -67,13 +62,12 @@ public interface ConfigurationMetadata extends VariantArtifactGraphResolveMetada
     /**
      * Returns the artifacts associated with this configuration, if known.
      */
-    @Override
     ImmutableList<? extends ComponentArtifactMetadata> getArtifacts();
 
     /**
      * Returns the variants of this configuration. Should include at least one value. Exactly one variant must be selected and the artifacts of that variant used.
      */
-    Set<? extends VariantResolveMetadata> getVariants();
+    Set<? extends VariantResolveMetadata> getArtifactVariants();
 
     /**
      * Returns the exclusions to apply to this configuration:
@@ -85,8 +79,6 @@ public interface ConfigurationMetadata extends VariantArtifactGraphResolveMetada
     boolean isTransitive();
 
     boolean isVisible();
-
-    boolean isCanBeConsumed();
 
     /**
      * Find the component artifact with the given IvyArtifactName, creating a new one if none matches.

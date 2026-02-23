@@ -16,8 +16,9 @@
 
 package org.gradle.performance.results.report;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.gradle.api.GradleException;
+import org.gradle.internal.UncheckedException;
 import org.gradle.performance.results.FileRenderer;
 import org.gradle.performance.results.NoResultsStore;
 import org.gradle.performance.results.PerformanceDatabase;
@@ -32,7 +33,6 @@ import org.gradle.util.internal.GFileUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URL;
@@ -90,7 +90,7 @@ public abstract class AbstractReportGenerator<R extends ResultsStore> {
                 renderScenarioPage(projectName, outputDirectory, testResults);
             });
 
-        copyResource("jquery.min-3.5.1.js", outputDirectory);
+        copyResource("jquery.min-3.7.1.js", outputDirectory);
         copyResource("flot-0.8.1-min.js", outputDirectory);
         copyResource("flot.selection.min.js", outputDirectory);
         copyResource("style.css", outputDirectory);
@@ -174,7 +174,7 @@ public abstract class AbstractReportGenerator<R extends ResultsStore> {
             fileRenderer.render(testResults, testHtmlRenderer, new File(outputDirectory, "tests/" + testResults.getId() + ".html"));
             fileRenderer.render(testResults, testDataRenderer, new File(outputDirectory, "tests/" + testResults.getId() + ".json"));
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 

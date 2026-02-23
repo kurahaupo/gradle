@@ -18,11 +18,9 @@ package org.gradle.language.cpp.plugins;
 
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
-import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.internal.artifacts.dsl.LazyPublishArtifact;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.project.ProjectInternal;
-import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.tasks.TaskContainer;
@@ -64,7 +62,7 @@ import static org.gradle.language.nativeplatform.internal.Dimensions.useHostAsDe
 public abstract class CppLibraryPlugin implements Plugin<Project> {
     private final NativeComponentFactory componentFactory;
     private final ToolChainSelector toolChainSelector;
-    private final ImmutableAttributesFactory attributesFactory;
+    private final AttributesFactory attributesFactory;
     private final TargetMachineFactory targetMachineFactory;
 
     /**
@@ -73,7 +71,7 @@ public abstract class CppLibraryPlugin implements Plugin<Project> {
      * @since 4.2
      */
     @Inject
-    public CppLibraryPlugin(NativeComponentFactory componentFactory, ToolChainSelector toolChainSelector, ImmutableAttributesFactory attributesFactory, TargetMachineFactory targetMachineFactory) {
+    public CppLibraryPlugin(NativeComponentFactory componentFactory, ToolChainSelector toolChainSelector, AttributesFactory attributesFactory, TargetMachineFactory targetMachineFactory) {
         this.componentFactory = componentFactory;
         this.toolChainSelector = toolChainSelector;
         this.attributesFactory = attributesFactory;
@@ -85,7 +83,6 @@ public abstract class CppLibraryPlugin implements Plugin<Project> {
         project.getPluginManager().apply(CppBasePlugin.class);
 
         final TaskContainer tasks = project.getTasks();
-        final ObjectFactory objectFactory = project.getObjects();
         final ProviderFactory providers = project.getProviders();
 
         // Add the library and extension
@@ -132,7 +129,7 @@ public abstract class CppLibraryPlugin implements Plugin<Project> {
 
         project.afterEvaluate(p -> {
             // TODO: make build type configurable for components
-            Dimensions.libraryVariants(library.getBaseName(), library.getLinkage(), library.getTargetMachines(), objectFactory, attributesFactory,
+            Dimensions.libraryVariants(library.getBaseName(), library.getLinkage(), library.getTargetMachines(), attributesFactory,
                     providers.provider(() -> project.getGroup().toString()), providers.provider(() -> project.getVersion().toString()),
                     variantIdentity -> {
                         if (tryToBuildOnHost(variantIdentity)) {
@@ -150,7 +147,6 @@ public abstract class CppLibraryPlugin implements Plugin<Project> {
                     });
 
             // TODO - deal with more than one header dir, e.g. generated public headers
-            final Configuration apiElements = library.getApiElements();
             Provider<File> publicHeaders = providers.provider(() -> {
                 Set<File> files = library.getPublicHeaderDirs().getFiles();
                 if (files.size() != 1) {
@@ -158,7 +154,9 @@ public abstract class CppLibraryPlugin implements Plugin<Project> {
                 }
                 return files.iterator().next();
             });
-            apiElements.getOutgoing().artifact(publicHeaders, it -> it.builtBy(library.getPublicHeaderDirs()));
+            library.getApiElements().configure(conf -> {
+                conf.getOutgoing().artifact(publicHeaders, it -> it.builtBy(library.getPublicHeaderDirs()));
+            });
 
             project.getPluginManager().withPlugin("maven-publish", appliedPlugin -> {
                 final TaskProvider<Zip> headersZip = tasks.register("cppHeaders", Zip.class, task -> {

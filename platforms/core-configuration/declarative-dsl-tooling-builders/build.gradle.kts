@@ -5,14 +5,22 @@ plugins {
 description = "Declarative DSL Tooling Builders for IDEs"
 
 dependencies {
+    api(projects.core)
     api(projects.serviceProvider)
-    api(project(":core"))
-    api(project(":core-api"))
+    api(projects.projectFeatures)
 
     api(libs.kotlinStdlib)
 
-    implementation(project(":declarative-dsl-provider"))
-    implementation(project(":declarative-dsl-tooling-models"))
+    implementation(projects.coreApi)
+    implementation(projects.declarativeDslEvaluator)
+    implementation(projects.declarativeDslProvider)
+    implementation(projects.declarativeDslToolingModels)
+    implementation(projects.stdlibJavaExtensions)
 
-    crossVersionTestDistributionRuntimeOnly(project(":distributions-basics"))
+    crossVersionTestImplementation(projects.declarativeDslCore)
+    crossVersionTestImplementation(projects.declarativeDslEvaluator)
+    crossVersionTestImplementation(projects.declarativeDslToolingModels)
+    crossVersionTestImplementation(projects.internalIntegTesting)
+
+    crossVersionTestDistributionRuntimeOnly(projects.distributionsBasics)
 }

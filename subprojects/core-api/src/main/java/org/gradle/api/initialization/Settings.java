@@ -32,13 +32,12 @@ import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.toolchain.management.ToolchainManagement;
 import org.gradle.caching.configuration.BuildCacheConfiguration;
 import org.gradle.declarative.dsl.model.annotations.Adding;
-import org.gradle.declarative.dsl.model.annotations.Configuring;
-import org.gradle.declarative.dsl.model.annotations.Restricted;
+import org.gradle.declarative.dsl.model.annotations.HiddenInDefinition;
 import org.gradle.internal.HasInternalProtocol;
 import org.gradle.plugin.management.PluginManagementSpec;
 import org.gradle.vcs.SourceControl;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Arrays;
 
@@ -50,7 +49,7 @@ import java.util.Arrays;
  * #DEFAULT_SETTINGS_FILE}</code> settings file. Before Gradle assembles the projects for a build, it creates a
  * <code>Settings</code> instance and executes the settings file against it.</p>
  *
- * <h3>Assembling a Multi-Project Build</h3>
+ * <h2>Assembling a Multi-Project Build</h2>
  *
  * <p>One of the purposes of the <code>Settings</code> object is to allow you to declare the projects which are to be
  * included in the build. You add projects to the build using the {@link #include(String...)} method.  There is always a
@@ -61,9 +60,9 @@ import java.util.Arrays;
  * <p>When a project is included in the build, a {@link ProjectDescriptor} is created. You can use this descriptor to
  * change the default values for several properties of the project.</p>
  *
- * <h3>Using Settings in a Settings File</h3>
+ * <h2>Using Settings in a Settings File</h2>
  *
- * <h4>Dynamic Properties</h4>
+ * <h3>Dynamic Properties</h3>
  *
  * <p>In addition to the properties of this interface, the {@code Settings} object makes some additional read-only
  * properties available to the settings script. This includes properties from the following sources:</p>
@@ -84,6 +83,8 @@ import java.util.Arrays;
 public interface Settings extends PluginAware, ExtensionAware {
     /**
      * <p>The default name for the settings file.</p>
+     *
+     * @implNote For internal purposes, prefer constants from {@code BuildLogicFiles}.
      */
     String DEFAULT_SETTINGS_FILE = "settings.gradle";
 
@@ -120,6 +121,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @param projectPaths the projects to add.
      */
+    @HiddenInDefinition
     default void include(String... projectPaths) {
         include(Arrays.asList(projectPaths));
     }
@@ -159,6 +161,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 7.4
      */
+    @HiddenInDefinition
     void include(Iterable<String> projectPaths);
 
     /**
@@ -173,6 +176,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @param projectNames the projects to add.
      */
+    @HiddenInDefinition
     default void includeFlat(String... projectNames) {
         includeFlat(Arrays.asList(projectNames));
     }
@@ -191,6 +195,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 7.4
      */
+    @HiddenInDefinition
     void includeFlat(Iterable<String> projectNames);
 
     /**
@@ -198,6 +203,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @return This settings object. Never returns null.
      */
+    @HiddenInDefinition
     Settings getSettings();
 
     /**
@@ -206,6 +212,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @since 8.5
      */
     @Incubating
+    @HiddenInDefinition
     BuildLayout getLayout();
 
     /**
@@ -216,6 +223,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 4.4
      */
+    @HiddenInDefinition
     ScriptHandler getBuildscript();
 
     /**
@@ -224,6 +232,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @return The settings directory. Never returns null.
      */
+    @HiddenInDefinition
     File getSettingsDir();
 
     /**
@@ -231,6 +240,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @return The root directory. Never returns null.
      */
+    @HiddenInDefinition
     File getRootDir();
 
     /**
@@ -238,7 +248,6 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @return The root project. Never returns null.
      */
-    @Restricted
     ProjectDescriptor getRootProject();
 
     /**
@@ -248,6 +257,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @return The project with the given path. Never returns null.
      * @throws UnknownProjectException If no project with the given path exists.
      */
+    @HiddenInDefinition
     ProjectDescriptor project(String path) throws UnknownProjectException;
 
     /**
@@ -257,6 +267,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @return The project with the given path. Returns null if no such project exists.
      */
     @Nullable
+    @HiddenInDefinition
     ProjectDescriptor findProject(String path);
 
     /**
@@ -266,6 +277,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @return The project with the given project directory. Never returns null.
      * @throws UnknownProjectException If no project with the given path exists.
      */
+    @HiddenInDefinition
     ProjectDescriptor project(File projectDir) throws UnknownProjectException;
 
     /**
@@ -275,6 +287,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @return The project with the given project directory. Returns null if no such project exists.
      */
     @Nullable
+    @HiddenInDefinition
     ProjectDescriptor findProject(File projectDir);
 
     /**
@@ -282,6 +295,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @return The parameters. Never returns null.
      */
+    @HiddenInDefinition
     StartParameter getStartParameter();
 
     /**
@@ -289,6 +303,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 6.8
      */
+    @HiddenInDefinition
     ProviderFactory getProviders();
 
     /**
@@ -296,6 +311,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @return The Gradle instance. Never returns null.
      */
+    @HiddenInDefinition
     Gradle getGradle();
 
     /**
@@ -304,6 +320,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 3.1
      */
+    @HiddenInDefinition
     void includeBuild(Object rootProject);
 
     /**
@@ -313,6 +330,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 3.1
      */
+    @HiddenInDefinition
     void includeBuild(Object rootProject, Action<ConfigurableIncludedBuild> configuration);
 
     /**
@@ -320,6 +338,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 3.5
      */
+    @HiddenInDefinition
     BuildCacheConfiguration getBuildCache();
 
     /**
@@ -327,6 +346,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 3.5
      */
+    @HiddenInDefinition
     void buildCache(Action<? super BuildCacheConfiguration> action);
 
     /**
@@ -334,7 +354,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 3.5
      */
-    @Configuring
+    @HiddenInDefinition
     void pluginManagement(Action<? super PluginManagementSpec> pluginManagementSpec);
 
     /**
@@ -342,7 +362,6 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 3.5
      */
-    @Restricted
     PluginManagementSpec getPluginManagement();
 
     /**
@@ -350,6 +369,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 4.4
      */
+    @HiddenInDefinition
     void sourceControl(Action<? super SourceControl> configuration);
 
     /**
@@ -357,6 +377,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 4.4
      */
+    @HiddenInDefinition
     SourceControl getSourceControl();
 
     /**
@@ -375,7 +396,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 6.8
      */
-    @Configuring
+    @HiddenInDefinition
     void dependencyResolutionManagement(Action<? super DependencyResolutionManagement> dependencyResolutionConfiguration);
 
     /**
@@ -383,7 +404,6 @@ public interface Settings extends PluginAware, ExtensionAware {
      *
      * @since 6.8
      */
-    @Restricted
     DependencyResolutionManagement getDependencyResolutionManagement();
 
     /**
@@ -392,6 +412,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @since 7.6
      */
     @Incubating
+    @HiddenInDefinition
     void toolchainManagement(Action<? super ToolchainManagement> toolchainManagementConfiguration);
 
     /**
@@ -400,6 +421,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @since 7.6
      */
     @Incubating
+    @HiddenInDefinition
     ToolchainManagement getToolchainManagement();
 
     /**
@@ -408,6 +430,7 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @since 8.0
      */
     @Incubating
+    @HiddenInDefinition
     CacheConfigurations getCaches();
 
     /**
@@ -418,5 +441,29 @@ public interface Settings extends PluginAware, ExtensionAware {
      * @since 8.0
      */
     @Incubating
+    @HiddenInDefinition
     void caches(Action<? super CacheConfigurations> cachesConfiguration);
+
+    /**
+     * Returns the model defaults object for this build.
+     *
+     * This is an experimental feature.
+     *
+     * @since 8.10
+     */
+    @Incubating
+    SharedModelDefaults getDefaults();
+
+    /**
+     * Configures the model defaults for this build.
+     *
+     * This is an experimental feature.
+     *
+     * @param action the configuration to apply
+     *
+     * @since 8.10
+     */
+    @Incubating
+    @HiddenInDefinition
+    void defaults(Action<? super SharedModelDefaults> action);
 }

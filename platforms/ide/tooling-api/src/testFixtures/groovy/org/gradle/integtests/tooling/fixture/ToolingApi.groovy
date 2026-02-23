@@ -15,23 +15,21 @@
  */
 package org.gradle.integtests.tooling.fixture
 
+import groovy.transform.stc.ClosureParams
+import groovy.transform.stc.SimpleType
 import org.apache.commons.io.output.TeeOutputStream
 import org.gradle.integtests.fixtures.daemon.DaemonLogsAnalyzer
 import org.gradle.integtests.fixtures.daemon.DaemonsFixture
-import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.integtests.fixtures.executer.GradleDistribution
-import org.gradle.integtests.fixtures.executer.GradleExecuter
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
-import org.gradle.integtests.fixtures.executer.ResultAssertion
-import org.gradle.internal.service.DefaultServiceRegistry
+import org.gradle.internal.service.ServiceRegistry
 import org.gradle.test.fixtures.file.TestDirectoryProvider
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.tooling.GradleConnector
-import org.gradle.tooling.LongRunningOperation
-import org.gradle.tooling.ModelBuilder
 import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.internal.consumer.ConnectorServices
 import org.gradle.tooling.internal.consumer.DefaultGradleConnector
+import org.gradle.tooling.internal.consumer.GradleConnectorFactory
 import org.gradle.tooling.model.build.BuildEnvironment
 import org.gradle.util.GradleVersion
 import org.junit.rules.TestRule
@@ -52,8 +50,9 @@ class ToolingApi implements TestRule {
     private boolean useSeparateDaemonBaseDir
     private boolean requiresDaemon
     private boolean requireIsolatedDaemons
-    private DefaultServiceRegistry isolatedToolingClient
-    private context = new IntegrationTestBuildContext()
+    private ConnectorFactory connectorFactory = new SharedConnectorFactory()
+    private context = IntegrationTestBuildContext.INSTANCE
+    private GradleVersion toolingApiVersion
 
     private final List<Closure> connectorConfigurers = []
     boolean verboseLogging = LOGGER.debugEnabled
@@ -67,29 +66,37 @@ class ToolingApi implements TestRule {
         this.useSeparateDaemonBaseDir = DefaultGradleConnector.metaClass.respondsTo(null, "daemonBaseDir")
         this.gradleUserHomeDir = context.gradleUserHomeDir
         this.daemonBaseDir = context.daemonBaseDir
-        this.requiresDaemon = !GradleContextualExecuter.embedded
+        this.requiresDaemon = !IntegrationTestBuildContext.embedded
         this.testWorkDirProvider = testWorkDirProvider
+        this.toolingApiVersion = null
     }
 
     void setDist(GradleDistribution dist) {
         this.dist = dist
     }
 
-    /**
-     * Specifies that the test use its own Gradle user home dir and daemon registry.
-     */
-    void requireIsolatedUserHome() {
-        withUserHome(testWorkDirProvider.testDirectory.file("user-home-dir"))
+
+    GradleDistribution getDistribution() {
+        return dist
     }
 
-    GradleExecuter createExecuter() {
-        def executer = dist.executer(testWorkDirProvider, context)
-            .withGradleUserHomeDir(gradleUserHomeDir)
-            .withDaemonBaseDir(daemonBaseDir)
-        if (requiresDaemon) {
-            executer.requireDaemon()
-        }
-        return executer
+    void setToolingApiVersion(GradleVersion toolingApiVersion) {
+        this.toolingApiVersion = toolingApiVersion
+    }
+
+    GradleVersion getToolingApiVersion() {
+        return toolingApiVersion
+    }
+
+    /**
+     * Specifies that the test use its own Gradle user home dir and daemon registry.
+     *
+     * @return the user home directory that is used by the test
+     */
+    TestFile requireIsolatedUserHome() {
+        TestFile dir = testWorkDirProvider.testDirectory.file("user-home-dir")
+        withUserHome(dir)
+        return dir
     }
 
     void withUserHome(TestFile userHomeDir) {
@@ -101,18 +108,51 @@ class ToolingApi implements TestRule {
         return useSeparateDaemonBaseDir ? daemonBaseDir : gradleUserHomeDir.file("daemon")
     }
 
+    /**
+     * Makes the fixture use a new connector factory that is independent from the shared one
+     * that is normally used by users via {@link GradleConnector#newConnector()}.
+     * <p>
+     * IMPORTANT: Clean up the resources either by explicitly calling {@link #close()} when done
+     * or by using the fixture according to the {@link TestRule} contract.
+     * <p>
+     * Some tests require that the tooling client be closed or reset,
+     * either to verify the behaviour on close or to ensure that certain sticky state is reset.
+     * The shared connector factory is backed by static state and can cause interference between the tests.
+     */
     void requireIsolatedToolingApi() {
         requireIsolatedDaemons()
-        isolatedToolingClient = new ConnectorServices.ConnectorServiceRegistry()
-    }
-
-    void close() {
-        assert isolatedToolingClient != null
-        isolatedToolingClient.close()
+        connectorFactory = createManagedConnectorFactory()
     }
 
     /**
-     * Specifies that the test use real daemon processes (not embedded) and a test-specific daemon registry. Uses a shared Gradle user home dir
+     * Creates a connector factory in a cross-version compatible way.
+     */
+    private static ConnectorFactory createManagedConnectorFactory() {
+        def currentVersion = GradleVersion.current().baseVersion
+        if (GradleVersion.version("9.0") <= currentVersion) {
+            return new GradleConnectorFactoryWrapper(ConnectorServices.createConnectorFactory())
+        }
+        if (GradleVersion.version("8.9") < currentVersion) {
+            //noinspection GroovyAccessibility
+            ServiceRegistry connectorServices = ConnectorServices.ConnectorServiceRegistry.create()
+            return new ServiceRegistryBackedConnectorFactory(connectorServices)
+        }
+        // In Gradle <=8.9, ConnectorServiceRegistry directly implemented a ServiceRegistry
+        //noinspection GroovyAccessibility
+        ServiceRegistry connectorServices = new ConnectorServices.ConnectorServiceRegistry() as ServiceRegistry
+        return new ServiceRegistryBackedConnectorFactory(connectorServices)
+    }
+
+    void close() {
+        if (connectorFactory instanceof ManagedConnectorFactory) {
+            connectorFactory.close()
+        }
+    }
+
+    /**
+     * Specifies that the test use real daemon processes (not embedded) and a test-specific daemon registry.
+     * <p>
+     * Uses a shared Gradle user home dir
      */
     void requireIsolatedDaemons() {
         if (useSeparateDaemonBaseDir) {
@@ -139,40 +179,18 @@ class ToolingApi implements TestRule {
         connectorConfigurers << cl
     }
 
-    def <T> T withConnection(@DelegatesTo(ProjectConnection) Closure<T> cl) {
+    <T> T withConnection(@DelegatesTo(value = ProjectConnection, strategy = Closure.DELEGATE_FIRST) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
         def connector = connector()
         withConnection(connector, cl)
     }
 
-    def <T> T withConnection(connector, @DelegatesTo(ProjectConnection) Closure<T> cl) {
-        return withConnectionRaw(connector, cl)
-    }
-
-    def <T> T loadToolingLeanModel(Class<T> modelClass, @DelegatesTo(ModelBuilder<T>) Closure configurator = {}) {
-        withConnection {
-            def builder = it.model(modelClass)
-            builder.tap(configurator)
-            collectOutputs(builder)
-            builder.get()
+    <T> T withConnection(ToolingApiConnector connector, @DelegatesTo(value = ProjectConnection, strategy = Closure.DELEGATE_FIRST) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
+        try (def connection = connector.connect()) {
+            return connection.with(cl)
+        } catch (Throwable t) {
+            validate(t)
+            throw t
         }
-    }
-
-    def <T> T loadValidatedToolingModel(Class<T> modelClass, @DelegatesTo(ModelBuilder<T>) Closure configurator = {}) {
-        def result = loadToolingLeanModel(modelClass, configurator)
-        validateOutput()
-        result
-    }
-
-    void collectOutputs(LongRunningOperation op) {
-        op.setStandardOutput(new TeeOutputStream(stdout, System.out))
-        op.setStandardError(new TeeOutputStream(stderr, System.err))
-    }
-
-    def validateOutput() {
-        def assertion = new ResultAssertion(0, [], false, true, true)
-        assertion.validate(stdout.toString(), "stdout")
-        assertion.validate(stderr.toString(), "stderr")
-        true
     }
 
     private validate(Throwable throwable) {
@@ -182,7 +200,7 @@ class ToolingApi implements TestRule {
 
         // Verify that the exception carries the calling thread's stack information
         def currentThreadStack = Thread.currentThread().stackTrace as List
-        while (!currentThreadStack.empty && (currentThreadStack[0].className != ToolingApi.name || currentThreadStack[0].methodName != 'withConnectionRaw')) {
+        while (!currentThreadStack.empty && (currentThreadStack[0].className != ToolingApi.name || currentThreadStack[0].methodName != 'withConnection')) {
             currentThreadStack.remove(0)
         }
         assert currentThreadStack.size() > 1
@@ -194,25 +212,53 @@ class ToolingApi implements TestRule {
         assert throwableStack.endsWith(currentThreadStackStr)
     }
 
-    private <T> T withConnectionRaw(connector, @DelegatesTo(ProjectConnection) Closure<T> cl) {
-        try (def connection = connector.connect()) {
-            return connection.with(cl)
-        } catch (Throwable t) {
-            validate(t)
-            throw t
-        }
+    ToolingApiConnector connector() {
+        connector(testWorkDirProvider.testDirectory, true)
     }
 
-    ToolingApiConnector connector(projectDir = testWorkDirProvider.testDirectory) {
+    ToolingApiConnector connectorWithoutOutputRedirection() {
+        connector(testWorkDirProvider.testDirectory, false)
+    }
+
+    ToolingApiConnector connector(TestFile projectDir) {
+        connector(projectDir, true)
+    }
+
+    /**
+     * Return a wrapper around a {@link GradleConnector} that delegates to the connector
+     * and captures stdout and stderr.
+     * <p>
+     * Optionally, stdout and stderr can be redirected to the system streams so they are visible
+     * in the console.
+     */
+    ToolingApiConnector connector(TestFile projectDir, boolean redirectOutput) {
+        GradleConnector connector = rawConnector(projectDir)
+
+        OutputStream output = stdout
+        OutputStream error = stderr
+
+        if (redirectOutput) {
+            output = new TeeOutputStream(stdout, System.out)
+            error = new TeeOutputStream(stderr, System.err)
+        }
+
+        return new ToolingApiConnector(connector, output, error)
+    }
+
+    /**
+     * Get a {@link GradleConnector} that is not wrapped to forward stdout and stderr.
+     * <p>
+     * In general, prefer {@link #connector(TestFile)}. This method should be used when
+     * interfacing with production code that is not {@link ToolingApiConnector}-aware.
+     *
+     * TODO: Can we get rid of this and have ToolingApiConnector implement GradleConnector?
+     */
+    GradleConnector rawConnector(TestFile projectDir = testWorkDirProvider.testDirectory) {
         DefaultGradleConnector connector = createConnector()
 
         connector.forProjectDirectory(projectDir)
 
-        if (embedded) {
-            connector.useClasspathDistribution()
-        } else {
-            connector.useInstallation(dist.gradleHomeDir.absoluteFile)
-        }
+        connector.useInstallation(dist.gradleHomeDir.absoluteFile)
         connector.embedded(embedded)
 
         if (GradleVersion.version(dist.getVersion().version) < GradleVersion.version("6.0")) {
@@ -251,14 +297,11 @@ class ToolingApi implements TestRule {
             connector.with(it)
         }
 
-        return new ToolingApiConnector(connector, stdout, stderr)
+        return connector
     }
 
-    private createConnector() {
-        if (isolatedToolingClient != null) {
-            return isolatedToolingClient.getFactory(DefaultGradleConnector).create()
-        }
-        return GradleConnector.newConnector() as DefaultGradleConnector
+    private DefaultGradleConnector createConnector() {
+        return connectorFactory.createConnector()
     }
 
     private void isolateFromGradleOwnBuild(DefaultGradleConnector connector) {
@@ -274,7 +317,7 @@ class ToolingApi implements TestRule {
      */
     boolean isEmbedded() {
         // Use in-process build when running tests in embedded mode and daemon is not required
-        return GradleContextualExecuter.embedded && !requiresDaemon && GradleVersion.current() == dist.version
+        return IntegrationTestBuildContext.embedded && !requiresDaemon && GradleVersion.current() == dist.version
     }
 
     @Override
@@ -292,9 +335,8 @@ class ToolingApi implements TestRule {
     }
 
     def cleanUpIsolatedDaemonsAndServices() {
-        if (isolatedToolingClient != null) {
-            isolatedToolingClient.close()
-        }
+        close()
+
         if (requireIsolatedDaemons) {
             try {
                 getDaemons().killAll()
@@ -316,4 +358,66 @@ class ToolingApi implements TestRule {
         }
     }
 
+    /**
+     * Abstracts connector creation across different Gradle versions
+     */
+    interface ConnectorFactory {
+
+        // We expect the implementation rather than an interface as a return type,
+        // because DefaultGradleConnector acts as a de-facto internal API for testing
+        DefaultGradleConnector createConnector()
+    }
+
+    /**
+     * Instance of a factory that is not shared and is created/destroyed in the scope of a test.
+     */
+    interface ManagedConnectorFactory extends ConnectorFactory {
+        void close()
+    }
+
+    static class SharedConnectorFactory implements ConnectorFactory {
+        @Override
+        DefaultGradleConnector createConnector() {
+            return GradleConnector.newConnector() as DefaultGradleConnector
+        }
+    }
+
+    static class ServiceRegistryBackedConnectorFactory implements ManagedConnectorFactory {
+
+        private ServiceRegistry serviceRegistry
+
+        ServiceRegistryBackedConnectorFactory(ServiceRegistry serviceRegistry) {
+            this.serviceRegistry = serviceRegistry
+        }
+
+        @Override
+        DefaultGradleConnector createConnector() {
+            // Before Gradle 9.0, there was ServiceRegistry.getFactory(Class<T> type): org.gradle.internal.Factory<T>
+            return serviceRegistry.getFactory(DefaultGradleConnector).create()
+        }
+
+        @Override
+        void close() {
+            serviceRegistry.close()
+        }
+    }
+
+    static class GradleConnectorFactoryWrapper implements ManagedConnectorFactory {
+
+        private GradleConnectorFactory connectorFactory
+
+        GradleConnectorFactoryWrapper(GradleConnectorFactory connectorFactory) {
+            this.connectorFactory = connectorFactory
+        }
+
+        @Override
+        DefaultGradleConnector createConnector() {
+            return connectorFactory.createConnector() as DefaultGradleConnector
+        }
+
+        @Override
+        void close() {
+            connectorFactory.close()
+        }
+    }
 }

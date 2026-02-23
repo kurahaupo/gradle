@@ -34,7 +34,7 @@ class KotlinDslDefaultScriptsModelCrossVersionSpec extends AbstractKotlinDslScri
         def spec = withBuildSrcAndInitScripts()
 
         when:
-        def model = loadValidatedToolingModel(KotlinDslScriptsModel) {
+        def model = loadToolingModel(KotlinDslScriptsModel) {
             setModelParameters(it, false)
         }
 
@@ -56,7 +56,7 @@ class KotlinDslDefaultScriptsModelCrossVersionSpec extends AbstractKotlinDslScri
         """
 
         when:
-        def model = loadValidatedToolingModel(KotlinDslScriptsModel) {
+        def model = loadToolingModel(KotlinDslScriptsModel) {
             setModelParameters(it, true)
         }
 
@@ -70,7 +70,7 @@ class KotlinDslDefaultScriptsModelCrossVersionSpec extends AbstractKotlinDslScri
         assertHasExceptionMessage(
             model,
             spec.scripts.init,
-            "Unresolved reference: script_body_compilation_error"
+            "script_body_compilation_error"
         )
     }
 }

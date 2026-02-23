@@ -15,9 +15,10 @@
  */
 package org.gradle.api.initialization;
 
-import org.gradle.declarative.dsl.model.annotations.Restricted;
+import org.gradle.declarative.dsl.model.annotations.HiddenInDefinition;
+import org.gradle.internal.instrumentation.api.annotations.NotToBeMigratedToLazy;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Set;
 
@@ -29,13 +30,13 @@ import java.util.Set;
  * Settings#include(String...)}. You can access the descriptors using one of
  * the lookup methods on the {@link Settings} object.</p>
  */
+@NotToBeMigratedToLazy
 public interface ProjectDescriptor {
     /**
      * Returns the name of this project.
      *
      * @return The name of the project. Never returns null.
      */
-    @Restricted
     String getName();
 
     /**
@@ -43,7 +44,6 @@ public interface ProjectDescriptor {
      *
      * @param name The new name for the project. Should not be null
      */
-    @Restricted
     void setName(String name);
 
     /**
@@ -51,13 +51,18 @@ public interface ProjectDescriptor {
      *
      * @return The project directory. Never returns null.
      */
+    @HiddenInDefinition
     File getProjectDir();
 
     /**
      * Sets the project directory of this project.
+     * <p>
+     * Gradle expects project directories to exist and be writable.
+     * </p>
      *
-     * @param dir The new project directory. Should not be null.
+     * @param dir The new project directory. Should not be null, and it is expected to exist and be writable.
      */
+    @HiddenInDefinition
     void setProjectDir(File dir);
 
     /**
@@ -80,6 +85,7 @@ public interface ProjectDescriptor {
      *
      * @return The build file. Never returns null.
      */
+    @HiddenInDefinition
     File getBuildFile();
 
     /**
@@ -88,6 +94,7 @@ public interface ProjectDescriptor {
      * @return The parent, or null if this is the root project.
      */
     @Nullable
+    @HiddenInDefinition
     ProjectDescriptor getParent();
 
     /**
@@ -95,6 +102,7 @@ public interface ProjectDescriptor {
      *
      * @return The children. Returns an empty set if this project does not have any children.
      */
+    @HiddenInDefinition
     Set<ProjectDescriptor> getChildren();
 
     /**
@@ -102,5 +110,6 @@ public interface ProjectDescriptor {
      *
      * @return The path. Never returns null.
      */
+    @HiddenInDefinition
     String getPath();
 }

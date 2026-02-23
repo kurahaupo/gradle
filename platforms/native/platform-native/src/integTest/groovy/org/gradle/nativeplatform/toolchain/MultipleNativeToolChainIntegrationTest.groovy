@@ -17,7 +17,6 @@
 package org.gradle.nativeplatform.toolchain
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AvailableToolChains
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
@@ -41,18 +40,24 @@ plugins { id 'cpp' }
 
     @Requires(UnitTestPreconditions.CanInstallExecutable)
     @RequiresInstalledToolChain(ToolChainRequirement.GCC)
-    @ToBeFixedForConfigurationCache
     def "can build with multiple tool chains"() {
         AvailableToolChains.InstalledToolChain x86ToolChain = OperatingSystem.current().isWindows() ?
                 AvailableToolChains.getToolChain(ToolChainRequirement.VISUALCPP) :
                 AvailableToolChains.getToolChain(ToolChainRequirement.CLANG)
         AvailableToolChains.InstalledToolChain sparcToolChain = AvailableToolChains.getToolChain(ToolChainRequirement.GCC)
 
-        // This is a Junit class, but works in Spock too.
+        // This is a JUnit class, but works in Spock too.
         Assume.assumeNotNull(x86ToolChain?.buildScriptConfig, sparcToolChain?.buildScriptConfig)
 
         when:
         buildFile << """
+toolChains {
+    ${x86ToolChain.buildScriptConfig}
+    ${sparcToolChain.buildScriptConfig}
+    ${sparcToolChain.id} {
+        target("sparc")
+    }
+}
 model {
     platforms {
         i386 {
@@ -60,13 +65,6 @@ model {
         }
         sparc {
             architecture "sparc"
-        }
-    }
-    toolChains {
-        ${x86ToolChain.buildScriptConfig}
-        ${sparcToolChain.buildScriptConfig}
-        ${sparcToolChain.id} {
-            target("sparc")
         }
     }
     components {

@@ -15,7 +15,6 @@
  */
 package org.gradle.nativeplatform.toolchain
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.CppCompilerDetectingTestApp
 
@@ -31,7 +30,6 @@ class NativeToolChainDiscoveryIntegrationTest extends AbstractInstalledToolChain
         initScript.text = ""
     }
 
-    @ToBeFixedForConfigurationCache
     def "can discover tool chain in environment"() {
         given:
         toolChain.initialiseEnvironment()
@@ -39,7 +37,7 @@ class NativeToolChainDiscoveryIntegrationTest extends AbstractInstalledToolChain
         and:
         buildFile << """
 apply plugin: 'cpp'
-model {
+
     toolChains {
         tc(${toolChain.implementationClass}) {
             // For software model builds, windows defaults to 32-bit target, so if we discard the toolchain init script,
@@ -47,6 +45,7 @@ model {
             ${toolChain.platformSpecificToolChainConfiguration()}
         }
     }
+model {
     components {
         main(NativeExecutableSpec)
     }
@@ -68,16 +67,15 @@ model {
         toolChain.resetEnvironment()
     }
 
-    @ToBeFixedForConfigurationCache
     def "uses correct tool chain when explicitly configured"() {
         given:
         buildFile << """
 apply plugin: 'cpp'
 
-model {
     toolChains {
         ${toolChain.buildScriptConfig}
     }
+model {
     components {
         main(NativeExecutableSpec)
     }

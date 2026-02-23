@@ -18,7 +18,7 @@ package org.gradle.plugin.devel.variants
 
 import org.gradle.api.JavaVersion
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.internal.component.resolution.failure.exception.VariantSelectionException
+import org.gradle.internal.component.resolution.failure.exception.VariantSelectionByAttributesException
 
 class TargetJVMVersionOnLibraryTooNewFailureDescriberIntegrationTest extends AbstractIntegrationSpec {
     Integer currentJava = Integer.valueOf(JavaVersion.current().majorVersion)
@@ -61,10 +61,10 @@ class TargetJVMVersionOnLibraryTooNewFailureDescriberIntegrationTest extends Abs
         failure.assertHasErrorOutput("""> Could not resolve all dependencies for configuration ':consumer:compileClasspath'.
    > Could not resolve project :producer.
      Required by:
-         project :consumer
+         project ':consumer'
       > Dependency resolution is looking for a library compatible with JVM runtime version $currentJava, but 'project :producer' is only compatible with JVM runtime version $tooHighJava or newer.""")
-        failure.assertHasErrorOutput("Caused by: " + VariantSelectionException.class.getName())
-        failure.assertHasResolution("Change the dependency on 'project :producer' to an earlier version that supports JVM runtime version $tooHighJava.")
+        failure.assertHasErrorOutput("Caused by: " + VariantSelectionByAttributesException.class.getName())
+        failure.assertHasResolution("Change the dependency on 'project :producer' to an earlier version that supports JVM runtime version $currentJava.")
     }
 
     def 'JVM version too low even if other non-Library category variants available uses standard error message for non-plugin'() {
@@ -112,9 +112,9 @@ class TargetJVMVersionOnLibraryTooNewFailureDescriberIntegrationTest extends Abs
         failure.assertHasErrorOutput("""> Could not resolve all dependencies for configuration ':consumer:compileClasspath'.
    > Could not resolve project :producer.
      Required by:
-         project :consumer
+         project ':consumer'
       > Dependency resolution is looking for a library compatible with JVM runtime version $currentJava, but 'project :producer' is only compatible with JVM runtime version $tooHighJava or newer.""")
-        failure.assertHasErrorOutput("Caused by: " + VariantSelectionException.class.getName())
-        failure.assertHasResolution("Change the dependency on 'project :producer' to an earlier version that supports JVM runtime version $tooHighJava.")
+        failure.assertHasErrorOutput("Caused by: " + VariantSelectionByAttributesException.class.getName())
+        failure.assertHasResolution("Change the dependency on 'project :producer' to an earlier version that supports JVM runtime version $currentJava.")
     }
 }

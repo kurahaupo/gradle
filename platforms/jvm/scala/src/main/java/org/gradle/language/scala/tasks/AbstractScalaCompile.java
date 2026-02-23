@@ -20,7 +20,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.io.Files;
 import org.gradle.api.Incubating;
 import org.gradle.api.JavaVersion;
-import org.gradle.api.UncheckedIOException;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.file.ProjectLayout;
@@ -47,10 +46,12 @@ import org.gradle.api.tasks.compile.AbstractCompile;
 import org.gradle.api.tasks.compile.CompileOptions;
 import org.gradle.api.tasks.scala.IncrementalCompileOptions;
 import org.gradle.api.tasks.scala.ScalaCompileOptions;
+import org.gradle.internal.UncheckedException;
 import org.gradle.internal.buildevents.BuildStartedTime;
 import org.gradle.internal.classpath.CachedClasspathTransformer;
 import org.gradle.internal.classpath.DefaultClassPath;
 import org.gradle.internal.file.Deleter;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 import org.gradle.jvm.toolchain.JavaInstallationMetadata;
 import org.gradle.jvm.toolchain.JavaLauncher;
 import org.gradle.jvm.toolchain.JavaToolchainService;
@@ -83,7 +84,7 @@ public abstract class AbstractScalaCompile extends AbstractCompile implements Ha
         // To avoid code duplication, the initialization logic is extracted to an instance initialization block.
         ObjectFactory objectFactory = getObjectFactory();
         this.analysisMappingFile = objectFactory.fileProperty();
-        this.analysisFiles = getProject().files();
+        this.analysisFiles = objectFactory.fileCollection();
         this.compileOptions = objectFactory.newInstance(CompileOptions.class);
         JavaToolchainService javaToolchainService = getJavaToolchainService();
         this.javaLauncher = objectFactory.property(JavaLauncher.class).convention(javaToolchainService.launcherFor(it -> {}));
@@ -99,7 +100,6 @@ public abstract class AbstractScalaCompile extends AbstractCompile implements Ha
     protected AbstractScalaCompile() {
         ObjectFactory objectFactory = getObjectFactory();
         this.scalaCompileOptions = objectFactory.newInstance(ScalaCompileOptions.class);
-        this.scalaCompileOptions.setIncrementalOptions(objectFactory.newInstance(IncrementalCompileOptions.class));
     }
 
     /**
@@ -166,7 +166,7 @@ public abstract class AbstractScalaCompile extends AbstractCompile implements Ha
         spec.setTempDir(getTemporaryDir());
         List<File> effectiveClasspath;
         if (scalaCompileOptions.getKeepAliveMode().get() == KeepAliveMode.DAEMON) {
-            effectiveClasspath = getCachedClasspathTransformer().transform(DefaultClassPath.of(getClasspath()), CachedClasspathTransformer.StandardTransform.None).getAsFiles();
+            effectiveClasspath = getCachedClasspathTransformer().copyingTransform(DefaultClassPath.of(getClasspath())).getAsFiles();
         } else {
             effectiveClasspath = ImmutableList.copyOf(getClasspath());
         }
@@ -232,7 +232,7 @@ public abstract class AbstractScalaCompile extends AbstractCompile implements Ha
                     assert lines.size() == 2;
                     analysisMap.put(new File(lines.get(0)), new File(lines.get(1)));
                 } catch (IOException e) {
-                    throw new UncheckedIOException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
             }
         }
@@ -245,6 +245,7 @@ public abstract class AbstractScalaCompile extends AbstractCompile implements Ha
     @Override
     // Java source files are supported, too. Therefore, we should care about the relative path.
     @PathSensitive(PathSensitivity.RELATIVE)
+    @ToBeReplacedByLazyProperty
     public FileTree getSource() {
         return super.getSource();
     }

@@ -20,9 +20,7 @@ import org.eclipse.jetty.http.HttpStatus
 import org.gradle.api.artifacts.repositories.PasswordCredentials
 import org.gradle.api.credentials.Credentials
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MetaDataParser
-import org.gradle.integtests.fixtures.UnsupportedWithConfigurationCache
 import org.gradle.integtests.fixtures.executer.ProgressLoggingFixture
-import org.gradle.internal.credentials.DefaultPasswordCredentials
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.ivy.IvyFileRepository
 import org.gradle.test.fixtures.server.http.AuthScheme
@@ -30,6 +28,7 @@ import org.gradle.test.fixtures.server.http.HttpServer
 import org.gradle.test.fixtures.server.http.IvyHttpModule
 import org.gradle.test.fixtures.server.http.IvyHttpRepository
 import org.gradle.util.GradleVersion
+import org.gradle.util.TestCredentialUtil
 import org.hamcrest.CoreMatchers
 import org.junit.Rule
 import spock.lang.Issue
@@ -39,7 +38,7 @@ import static org.gradle.util.Matchers.matchesRegexp
 
 class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
     private static final int HTTP_UNRECOVERABLE_ERROR = 415
-    private static final Credentials BAD_CREDENTIALS = new DefaultPasswordCredentials('testuser', 'bad')
+    private static final Credentials BAD_CREDENTIALS = TestCredentialUtil.defaultPasswordCredentials('testuser', 'bad')
     @Rule
     ProgressLoggingFixture progressLogging = new ProgressLoggingFixture(executer, temporaryFolder)
     @Rule
@@ -135,7 +134,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
 
     def "can publish to authenticated repository using #authScheme auth"() {
         given:
-        org.gradle.api.credentials.PasswordCredentials credentials = new DefaultPasswordCredentials('testuser', 'password')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('testuser', 'password')
         configureRepositoryCredentials(credentials.username, credentials.password, "ivy")
         buildFile << publicationBuild(version, group, ivyHttpRepo.uri)
 
@@ -159,10 +158,9 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
         authScheme << [AuthScheme.BASIC, AuthScheme.DIGEST, AuthScheme.NTLM]
     }
 
-    @UnsupportedWithConfigurationCache(because = "inline credentials")
     def "can publish to authenticated repository using inline credentials and #authScheme auth"() {
         given:
-        PasswordCredentials credentials = new DefaultPasswordCredentials('testuser', 'password')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('testuser', 'password')
         buildFile << publicationBuild(version, group, ivyHttpRepo.uri, "ivy","""
         credentials(PasswordCredentials) {
             username = "${credentials.username}"
@@ -206,7 +204,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
                 repositories {
                     ivy {
                         $credentialsBlock
-                        url "${ivyHttpRepo.uri}"
+                        url = "${ivyHttpRepo.uri}"
                     }
                 }
                 publications {
@@ -278,8 +276,8 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
             publishing {
                 repositories {
                     ivy {
-                        artifactPattern "${ivyHttpRepo.artifactPattern}"
-                        artifactPattern "http://localhost:${server.port}/alternative/[module]/[artifact]-[revision].[ext]"
+                        artifactPattern("${ivyHttpRepo.artifactPattern}")
+                        artifactPattern("http://localhost:${server.port}/alternative/[module]/[artifact]-[revision].[ext]")
                         ivyPattern "${ivyHttpRepo.ivyPattern}"
                         ivyPattern "http://localhost:${server.port}/secondary-ivy/[module]/ivy-[revision].xml"
                     }
@@ -331,7 +329,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
                 repositories {
                     ivy {
                         credentials(PasswordCredentials)
-                        url "${ivyHttpRepo.uri}"
+                        url = "${ivyHttpRepo.uri}"
                     }
                 }
                 publications {
@@ -339,7 +337,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
                         configurations {
                             runtime {
                                 artifact('${largeJar.toURI()}') {
-                                    name 'publish'
+                                    name = 'publish'
                                 }
                             }
                         }
@@ -379,7 +377,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
             publishing {
                 repositories {
                     ivy {
-                        url "${ivyHttpRepo.uri}"
+                        url = "${ivyHttpRepo.uri}"
                     }
                 }
                 publications {
@@ -412,7 +410,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
 
             publishing {
                 repositories {
-                    ivy { url "${ivyHttpRepo.uri}" }
+                    ivy { url = "${ivyHttpRepo.uri}" }
                 }
                 publications {
                     ivy(IvyPublication) {
@@ -460,7 +458,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
             publishing {
                 repositories {
                     ivy {
-                        url "${ivyRepo.uri}"
+                        url = "${ivyRepo.uri}"
                         patternLayout {
                            $layout
                         }
@@ -503,7 +501,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
             publishing {
                 repositories {
                     ivy {
-                        url "${ivyRepo.uri}"
+                        url = "${ivyRepo.uri}"
                         patternLayout {
                             artifact "[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier])(.[ext])"
                             ivy "[organisation]/[module]/[revision]/[module]-[revision].ivy"
@@ -530,7 +528,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
         buildFile << publicationBuildWithCredentialsProvider('2', 'org.gradle', ivyHttpRepo.uri)
 
         and:
-        PasswordCredentials credentials = new DefaultPasswordCredentials('username', 'password')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('testuser', 'password')
         expectPublishModuleWithCredentials(module, credentials)
 
         when:
@@ -569,7 +567,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
         configureRepositoryCredentials("foo", "bar", "ivy")
         buildFile << publicationBuild(version, group, ivyHttpRepo.uri)
         server.authenticationScheme = AuthScheme.BASIC
-        org.gradle.api.credentials.PasswordCredentials credentials = new DefaultPasswordCredentials('foo', 'bar')
+        HttpServer.PasswordCredentials credentials = new HttpServer.PasswordCredentials('foo', 'bar')
         expectPublishModuleWithCredentials(module, credentials)
 
         when:
@@ -603,8 +601,8 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
             publishing {
                 repositories {
                     ivy {
-                        name "$repoName"
-                        url "$uri"
+                        name = "$repoName"
+                        url = "$uri"
                         $credentialsBlock
                     }
                 }
@@ -617,7 +615,7 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
             """
     }
 
-    private static void expectPublishModuleWithCredentials(IvyHttpModule module, org.gradle.api.credentials.PasswordCredentials credentials) {
+    private static void expectPublishModuleWithCredentials(IvyHttpModule module, HttpServer.PasswordCredentials credentials) {
         module.jar.expectPut(credentials)
         module.jar.sha1.expectPut(credentials)
         module.jar.sha256.expectPut(credentials)
@@ -631,5 +629,4 @@ class IvyPublishHttpIntegTest extends AbstractIvyPublishIntegTest {
         module.moduleMetadata.sha256.expectPut(credentials)
         module.moduleMetadata.sha512.expectPut(credentials)
     }
-
 }

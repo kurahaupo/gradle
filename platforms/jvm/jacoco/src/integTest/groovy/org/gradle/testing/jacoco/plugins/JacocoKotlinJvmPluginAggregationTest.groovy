@@ -18,6 +18,7 @@ package org.gradle.testing.jacoco.plugins
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.versions.KotlinGradlePluginVersions
+import org.gradle.testing.jacoco.plugins.fixtures.JacocoCoverage
 import org.gradle.testing.jacoco.plugins.fixtures.JacocoReportXmlFixture
 import spock.lang.Issue
 
@@ -36,13 +37,15 @@ class JacocoKotlinJvmPluginAggregationTest extends AbstractIntegrationSpec {
     def kotlinVersion = new KotlinGradlePluginVersions().latestStableOrRC
 
     def setup() {
-        multiProjectBuild("root", ["direct", "transitive"]) {
-            buildFile.text = """
-                apply plugin: 'jacoco-report-aggregation'
+        JacocoCoverage.assumeDefaultJacocoWorksOnCurrentJdk()
 
-                repositories {
-                    ${mavenCentralRepository()}
+        multiProjectBuild("root", ["direct", "transitive"]) {
+            buildFile << """
+                plugins {
+                    id("jacoco-report-aggregation")
                 }
+
+                ${mavenCentralRepository()}
 
                 dependencies {
                     jacocoAggregation project(":direct")
@@ -51,15 +54,13 @@ class JacocoKotlinJvmPluginAggregationTest extends AbstractIntegrationSpec {
                 reporting {
                     reports {
                         testCodeCoverageReport(JacocoCoverageReport) {
-                            testType = TestSuiteType.UNIT_TEST
+                            testSuiteName = "test"
                         }
                     }
                 }
 
                 subprojects {
-                    repositories {
-                        ${mavenCentralRepository()}
-                    }
+                    ${mavenCentralRepository()}
 
                     plugins.withId('java') {
                         testing {
@@ -71,7 +72,7 @@ class JacocoKotlinJvmPluginAggregationTest extends AbstractIntegrationSpec {
                         }
                     }
                 }
-            """ + buildFile.text
+            """
 
             file("direct/build.gradle") << """
                 plugins {

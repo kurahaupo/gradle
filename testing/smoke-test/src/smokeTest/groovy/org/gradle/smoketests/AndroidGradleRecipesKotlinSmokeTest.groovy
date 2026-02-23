@@ -17,18 +17,21 @@
 package org.gradle.smoketests
 
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
-import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
+import org.gradle.integtests.fixtures.versions.KotlinGradlePluginVersions
 import org.gradle.test.fixtures.dsl.GradleDsl
+import org.gradle.testdistribution.LocalOnly
 import org.gradle.testkit.runner.TaskOutcome
 import org.gradle.util.internal.VersionNumber
 import spock.lang.Issue
 
+@LocalOnly(because = "Needs Android environment")
 class AndroidGradleRecipesKotlinSmokeTest extends AbstractSmokeTest implements RunnerFactory {
 
     @Issue('https://github.com/gradle/gradle/issues/23014')
     def "android gradle recipes: custom BuildConfig field in Kotlin (agp=#agpVersion, provider=#providerType)"() {
         given:
         AGP_VERSIONS.assumeCurrentJavaVersionIsSupportedBy(agpVersion)
+        boolean isAgp8 = VersionNumber.parse(agpVersion).major < 9
 
         and:
         file('settings.gradle.kts') << '''
@@ -36,12 +39,13 @@ class AndroidGradleRecipesKotlinSmokeTest extends AbstractSmokeTest implements R
             rootProject.name = "customBuildConfigField"
         '''
 
+        String agp8KgpDep = isAgp8 ? """classpath(kotlin("gradle-plugin", version = "$kotlinVersionNumber"))""" : ""
         file('build.gradle.kts') << """
             buildscript {
                 $repositoriesBlock
                 dependencies {
                     classpath("com.android.tools.build:gradle:$agpVersion")
-                    classpath(kotlin("gradle-plugin", version = "$kotlinVersionNumber"))
+                    $agp8KgpDep
                 }
             }
             allprojects {
@@ -49,13 +53,21 @@ class AndroidGradleRecipesKotlinSmokeTest extends AbstractSmokeTest implements R
             }
         """
 
+        String agp8KgpPlugin = isAgp8 ? """kotlin("android")""" : ""
+        String agp8KgpConfig = isAgp8 ? """
+            kotlin {
+                compilerOptions {
+                    jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+                }
+            }
+            """ : ""
         file('app/build.gradle.kts') << """
             import com.android.build.api.artifact.*
             import com.android.build.api.variant.*
 
             plugins {
                 id("com.android.application")
-                kotlin("android")
+                $agp8KgpPlugin
             }
 
             abstract class CustomFieldValueProvider : DefaultTask() {
@@ -75,17 +87,18 @@ class AndroidGradleRecipesKotlinSmokeTest extends AbstractSmokeTest implements R
                 outputs.upToDateWhen { false }
             }
 
+            $agp8KgpConfig
+
             android {
                 namespace = "org.gradle.smoketests.androidrecipes"
-                compileSdkVersion(29)
-                buildToolsVersion("${TestedVersions.androidTools}")
+                compileSdk = 29
+                buildToolsVersion("${AGP_VERSIONS.getBuildToolsVersionFor(agpVersion)}")
                 buildFeatures { buildConfig = true }
-                kotlinOptions { jvmTarget = "1.8" }
             }
 
             androidComponents {
                 onVariants {
-                    it.buildConfigFields.put("MyCustomField",
+                    it.buildConfigFields!!.put("MyCustomField",
                         customFieldValueProvider
                             .${provider['mapBegin']}
                             BuildConfigField("String", "\\"{${provider['get']}}\\"", "My custom field")
@@ -127,10 +140,12 @@ class AndroidGradleRecipesKotlinSmokeTest extends AbstractSmokeTest implements R
             </manifest>'''.stripIndent()
 
         and:
-        def runner = mixedRunner(false, agpVersion, kotlinVersionNumber, taskName)
+        def runner = mixedRunner(agpVersion, kotlinVersionNumber, taskName)
+            .deprecations(AndroidDeprecations) {
+                expectMultiStringNotationDeprecation(agpVersion)
+            }
 
         when: 'running the build for the 1st time'
-        beforeAndroidBuild(runner)
         def result = runner.build()
 
         then:
@@ -142,7 +157,9 @@ class AndroidGradleRecipesKotlinSmokeTest extends AbstractSmokeTest implements R
         }
 
         when: 'running the build for the 2nd time'
-        result = runner.build()
+        result = runner.deprecations(AndroidDeprecations) {
+            expectMultiStringNotationDeprecationIf(agpVersion, GradleContextualExecuter.isNotConfigCache())
+        }.build()
 
         then:
         result.task(":app:$taskName").outcome == TaskOutcome.UP_TO_DATE
@@ -171,7 +188,7 @@ class AndroidGradleRecipesKotlinSmokeTest extends AbstractSmokeTest implements R
             ]
         ].combinations()
         providerType = provider['type']
-        kotlinVersionNumber = VersionNumber.parse('1.8.0')
+        kotlinVersionNumber = VersionNumber.parse(new KotlinGradlePluginVersions().latestStableOrRC)
         taskName = 'compileDebugKotlin'
     }
 
@@ -182,12 +199,5 @@ class AndroidGradleRecipesKotlinSmokeTest extends AbstractSmokeTest implements R
                 ${mavenCentralRepository(GradleDsl.KOTLIN)}
             }
         """
-    }
-
-    private beforeAndroidBuild(SmokeTestGradleRunner runner) {
-        SantaTrackerConfigurationCacheWorkaround.beforeBuild(
-            runner.projectDir,
-            IntegrationTestBuildContext.INSTANCE.gradleUserHomeDir
-        )
     }
 }

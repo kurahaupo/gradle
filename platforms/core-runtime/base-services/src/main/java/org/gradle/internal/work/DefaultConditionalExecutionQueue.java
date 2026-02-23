@@ -19,11 +19,12 @@ package org.gradle.internal.work;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.concurrent.ManagedExecutor;
-import org.gradle.internal.concurrent.WorkerLimits;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 import java.util.Deque;
 import java.util.LinkedList;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -47,7 +48,8 @@ public class DefaultConditionalExecutionQueue<T> implements ConditionalExecution
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition workAvailable = lock.newCondition();
     private QueueState queueState = QueueState.Working;
-    private volatile int workerCount;
+    @GuardedBy("lock")
+    private int workerCount;
 
     public DefaultConditionalExecutionQueue(String displayName, WorkerLimits workerLimits, ExecutorFactory executorFactory, WorkerLeaseService workerLeaseService) {
         this.workerLimits = workerLimits;
@@ -98,7 +100,7 @@ public class DefaultConditionalExecutionQueue<T> implements ConditionalExecution
         try {
             // Only expand the thread pool if there is work in the queue or we know that work is about to be submitted (i.e. force == true)
             if (force || !queue.isEmpty()) {
-                executor.submit(new ExecutionRunner());
+                Future<?> ignored = executor.submit(new ExecutionRunner());
                 workerCount++;
             }
         } finally {
@@ -120,7 +122,7 @@ public class DefaultConditionalExecutionQueue<T> implements ConditionalExecution
 
     /**
      * ExecutionRunners process items from the queue until there are no items left, at which point it will either wait for
-     * new items to arrive (if there are < max workers threads running) or exit, finishing the thread.
+     * new items to arrive (if there are less than max workers threads running) or exit, finishing the thread.
      */
     private class ExecutionRunner implements Runnable {
         @Override
@@ -135,12 +137,12 @@ public class DefaultConditionalExecutionQueue<T> implements ConditionalExecution
             }
         }
 
-        private ConditionalExecution<?> waitForNextOperation() {
+        private @Nullable ConditionalExecution<?> waitForNextOperation() {
             lock.lock();
             try {
                 // Wait for work to be submitted if the queue is empty and our worker count is under max workers
                 // This attempts to keep up to max workers threads alive once they've been started.
-                while (queueState == QueueState.Working && queue.isEmpty() && (workerCount <= getMaxWorkerCount())) {
+                while (queueState == QueueState.Working && queue.isEmpty() && workerCount <= getMaxWorkerCount()) {
                     try {
                         workAvailable.await();
                     } catch (InterruptedException e) {
@@ -185,7 +187,7 @@ public class DefaultConditionalExecutionQueue<T> implements ConditionalExecution
         }
 
         /**
-         * Executes a conditional execution and then releases it's resource lock
+         * Executes a conditional execution and then releases its resource lock.
          */
         private void runExecution(final ConditionalExecution<?> execution) {
             try {

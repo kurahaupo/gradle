@@ -16,23 +16,20 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.util.Matchers
 
 abstract class AbstractCppIntegrationTest extends AbstractCppComponentIntegrationTest {
-    @ToBeFixedForConfigurationCache
     def "skip assemble tasks when no source"() {
         given:
         makeSingleProject()
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasksToAssembleDevelopmentBinary, ":assemble")
+        result.assertTasksScheduled(tasksToAssembleDevelopmentBinary, ":assemble")
         // TODO - should skip the task as NO-SOURCE
         result.assertTasksSkipped(tasksToAssembleDevelopmentBinary, ":assemble")
     }
 
-    @ToBeFixedForConfigurationCache
     def "build fails when compilation fails"() {
         given:
         makeSingleProject()

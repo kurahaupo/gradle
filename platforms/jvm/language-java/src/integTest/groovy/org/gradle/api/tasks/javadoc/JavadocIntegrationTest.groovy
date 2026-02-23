@@ -22,6 +22,7 @@ import org.gradle.integtests.fixtures.TestResources
 import org.gradle.internal.jvm.Jvm
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.IntegTestPreconditions
 import org.gradle.test.preconditions.UnitTestPreconditions
 import org.gradle.util.internal.TextUtil
 import org.junit.Rule
@@ -140,7 +141,7 @@ Joe!""")
             task javadoc(type: Javadoc) {
                 destinationDir = file("build/javadoc")
                 source "src/main/java"
-                executable = new File(".").getAbsoluteFile().toPath().relativize(new File("${executable}").toPath()).toString()
+                executable = new File(".").getCanonicalFile().toPath().relativize(new File("${executable}").toPath()).toString()
             }
         """
 
@@ -148,7 +149,7 @@ Joe!""")
 
         when:
         executer.expectDocumentedDeprecationWarning("Configuring a Java executable via a relative path. " +
-                "This behavior has been deprecated. This will fail with an error in Gradle 9.0. " +
+                "This behavior has been deprecated. This will fail with an error in Gradle 10. " +
                 "Resolving relative file paths might yield unexpected results, there is no single clear location it would make sense to resolve against. " +
                 "Configure an absolute path to a Java executable instead. " +
                 "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_8.html#no_relative_paths_for_java_executables")
@@ -253,51 +254,6 @@ Joe!""")
         expect:
         succeeds("javadoc")
         file("build/tmp/javadoc/javadoc.options").assertContents(containsNormalizedString("-exclude 'foo'"))
-    }
-
-    @Issue("https://github.com/gradle/gradle/issues/1484")
-    def "can use various multi-value options"() {
-        buildFile << """
-            apply plugin: 'java'
-
-            javadoc {
-                options {
-                    addMultilineStringsOption("addMultilineStringsOption").setValue([
-                        "a",
-                        "b",
-                        "c"
-                    ])
-                    addStringsOption("addStringsOption", " ").setValue([
-                        "a",
-                        "b",
-                        "c"
-                    ])
-                    addMultilineMultiValueOption("addMultilineMultiValueOption").setValue([
-                        [ "a" ],
-                        [ "b", "c" ]
-                    ])
-                }
-            }
-        """
-        writeSourceFile()
-        expect:
-        if (JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_17)) {
-            executer.expectDeprecationWarnings(2)
-        } else {
-            executer.expectDeprecationWarning() // Error output triggers are "deprecated" warning check
-        }
-        fails("javadoc") // we're using unsupported options to verify that we do the right thing
-
-        file("build/tmp/javadoc/javadoc.options").assertContents(containsNormalizedString("-addMultilineStringsOption 'a'\n" +
-            "-addMultilineStringsOption 'b'\n" +
-            "-addMultilineStringsOption 'c'"))
-
-        file("build/tmp/javadoc/javadoc.options").assertContents(containsNormalizedString("""-addStringsOption 'a b c'"""))
-
-        file("build/tmp/javadoc/javadoc.options").assertContents(containsNormalizedString("-addMultilineMultiValueOption \n" +
-            "'a' \n" +
-            "-addMultilineMultiValueOption \n" +
-            "'b' 'c' "))
     }
 
     @Issue("https://github.com/gradle/gradle/issues/1502")
@@ -510,11 +466,11 @@ Joe!""")
     }
 
     // bootclasspath has been removed in Java 9+
-    @Requires(UnitTestPreconditions.Jdk8OrEarlier)
+    @Requires(IntegTestPreconditions.BestJreAvailable)
     @Issue("https://github.com/gradle/gradle/issues/19817")
     def "shows deprecation if bootclasspath is provided as a path instead of a single file"() {
-        def jre = AvailableJavaHomes.getBestJre()
-        def bootClasspath = TextUtil.escapeString(jre.absolutePath) + "/lib/rt.jar${File.pathSeparator}someotherpath"
+        def rtJar = new File(AvailableJavaHomes.bestJre, "lib/rt.jar")
+        def bootClasspath = TextUtil.escapeString(rtJar.absolutePath) + "${File.pathSeparator}someotherpath"
         buildFile << """
             plugins {
                 id 'java'
@@ -655,6 +611,23 @@ Joe!""")
         then:
         file("build/docs/javadoc/pkg/Foo.html").assertExists()
         file("build/docs/javadoc/pkg/internal/IFoo.html").assertDoesNotExist()
+    }
+
+    def "can set nullable properties to null in Kotlin DSL"() {
+        given:
+        buildKotlinFile << """
+            plugins {
+                id("java")
+            }
+            tasks.javadoc {
+                destinationDir = null
+                title = null
+                maxMemory = null
+                executable = null
+            }
+        """
+        expect:
+        succeeds "help"
     }
 
     private TestFile writeSourceFile() {

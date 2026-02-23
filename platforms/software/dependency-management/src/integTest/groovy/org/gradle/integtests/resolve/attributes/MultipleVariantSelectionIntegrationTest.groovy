@@ -20,7 +20,7 @@ import org.gradle.integtests.fixtures.GradleMetadataResolveRunner
 import org.gradle.integtests.fixtures.RequiredFeature
 import org.gradle.integtests.resolve.AbstractModuleDependencyResolveTest
 import org.gradle.util.internal.ToBeImplemented
-import spock.lang.Unroll
+import spock.lang.Issue
 
 @RequiredFeature(feature = GradleMetadataResolveRunner.GRADLE_METADATA, value = "true")
 class MultipleVariantSelectionIntegrationTest extends AbstractModuleDependencyResolveTest {
@@ -195,21 +195,20 @@ class MultipleVariantSelectionIntegrationTest extends AbstractModuleDependencyRe
 
         then:
         failure.assertHasCause("""Module 'org:test' has been rejected:
-   Cannot select module with conflict on capability 'org:test:1.0' also provided by [org:test:1.0(api), org:test:1.0(runtime)]""")
+   Cannot select module with conflict on capability 'org:test:1.0' also provided by ['org:test:1.0' (api), 'org:test:1.0' (runtime)]""")
     }
 
-    @Unroll("can select distinct variants of the same component by using different attributes with capabilities (conflict=#conflict)")
     void "can select distinct variants of the same component by using different attributes with capabilities"() {
         given:
         repository {
-            'org:test:1.0' {
+            id('org:test:1.0') {
                 variant('api') {
                     attribute('custom', 'c1')
                     capability('org.test', 'cap', '1.0')
                 }
                 variant('runtime') {
                     attribute('custom', 'c2')
-                    capability('org.test', 'cap', conflict ? '1.0' : '1.1')
+                    capability('org.test', 'cap', '1.1')
                 }
             }
         }
@@ -236,27 +235,43 @@ class MultipleVariantSelectionIntegrationTest extends AbstractModuleDependencyRe
 
 
             configurations.conf.resolutionStrategy.capabilitiesResolution.all { selectHighestVersion() }
+
+            class CompatibilityRule implements AttributeCompatibilityRule<String> {
+                @Override
+                void execute(CompatibilityCheckDetails<String> details) {
+                    if (details.consumerValue == 'c1' && details.producerValue == 'c2') {
+                        details.compatible()
+                    }
+                }
+            }
+
+            dependencies {
+                attributesSchema {
+                    if (!$incompatibleVariants) {
+                        attribute(CUSTOM_ATTRIBUTE).compatibilityRules.add(CompatibilityRule)
+                    }
+                }
+            }
         """
 
         when:
         repositoryInteractions {
-            'org:test:1.0' {
+            id('org:test:1.0') {
                 expectGetMetadata()
-                if (!conflict) {
-                    expectGetArtifact()
-                }
+                expectGetArtifact()
             }
         }
-        if (conflict) {
-            fails 'checkDeps'
+        if (incompatibleVariants) {
+            fails(":checkDeps")
         } else {
-            succeeds 'checkDeps'
+            succeeds(":checkDeps")
         }
 
         then:
-        if (conflict) {
-            failure.assertHasCause("""Module 'org:test' has been rejected:
-   Cannot select module with conflict on capability 'org.test:cap:1.0' also provided by [org:test:1.0(runtime), org:test:1.0(api)]""")
+        if (incompatibleVariants) {
+            failure.assertHasCause("""No variants of org:test:1.0 match the consumer attributes:
+  - org:test:1.0 variant runtime:
+      - Incompatible because this component declares attribute 'custom' with value 'c2' and the consumer needed attribute 'custom' with value 'c1'""")
         } else {
             resolve.expectGraph {
                 root(":", ":test:") {
@@ -270,7 +285,56 @@ class MultipleVariantSelectionIntegrationTest extends AbstractModuleDependencyRe
         }
 
         where:
-        conflict << [true, false]
+        incompatibleVariants << [true, false]
+    }
+
+    void "distinct variants of the same component may enter a capability conflict"() {
+        given:
+        repository {
+            id('org:test:1.0') {
+                variant('api') {
+                    attribute('custom', 'c1')
+                    capability('org.test', 'cap', '1.0')
+                }
+                variant('runtime') {
+                    attribute('custom', 'c2')
+                    capability('org.test', 'cap', '1.0')
+                }
+            }
+        }
+
+        buildFile << """
+            dependencies {
+                conf('org:test:1.0') {
+                    attributes {
+                        attribute(CUSTOM_ATTRIBUTE, 'c1')
+                    }
+                    capabilities {
+                        requireCapability('org.test:cap')
+                    }
+                }
+                conf('org:test:1.0') {
+                    attributes {
+                        attribute(CUSTOM_ATTRIBUTE, 'c2')
+                    }
+                    capabilities {
+                        requireCapability('org.test:cap')
+                    }
+                }
+            }
+        """
+
+        when:
+        repositoryInteractions {
+            id('org:test:1.0') {
+                expectGetMetadata()
+            }
+        }
+        fails(":checkDeps")
+
+        then:
+        failure.assertHasCause("""Module 'org:test' has been rejected:
+   Cannot select module with conflict on capability 'org.test:cap:1.0' also provided by ['org:test:1.0' (api), 'org:test:1.0' (runtime)]""")
     }
 
     def "selects 2 variants of the same component with transitive dependency if they have different capabilities"() {
@@ -513,7 +577,7 @@ class MultipleVariantSelectionIntegrationTest extends AbstractModuleDependencyRe
 
         then:
         failure.assertHasCause("""Module 'org:foo' has been rejected:
-   Cannot select module with conflict on capability 'org:foo:1.1' also provided by [org:foo:1.1(runtime), org:foo:1.1(api)]""")
+   Cannot select module with conflict on capability 'org:foo:1.1' also provided by ['org:foo:1.1' (api), 'org:foo:1.1' (runtime)]""")
 
     }
 
@@ -678,9 +742,9 @@ class MultipleVariantSelectionIntegrationTest extends AbstractModuleDependencyRe
 
         then:
         failure.assertHasCause("""Module 'org:foo' has been rejected:
-   Cannot select module with conflict on capability 'org:foo:1.0' also provided by [org:bar:1.0(runtime)]""")
+   Cannot select module with conflict on capability 'org:foo:1.0' also provided by ['org:bar:1.0' (runtime)]""")
         failure.assertHasCause("""Module 'org:bar' has been rejected:
-   Cannot select module with conflict on capability 'org:foo:1.0' also provided by [org:foo:1.0(runtime)]""")
+   Cannot select module with conflict on capability 'org:foo:1.0' also provided by ['org:foo:1.0' (runtime)]""")
     }
 
     def "detects conflicts between 2 variants of 2 different components with the same capability"() {
@@ -727,9 +791,9 @@ class MultipleVariantSelectionIntegrationTest extends AbstractModuleDependencyRe
 
         then:
         failure.assertHasCause("""Module 'org:foo' has been rejected:
-   Cannot select module with conflict on capability 'org:blah:1.0' also provided by [org:bar:1.0(runtime)]""")
+   Cannot select module with conflict on capability 'org:blah:1.0' also provided by ['org:bar:1.0' (runtime)]""")
         failure.assertHasCause("""Module 'org:bar' has been rejected:
-   Cannot select module with conflict on capability 'org:blah:1.0' also provided by [org:foo:1.0(runtime)]""")
+   Cannot select module with conflict on capability 'org:blah:1.0' also provided by ['org:foo:1.0' (runtime)]""")
     }
 
     @ToBeImplemented("https://github.com/gradle/gradle/issues/8386")
@@ -806,6 +870,122 @@ class MultipleVariantSelectionIntegrationTest extends AbstractModuleDependencyRe
 //                }
 //            }
 //        }
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/29872")
+    @RequiredFeature(feature = GradleMetadataResolveRunner.REPOSITORY_TYPE, value = "maven") // Http server fixtures do not support publishing
+    def "attribute compatibility rules are applied when checking for mutual variant compatibility within a component when the producer attributes are desugared"() {
+
+        def common = """
+            interface Foo extends Named {}
+            def foo = Attribute.of("attr", Foo)
+        """
+
+        // Publish producer to local repo
+        // The published GMM will have desugared attributes.
+        file("producer/settings.gradle") << "rootProject.name = 'producer'"
+        file("producer/build.gradle") << """
+            plugins {
+                id("base")
+                id("maven-publish")
+            }
+
+            ${common}
+
+            group = "org"
+            version = "1.0"
+
+            configurations {
+                consumable("first") {
+                    attributes.attribute(foo, objects.named(Foo, "first"))
+                }
+                consumable("second") {
+                    attributes.attribute(foo, objects.named(Foo, "second"))
+                    outgoing.capability("special:special:1.0")
+                }
+            }
+
+            def comp = publishing.softwareComponentFactory.adhoc("comp")
+            comp.addVariantsFromConfiguration(configurations.first) {}
+            comp.addVariantsFromConfiguration(configurations.second) {}
+
+            publishing {
+                ${mavenTestRepository()}
+                publications {
+                    maven(MavenPublication) {
+                        from(comp)
+                    }
+                }
+            }
+        """
+        executer.inDirectory(file("producer"))
+        succeeds(":publish")
+
+        // Consume the published component using the rich attributes
+        buildFile << """
+            ${common}
+            ${mavenTestRepository()}
+
+            class FooCompatibilityRule implements AttributeCompatibilityRule<Foo> {
+                @Override
+                public void execute(CompatibilityCheckDetails<Foo> details) {
+                    details.compatible()
+                }
+            }
+
+            dependencies {
+                attributesSchema {
+                    if (${applyRule}) {
+                        attribute(foo).compatibilityRules.add(FooCompatibilityRule)
+                    }
+                }
+
+                conf("org:producer:1.0")
+                conf("org:producer:1.0") {
+                    capabilities {
+                        requireCapability("special:special:1.0")
+                    }
+                }
+            }
+        """
+
+        executer.inDirectory(file())
+
+        when:
+        repositoryInteractions {
+            id('org:producer:1.0') {
+                expectGetMetadata()
+            }
+        }
+
+        if (applyRule) {
+            succeeds 'checkDeps'
+        } else {
+            fails 'checkDeps'
+        }
+
+        then:
+        if (applyRule) {
+            resolve.expectGraph {
+                root(":", ":test:") {
+                    module('org:producer:1.0') {
+                        variant('first', ['org.gradle.status': 'release', attr: 'first'])
+                        noArtifacts()
+                    }
+                    module('org:producer:1.0') {
+                        variant('second', ['org.gradle.status': 'release', attr: 'second'])
+                        noArtifacts()
+                    }
+                }
+            }
+        } else {
+            failure.assertHasCause("""Multiple incompatible variants of org:producer:1.0 were selected:
+   - Variant first has attributes {attr=first, org.gradle.status=release}
+   - Variant second has attributes {attr=second, org.gradle.status=release}""")
+        }
+
+        where:
+        applyRule << [true, false]
     }
 
     static Closure<String> defaultStatus() {

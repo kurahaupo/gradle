@@ -16,9 +16,7 @@
 package org.gradle.api.internal;
 
 import org.gradle.internal.buildoption.FeatureFlag;
-
-import javax.annotation.Nullable;
-import java.util.EnumSet;
+import org.jspecify.annotations.Nullable;
 
 public class FeaturePreviews {
 
@@ -29,7 +27,21 @@ public class FeaturePreviews {
     public enum Feature implements FeatureFlag {
         GROOVY_COMPILATION_AVOIDANCE(true, null),
         TYPESAFE_PROJECT_ACCESSORS(true, null),
-        STABLE_CONFIGURATION_CACHE(true, "org.gradle.configuration-cache.stable");
+        STABLE_CONFIGURATION_CACHE(true, "org.gradle.configuration-cache.stable"),
+        /**
+         * When enabled, service usage must be explicitly declared, or deprecation warnings will be issued.
+         * <p>
+         *     This functionality used to be behind {@link #STABLE_CONFIGURATION_CACHE}, but since it triggers false
+         *     positives and does not cover several required scenarios
+         *     (services used by work that is not tasks, services used at configuration time),
+         *     it is now behind a specific (internal) feature, used only by some internal tests.
+         * </p>
+         */
+        INTERNAL_BUILD_SERVICE_USAGE(true, null),
+        /**
+         * This exists to test inactive feature previews
+         */
+        ALWAYS_INACTIVE(false, null);
 
         public static Feature withName(String name) {
             try {
@@ -38,19 +50,6 @@ public class FeaturePreviews {
                 // Re-wording to exception message to get rid of the fqcn it contains
                 throw new IllegalArgumentException("There is no feature named " + name);
             }
-        }
-
-        /**
-         * Returns the set of active {@linkplain Feature features}.
-         */
-        private static EnumSet<Feature> activeFeatures() {
-            EnumSet<Feature> activeFeatures = EnumSet.noneOf(Feature.class);
-            for (Feature feature : Feature.values()) {
-                if (feature.isActive()) {
-                    activeFeatures.add(feature);
-                }
-            }
-            return activeFeatures;
         }
 
         private final boolean active;

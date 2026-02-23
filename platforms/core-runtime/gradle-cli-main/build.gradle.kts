@@ -20,22 +20,40 @@ plugins {
     id("gradlebuild.start-scripts")
 }
 
-description = "Java 6-compatible entry point of the `gradle` command. Boostraps the Gradle client implementation in :launcher."
+description = "Entry point of the `gradle` command. Bootstraps the implementation in :gradle-cli."
 
-gradlebuildJava.usedForStartup()
+gradleModule {
+    targetRuntimes {
+        usedInClient = true
+    }
+}
+
+tasks.jar {
+    manifest {
+        // Allow launcher to access JNI: https://openjdk.org/jeps/472
+        attributes("Enable-Native-Access" to "ALL-UNNAMED")
+    }
+}
 
 app {
     mainClassName = "org.gradle.launcher.GradleMain"
 }
 
 dependencies {
-    implementation(projects.javaLanguageExtensions)
-    implementation(project(":build-process-services"))
+    implementation(projects.buildProcessServices)
 
-    manifestClasspath(projects.javaLanguageExtensions)
-    manifestClasspath(project(":build-process-services"))
-    manifestClasspath(project(":base-services"))
-    manifestClasspath(project(":concurrent"))
+    compileOnly(libs.jspecify)
 
-    agentsClasspath(project(":instrumentation-agent"))
+    manifestClasspath(projects.stdlibJavaExtensions)
+    manifestClasspath(projects.buildProcessServices)
+    manifestClasspath(projects.baseServices)
+    manifestClasspath(projects.classloaders)
+    manifestClasspath(projects.concurrent)
+    manifestClasspath(projects.serviceLookup)
+
+    agentsClasspath(projects.instrumentationAgent)
+}
+
+errorprone {
+    nullawayEnabled = true
 }

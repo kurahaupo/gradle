@@ -25,8 +25,7 @@ import org.gradle.api.artifacts.FileCollectionDependency;
 import org.gradle.api.artifacts.ProjectDependency;
 import org.gradle.api.file.FileCollection;
 import org.gradle.internal.HasInternalProtocol;
-
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Factory class for creating {@link Dependency} instances, with strong typing.
@@ -44,7 +43,6 @@ import javax.annotation.Nullable;
  */
 @HasInternalProtocol
 @NonExtensible
-@Incubating
 public interface DependencyFactory {
     /**
      * Create an {@link ExternalModuleDependency} from the <code>"<i>group</i>:<i>name</i>:<i>version</i>:<i>classifier</i>@<i>extension</i>"</code> notation.
@@ -95,6 +93,27 @@ public interface DependencyFactory {
      * @return the new dependency
      */
     ProjectDependency create(Project project);
+
+    /**
+     * Create a {@link ProjectDependency} from a {@link Project} path.
+     *
+     * @param projectPath the project
+     * @return the new dependency
+     *
+     * @since 9.5.0
+     */
+    @Incubating
+    ProjectDependency createProjectDependency(String projectPath);
+
+    /**
+     * Create a {@link ProjectDependency} for the current project.
+     *
+     * @return the new dependency
+     *
+     * @since 9.5.0
+     */
+    @Incubating
+    ProjectDependency createProjectDependency();
 
     /**
      * Creates a dependency on the API of the current version of Gradle.

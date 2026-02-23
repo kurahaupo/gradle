@@ -18,83 +18,76 @@ package org.gradle.internal.declarativedsl.settings
 
 import org.gradle.api.initialization.Settings
 import org.gradle.api.internal.SettingsInternal
-import org.gradle.api.internal.initialization.ClassLoaderScope
-import org.gradle.groovy.scripts.ScriptSource
-import org.gradle.internal.declarativedsl.analysis.AnalysisStatementFilter
-import org.gradle.internal.declarativedsl.analysis.AnalysisStatementFilter.Companion.isCallNamed
-import org.gradle.internal.declarativedsl.analysis.AnalysisStatementFilter.Companion.isConfiguringCall
-import org.gradle.internal.declarativedsl.analysis.AnalysisStatementFilter.Companion.isTopLevelElement
-import org.gradle.internal.declarativedsl.analysis.OperationGenerationId
+import org.gradle.declarative.dsl.evaluation.AnalysisStatementFilter
+import org.gradle.declarative.dsl.evaluation.InterpretationSequence
+import org.gradle.internal.declarativedsl.analysis.AnalysisStatementFilterUtils.isCallNamed
+import org.gradle.internal.declarativedsl.analysis.AnalysisStatementFilterUtils.isConfiguringCall
+import org.gradle.internal.declarativedsl.analysis.AnalysisStatementFilterUtils.isTopLevelElement
 import org.gradle.internal.declarativedsl.analysis.and
 import org.gradle.internal.declarativedsl.analysis.implies
 import org.gradle.internal.declarativedsl.analysis.not
-import org.gradle.internal.declarativedsl.conventions.ConventionsConfiguringBlock
-import org.gradle.internal.declarativedsl.conventions.ConventionsInterpretationSequenceStep
-import org.gradle.internal.declarativedsl.conventions.ConventionsTopLevelReceiver
-import org.gradle.internal.declarativedsl.conventions.isConventionsConfiguringCall
-import org.gradle.internal.declarativedsl.evaluationSchema.EvaluationSchema
-import org.gradle.internal.declarativedsl.evaluationSchema.InterpretationSequence
-import org.gradle.internal.declarativedsl.evaluationSchema.SimpleInterpretationSequenceStep
-import org.gradle.internal.declarativedsl.evaluationSchema.buildEvaluationSchema
-import org.gradle.internal.declarativedsl.evaluationSchema.plus
-import org.gradle.internal.declarativedsl.plugins.PluginsInterpretationSequenceStep
-import org.gradle.internal.declarativedsl.plugins.isTopLevelPluginsBlock
-import org.gradle.internal.declarativedsl.project.ThirdPartyExtensionsComponent
-import org.gradle.internal.declarativedsl.project.gradleDslGeneralSchemaComponent
-import org.gradle.internal.declarativedsl.software.SoftwareTypeConventionComponent
-import org.gradle.plugin.software.internal.SoftwareTypeRegistry
+import org.gradle.internal.declarativedsl.common.RunsBeforeClassScopeIsReady
+import org.gradle.internal.declarativedsl.common.UnsupportedSyntaxFeatureCheck
+import org.gradle.internal.declarativedsl.common.gradleDslGeneralSchema
+import org.gradle.internal.declarativedsl.defaults.defineModelDefaultsInterpretationSequenceStep
+import org.gradle.internal.declarativedsl.defaults.isDefaultsConfiguringCall
+import org.gradle.internal.declarativedsl.evaluationSchema.DefaultInterpretationSequence
+import org.gradle.internal.declarativedsl.evaluationSchema.EvaluationSchemaBuilder
+import org.gradle.internal.declarativedsl.evaluationSchema.SimpleInterpretationSequenceStepWithConversion
+import org.gradle.internal.declarativedsl.evaluationSchema.buildEvaluationAndConversionSchema
+import org.gradle.internal.declarativedsl.evaluator.checks.AccessOnCurrentReceiverCheck
+import org.gradle.internal.declarativedsl.evaluator.conversion.EvaluationAndConversionSchema
+import org.gradle.internal.declarativedsl.project.thirdPartyExtensions
+import org.gradle.features.internal.binding.ProjectFeatureDeclarations
 
 
 internal
 fun settingsInterpretationSequence(
     settings: SettingsInternal,
-    targetScope: ClassLoaderScope,
-    scriptSource: ScriptSource,
-    softwareTypeRegistry: SoftwareTypeRegistry
+    projectFeatureDeclarations: ProjectFeatureDeclarations
 ): InterpretationSequence =
-    InterpretationSequence(
+    DefaultInterpretationSequence(
         listOf(
-            SimpleInterpretationSequenceStep("settingsPluginManagement") { pluginManagementEvaluationSchema() },
-            PluginsInterpretationSequenceStep("settingsPlugins", OperationGenerationId.PROPERTY_ASSIGNMENT, targetScope, scriptSource, SettingsBlocksCheck) { settings.services },
-            ConventionsInterpretationSequenceStep("settingsConventions", OperationGenerationId.CONVENTION_ASSIGNMENT, softwareTypeRegistry) { conventionsEvaluationSchema(softwareTypeRegistry) },
-            SimpleInterpretationSequenceStep("settings") { settingsEvaluationSchema(settings) }
+            SimpleInterpretationSequenceStepWithConversion(
+                "settingsPluginManagement",
+                features = setOf(
+                    SettingsBlocksCheck.feature,
+                    AccessOnCurrentReceiverCheck.feature,
+                    RunsBeforeClassScopeIsReady()
+                )
+            ) { pluginManagementEvaluationSchema() },
+
+            settingsPluginsInterpretationSequenceStep("settingsPlugins"),
+            defineModelDefaultsInterpretationSequenceStep(projectFeatureDeclarations),
+            SimpleInterpretationSequenceStepWithConversion(
+                "settings",
+                features = setOf(UnsupportedSyntaxFeatureCheck.feature, AccessOnCurrentReceiverCheck.feature)
+            ) { settingsEvaluationSchema(settings) }
         )
     )
 
 
 internal
-fun pluginManagementEvaluationSchema(): EvaluationSchema =
-    buildEvaluationSchema(
-        Settings::class,
-        gradleDslGeneralSchemaComponent() + SettingsBlocksCheck,
-        isTopLevelPluginManagementBlock
+fun pluginManagementEvaluationSchema(): EvaluationAndConversionSchema =
+    buildEvaluationAndConversionSchema(
+        SettingsInternal::class,
+        isTopLevelPluginManagementBlock,
+        schemaComponents = EvaluationSchemaBuilder::gradleDslGeneralSchema
     )
 
 
+/** TODO: Instead of [SettingsInternal], this should rely on the public API of [Settings];
+ *  missing single-arg [Settings.include] (or missing vararg support) prevents this from happening,
+ *  and we use the [SettingsInternal.include] single-argument workaround for now. */
 internal
-fun conventionsEvaluationSchema(softwareTypeRegistry: SoftwareTypeRegistry): EvaluationSchema {
-    val schemaBuildingComponent = gradleDslGeneralSchemaComponent() +
-        SoftwareTypeConventionComponent(ConventionsConfiguringBlock::class, "softwareType", softwareTypeRegistry) +
-        SettingsDependencyConfigurationsComponent()
-
-    return buildEvaluationSchema(
-        ConventionsTopLevelReceiver::class,
-        schemaBuildingComponent,
-        isTopLevelElement.implies(isConventionsConfiguringCall)
-    )
-}
-
-
-internal
-fun settingsEvaluationSchema(settings: Settings): EvaluationSchema {
-    val schemaBuildingComponent = gradleDslGeneralSchemaComponent() +
-        /** TODO: Instead of [SettingsInternal], this should rely on the public API of [Settings];
-         *  missing single-arg [Settings.include] (or missing vararg support) prevents this from happening,
-         *  and we use the [SettingsInternal.include] single-argument workaround for now. */
-        ThirdPartyExtensionsComponent(SettingsInternal::class, settings, "settingsExtension")
-
-    return buildEvaluationSchema(SettingsInternal::class, schemaBuildingComponent, ignoreTopLevelPluginsPluginManagementAndConventions)
-}
+fun settingsEvaluationSchema(settings: SettingsInternal): EvaluationAndConversionSchema =
+    buildEvaluationAndConversionSchema(
+        SettingsInternal::class,
+        ignoreTopLevelPluginsPluginManagementAndConventions
+    ) {
+        gradleDslGeneralSchema()
+        thirdPartyExtensions(SettingsInternal::class, settings)
+    }
 
 
 private
@@ -109,5 +102,5 @@ private
 val ignoreTopLevelPluginsPluginManagementAndConventions = isTopLevelElement.implies(
     isPluginManagementCall.not()
         .and(isTopLevelPluginsBlock.not())
-        .and(isConventionsConfiguringCall.not())
+        .and(isDefaultsConfiguringCall.not())
 )

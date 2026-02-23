@@ -32,10 +32,9 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
     def setup() {
         // apply Java ecosystem rules
         buildFile << """
-            org.gradle.api.internal.artifacts.JavaEcosystemSupport.configureSchema(
-                dependencies.attributesSchema,
-                project.objects
-            )
+            plugins {
+                id("jvm-ecosystem")
+            }
         """
     }
 
@@ -69,7 +68,7 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         return 'default'
     }
 
-    private ResolveTestFixture resolve
+    private ResolveTestFixture resolve = new ResolveTestFixture(testDirectory)
     private Map<String, RemoteRepositorySpec> repoSpecs = [:]
     private Map<String, HttpRepository> repos = [:]
 
@@ -82,9 +81,9 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
 
         repos += [(repoType): repo]
         """
-        repositories { 
-            ${isMaven ? 'maven' : 'ivy'} { 
-                url "${repo.uri}"
+        repositories {
+            ${isMaven ? 'maven' : 'ivy'} {
+                url = "${repo.uri}"
                 metadataSources { ${gradleMetadata ? 'gradleMetadata()' : isMaven ? 'mavenPom()' : 'ivyDescriptor()'} }
             }
         }
@@ -101,15 +100,15 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         }
 
         def conf = "conf"
-        resolve = new ResolveTestFixture(buildFile, conf)
-        settingsFile << "rootProject.name = 'test'"
-        resolve.prepare()
+        settingsFile << """
+            rootProject.name = 'test'
+        """
         buildFile << """
             configurations {
                 $conf
             }
+            ${resolve.configureProject(conf)}
         """
-        resolve.addDefaultVariantDerivationStrategy()
 
         repoTypes.each { repoType ->
             repository(repoType) {
@@ -214,7 +213,7 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         expectChainInteractions(REPO_TYPES, chain, testVariant)
 
         then:
-        succeeds 'checkDep'
+        succeeds 'checkDeps'
         resolve.expectGraph {
             root(':', ':test:') {
                 module("org:${chain[0]}:1.0:${RepositoryInteractionDependencyResolveIntegrationTest.expectedConfiguration(chain[0], testVariant)}") {
@@ -240,7 +239,7 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         [chain, testVariant] << [REPO_TYPES.permutations(), TEST_VARIANTS.keySet()].combinations()
     }
 
-    def "explicit compile configuration selection works for a chain of pure maven dependencies"() {
+    def "resolution works for a chain of pure maven dependencies"() {
         given:
         def modules = ['mavenCompile1', 'mavenCompile2', 'mavenCompile3']
         setupRepositories(modules)
@@ -250,13 +249,13 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         buildFile << """
             dependencies {
                 configurations.conf.attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
-                conf group: 'org', name: 'mavenCompile1', version: '1.0', configuration: 'compile'
+                conf("org:mavenCompile1:1.0")
             }
         """
         expectChainInteractions(modules, modules)
 
         then:
-        succeeds 'checkDep'
+        succeeds 'checkDeps'
         resolve.expectGraph {
             root(':', ':test:') {
                 module("org:mavenCompile1:1.0:compile") {
@@ -272,7 +271,7 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         }
     }
 
-    def "explicit compile configuration selection with Gradle metadata is propagates to Maven dependencies"() {
+    def "resolution with Gradle metadata propagates to Maven dependencies"() {
         given:
         def modules = ['mavenCompile1', 'mavenCompile2', 'maven-gradle', 'maven']
         setupRepositories(modules)
@@ -282,20 +281,20 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         buildFile << """
             dependencies {
                 configurations.conf.attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
-                conf group: 'org', name: 'mavenCompile1', version: '1.0', configuration: 'compile'
+                conf("org:mavenCompile1:1.0")
             }
         """
         expectChainInteractions(modules, modules)
 
         then:
-        succeeds 'checkDep'
+        succeeds 'checkDeps'
         resolve.expectGraph {
             root(':', ':test:') {
                 module("org:mavenCompile1:1.0:compile") {
                     module "org:mavenCompile1-api-dependency:1.0"
                     module("org:mavenCompile2:1.0") {
                         module "org:mavenCompile2-api-dependency:1.0"
-                        module("org:maven-gradle:1.0") { // Attribute matching is used here
+                        module("org:maven-gradle:1.0") {
                             module "org:maven-gradle-api-dependency:1.0"
                             module("org:maven:1.0") {
                                 module "org:maven-api-dependency:1.0"
@@ -307,7 +306,7 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         }
     }
 
-    def "explicit #conf configuration selection still works for maven dependencies"() {
+    def "resolution works for maven dependencies"() {
         given:
         def modules = ['maven', 'mavenCompile1', 'maven-gradle', 'mavenCompile2']
         setupRepositories(modules)
@@ -317,20 +316,18 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         buildFile << """
             dependencies {
                 configurations.conf.attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
-                conf group: 'org', name: 'maven', version: '1.0', configuration: '$conf'
+                conf("org:maven:1.0")
             }
         """
-        expectChainInteractions(modules, modules, 'api', conf)
+        expectChainInteractions(modules, modules, 'api')
 
         then:
-        succeeds 'checkDep'
+        succeeds 'checkDeps'
         resolve.expectGraph {
             root(':', ':test:') {
-                module("org:maven:1.0:$conf") {
+                module("org:maven:1.0") {
                     module "org:maven-api-dependency:1.0"
-                    module "org:maven-runtime-dependency:1.0"
                     module("org:mavenCompile1:1.0") {
-                        //form here on, attribute matching is used
                         module "org:mavenCompile1-api-dependency:1.0"
                         module("org:maven-gradle:1.0") {
                             module "org:maven-gradle-api-dependency:1.0"
@@ -342,9 +339,6 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
                 }
             }
         }
-
-        where:
-        conf << ['runtime', 'test']
     }
 
     def "explicit configuration selection in ivy modules is NOT supported if targeting a #target module"() {
@@ -367,7 +361,7 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         expectChainInteractions([target, 'ivy'], ['ivy', target], 'runtime')
 
         then:
-        succeeds 'checkDep'
+        succeeds 'checkDeps'
         resolve.expectGraph {
             root(':', ':test:') {
                 module("org:ivy:1.0") {
@@ -407,7 +401,7 @@ class RepositoryInteractionDependencyResolveIntegrationTest extends AbstractHttp
         expectChainInteractions([targetRepoName, 'ivy'], ['ivy', targetRepoName], 'api')
 
         then:
-        succeeds 'checkDep'
+        succeeds 'checkDeps'
         resolve.expectGraph {
             root(':', ':test:') {
                 module("org:ivy:1.0") {

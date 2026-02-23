@@ -17,8 +17,8 @@
 package org.gradle.api.invocation
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.util.internal.ToBeImplemented
 import org.gradle.internal.code.UserCodeApplicationContext
+import org.gradle.util.internal.ToBeImplemented
 
 class GradleLifecycleIsolationIntegrationTest extends AbstractIntegrationSpec {
 
@@ -52,7 +52,7 @@ class GradleLifecycleIsolationIntegrationTest extends AbstractIntegrationSpec {
             version = 'from script'
         '''
         buildFile script
-        groovyFile 'sub/build.gradle', script
+        buildFile 'sub/build.gradle', script
 
         when:
         succeeds 'help'
@@ -170,7 +170,7 @@ class GradleLifecycleIsolationIntegrationTest extends AbstractIntegrationSpec {
         fails("help")
 
         then:
-        failure.assertHasCause("No signature of method: org.gradle.api.Project.printInfo() is applicable for argument types: () values: []")
+        failure.assertHasCause("No signature of method: org.gradle.api.initialization.Settings.printInfo() is applicable for argument types: () values: [")
 
 //        outputContains("project name = root")
 //        outputContains("project name = a")
@@ -204,12 +204,12 @@ class GradleLifecycleIsolationIntegrationTest extends AbstractIntegrationSpec {
 
     def 'lifecycle actions preserve user code application context for plugins'() {
         given:
-        groovyFile "build-logic/build.gradle", '''
+        buildFile "build-logic/build.gradle", '''
             plugins {
                 id 'groovy-gradle-plugin'
             }
         '''
-        groovyFile "build-logic/src/main/groovy/my-settings-plugin.settings.gradle", """
+        buildFile "build-logic/src/main/groovy/my-settings-plugin.settings.gradle", """
             gradle.lifecycle.beforeProject {
                 println("before:" + $currentApplication)
             }

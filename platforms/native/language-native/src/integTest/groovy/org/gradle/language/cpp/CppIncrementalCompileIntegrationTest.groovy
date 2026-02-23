@@ -16,14 +16,12 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.CppApp
 import org.gradle.nativeplatform.fixtures.app.CppLib
 
 class CppIncrementalCompileIntegrationTest extends AbstractInstalledToolChainIntegrationSpec implements CppTaskNames {
 
-    @ToBeFixedForConfigurationCache
     def "skips compile and link tasks for executable when source doesn't change"() {
         def app = new CppApp()
         settingsFile << "rootProject.name = 'app'"
@@ -41,7 +39,7 @@ class CppIncrementalCompileIntegrationTest extends AbstractInstalledToolChainInt
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToInstall, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToInstall, ":assemble")
         result.assertTasksSkipped(tasks.debug.allToInstall, ":assemble")
 
         executable("build/exe/main/debug/app").assertExists()
@@ -49,14 +47,13 @@ class CppIncrementalCompileIntegrationTest extends AbstractInstalledToolChainInt
 
         and:
         succeeds "assembleRelease"
-        result.assertTasksExecuted(tasks.release.allToInstall, tasks.release.extract, ":assembleRelease")
+        result.assertTasksScheduled(tasks.release.allToInstall, tasks.release.extract, ":assembleRelease")
         result.assertTasksSkipped( tasks.release.allToInstall, tasks.release.extract, ":assembleRelease")
 
         executable("build/exe/main/release/app").assertExists()
         installation("build/install/main/release").exec().out == app.expectedOutput
     }
 
-    @ToBeFixedForConfigurationCache
     def "skips compile and link tasks for library when source doesn't change"() {
         def lib = new CppLib()
         settingsFile << "rootProject.name = 'hello'"
@@ -74,13 +71,13 @@ class CppIncrementalCompileIntegrationTest extends AbstractInstalledToolChainInt
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
         result.assertTasksSkipped(tasks.debug.allToLink, ":assemble")
 
         sharedLibrary("build/lib/main/debug/hello").assertExists()
 
         succeeds "assembleRelease"
-        result.assertTasksExecuted(tasks.release.allToLink, tasks.release.extract, ":assembleRelease")
+        result.assertTasksScheduled(tasks.release.allToLink, tasks.release.extract, ":assembleRelease")
         result.assertTasksSkipped(tasks.release.allToLink, tasks.release.extract, ":assembleRelease")
 
         sharedLibrary("build/lib/main/release/hello").assertExists()

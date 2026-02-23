@@ -25,9 +25,10 @@ import org.gradle.api.artifacts.ProjectDependency;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderConvertible;
-import org.gradle.declarative.dsl.model.annotations.Restricted;
+import org.gradle.declarative.dsl.model.annotations.HiddenInDefinition;
+import org.gradle.internal.deprecation.DeprecationLogger;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 /**
@@ -38,12 +39,11 @@ import javax.inject.Inject;
  * @implNote Changes to this interface may require changes to the
  * {@link org.gradle.api.internal.artifacts.dsl.dependencies.DependenciesExtensionModule extension module for Groovy DSL} or
  * {@link org.gradle.kotlin.dsl.DependenciesExtensions extension functions for Kotlin DSL}.
- * <p>
- * @see <a href="https://docs.gradle.org/current/userguide/custom_gradle_types.html#custom_dependencies_blocks">Creating custom dependencies blocks.</a>
+ *
+ * @see <a href="https://docs.gradle.org/current/userguide/implementing_gradle_plugins_binary.html#custom_dependencies_blocks">Creating custom dependencies blocks.</a>
  *
  * @since 7.6
  */
-@Incubating
 @SuppressWarnings("JavadocReference")
 public interface Dependencies {
     /**
@@ -55,6 +55,7 @@ public interface Dependencies {
      * @see DependencyFactory
      */
     @Inject
+    @HiddenInDefinition
     DependencyFactory getDependencyFactory();
 
     /**
@@ -66,6 +67,7 @@ public interface Dependencies {
      * @see DependencyConstraintFactory
      */
     @Inject
+    @HiddenInDefinition
     DependencyConstraintFactory getDependencyConstraintFactory();
 
     /**
@@ -75,8 +77,12 @@ public interface Dependencies {
      *
      * @implSpec Do not implement this method. Gradle generates the implementation automatically.
      * @since 8.0
+     *
+     * @deprecated This method is deprecated and will be removed in Gradle 10.
      */
     @Inject
+    @Deprecated
+    @HiddenInDefinition
     Project getProject();
 
     /**
@@ -89,9 +95,8 @@ public interface Dependencies {
      *
      * @see org.gradle.api.Project#project(String)
      */
-    @Restricted
     default ProjectDependency project(String projectPath) {
-        return getDependencyFactory().create(getProject().project(projectPath));
+        return getDependencyFactory().createProjectDependency(projectPath);
     }
 
     /**
@@ -99,8 +104,9 @@ public interface Dependencies {
      *
      * @return the current project as a dependency
      */
+    @HiddenInDefinition
     default ProjectDependency project() {
-        return getDependencyFactory().create(getProject());
+        return getDependencyFactory().createProjectDependency();
     }
 
     /**
@@ -110,6 +116,7 @@ public interface Dependencies {
      * @return the new dependency
      * @see DependencyFactory#create(CharSequence) Valid dependency notation for this method
      */
+    @HiddenInDefinition
     default ExternalModuleDependency module(CharSequence dependencyNotation) {
         return getDependencyFactory().create(dependencyNotation);
     }
@@ -120,9 +127,22 @@ public interface Dependencies {
      * @param group the group (optional)
      * @param name the name
      * @param version the version (optional)
+     *
      * @return the new dependency
+     *
+     * @deprecated This method will be removed in Gradle 10. Use single-string notation instead.
      */
+    @HiddenInDefinition
+    @Deprecated
     default ExternalModuleDependency module(@Nullable String group, String name, @Nullable String version) {
+        String suggestedNotation = (group == null ? "" : group)  + ":" + name + (version == null ? "" : ":" + version);
+
+        DeprecationLogger.deprecateAction("Declaring dependencies using multi-string notation")
+            .withAdvice("Please use single-string notation instead: \"" + suggestedNotation + "\".")
+            .willBecomeAnErrorInGradle10()
+            .withUpgradeGuideSection(9, "dependency_multi_string_notation")
+            .nagUser();
+
         return getDependencyFactory().create(group, name, version);
     }
 
@@ -134,6 +154,7 @@ public interface Dependencies {
      * @see DependencyConstraintFactory#create(CharSequence) Valid dependency constraint notation for this method
      * @since 8.7
      */
+    @HiddenInDefinition
     default DependencyConstraint constraint(CharSequence dependencyConstraintNotation) {
         return getDependencyConstraintFactory().create(dependencyConstraintNotation);
     }
@@ -145,6 +166,8 @@ public interface Dependencies {
      * @return the new dependency constraint
      * @since 8.7
      */
+    @Incubating
+    @HiddenInDefinition
     default Provider<? extends DependencyConstraint> constraint(Provider<? extends MinimalExternalModuleDependency> dependencyConstraint) {
         return dependencyConstraint.map(getDependencyConstraintFactory()::create);
     }
@@ -156,6 +179,8 @@ public interface Dependencies {
      * @return the new dependency constraint
      * @since 8.7
      */
+    @Incubating
+    @HiddenInDefinition
     default Provider<? extends DependencyConstraint> constraint(ProviderConvertible<? extends MinimalExternalModuleDependency> dependencyConstraint) {
         return constraint(dependencyConstraint.asProvider());
     }
@@ -167,6 +192,7 @@ public interface Dependencies {
      * @return the new dependency constraint
      * @since 8.7
      */
+    @HiddenInDefinition
     default DependencyConstraint constraint(ProjectDependency project) {
         return getDependencyConstraintFactory().create(project);
     }
@@ -176,7 +202,11 @@ public interface Dependencies {
      *
      * @return injected service
      * @implSpec Do not implement this method. Gradle generates the implementation automatically.
+     *
+     * @deprecated This method is deprecated and will be removed in Gradle 10.
      */
     @Inject
+    @Deprecated
+    @HiddenInDefinition
     ObjectFactory getObjectFactory();
 }

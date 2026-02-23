@@ -19,7 +19,7 @@ import org.apache.commons.io.FilenameUtils
 import org.gradle.api.Project
 import org.gradle.ide.visualstudio.fixtures.AbstractVisualStudioIntegrationSpec
 import org.gradle.ide.visualstudio.fixtures.MSBuildExecutor
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
+import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.app.CppHelloWorldApp
 import org.gradle.nativeplatform.fixtures.app.ExeWithLibraryUsingLibraryHelloWorldApp
 import org.gradle.plugins.ide.internal.IdePlugin
@@ -52,7 +52,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
         """
     }
 
-    @ToBeFixedForConfigurationCache
     def "create visual studio solution for executable that depends on a library in another project"() {
         when:
         app.executable.writeSources(file("exe/src/main"))
@@ -118,7 +117,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
         mainSolution.assertReferencesProject(libProject, projectConfigurations)
     }
 
-    @ToBeFixedForConfigurationCache
     def "visual studio solution does not reference the components of a project if it does not have visual studio plugin applied"() {
         when:
         app.executable.writeSources(file("exe/src/main"))
@@ -220,7 +218,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
         file("other").listFiles().every { !(it.name.endsWith(".vcxproj") || it.name.endsWith(".vcxproj.filters")) }
     }
 
-    @ToBeFixedForConfigurationCache
     def "create visual studio solution for executable that transitively depends on multiple projects"() {
         given:
         def app = new ExeWithLibraryUsingLibraryHelloWorldApp()
@@ -294,7 +291,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
     }
 
     @Requires(IntegTestPreconditions.HasMsBuild)
-    @ToBeFixedForConfigurationCache
     def "can build executable that depends on static library in another project from visual studio"() {
         useMsbuildTool()
 
@@ -335,12 +331,11 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
 
         then:
         resultDebug.size() == 1
-        resultDebug[0].assertTasksExecuted(':exe:compileMainDebugExecutableMainCpp', ':exe:linkMainDebugExecutable', ':exe:mainDebugExecutable', ':exe:installMainDebugExecutable', ':lib:compileHelloDebugStaticLibraryHelloCpp', ':lib:createHelloDebugStaticLibrary', ':lib:helloDebugStaticLibrary')
+        resultDebug[0].assertTasksScheduled(':exe:compileMainDebugExecutableMainCpp', ':exe:linkMainDebugExecutable', ':exe:mainDebugExecutable', ':exe:installMainDebugExecutable', ':lib:compileHelloDebugStaticLibraryHelloCpp', ':lib:createHelloDebugStaticLibrary', ':lib:helloDebugStaticLibrary')
         installation('exe/build/install/main/debug').assertInstalled()
     }
 
     @Requires(IntegTestPreconditions.HasMsBuild)
-    @ToBeFixedForConfigurationCache
     def "can clean from visual studio with dependencies"() {
         useMsbuildTool()
         def debugBinary = executable('exe/build/exe/main/debug/main')
@@ -393,7 +388,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
         file("lib/build").assertDoesNotExist()
     }
 
-    @ToBeFixedForConfigurationCache
     def "create visual studio solution where multiple components have same name"() {
         given:
         def app = new ExeWithLibraryUsingLibraryHelloWorldApp()
@@ -466,7 +460,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
         greetLibProject.projectConfigurations['debug'].includePath == filePath("src/main/headers")
     }
 
-    @ToBeFixedForConfigurationCache
     def "create visual studio solution for executable with project dependency cycle"() {
         given:
         def app = new ExeWithLibraryUsingLibraryHelloWorldApp()
@@ -533,8 +526,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
     }
 
     /** @see IdePlugin#toGradleCommand(Project) */
-    @Requires(IntegTestPreconditions.IsEmbeddedExecutor)
-    @ToBeFixedForConfigurationCache
     def "detects gradle wrapper and uses in vs project"() {
         when:
         hostGradleWrapperFile << "dummy wrapper"
@@ -558,13 +549,18 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
         then:
         final exeProject = projectFile("exe/exe_mainExe.vcxproj")
         exeProject.projectConfigurations.values().each {
-            assert it.buildCommand == "\"../${hostGradleWrapperFile.name}\" -p \"..\" :exe:installMain${it.name.capitalize()}Executable"
+            def gradleFile = executer.distribution.gradleHomeDir.file("bin/gradle")
+            def formattedGradleFile = gradleFile.toString()
+            if (OperatingSystem.current().isWindows()) {
+                // For some reason we use forward slashes even on Windows
+                formattedGradleFile = formattedGradleFile.replace("\\", "/")
+            }
+            assert it.buildCommand == "\"${formattedGradleFile}\" -p \"..\" :exe:installMain${it.name.capitalize()}Executable"
         }
     }
 
     /** @see IdePlugin#toGradleCommand(Project) */
     @Requires(IntegTestPreconditions.IsDaemonOrNoDaemonExecutor)
-    @ToBeFixedForConfigurationCache
     def "detects executing gradle distribution and uses in vs project"() {
         when:
         hostGradleWrapperFile << "dummy wrapper"
@@ -592,7 +588,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
         }
     }
 
-    @ToBeFixedForConfigurationCache
     def "cleanVisualStudio removes all generated visual studio files"() {
         when:
         createDirs("exe", "lib")
@@ -641,7 +636,6 @@ class VisualStudioSoftwareModelMultiProjectIntegrationTest extends AbstractVisua
         generatedFiles*.assertDoesNotExist()
     }
 
-    @ToBeFixedForConfigurationCache
     @Requires(IntegTestPreconditions.NotParallelExecutor)
     def "can create Visual Studio solution for multiproject depending on the same prebuilt binary from another project in parallel"() {
         given:

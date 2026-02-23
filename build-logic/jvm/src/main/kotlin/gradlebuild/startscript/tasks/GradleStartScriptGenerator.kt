@@ -21,6 +21,7 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.internal.file.temp.TemporaryFileProvider
 import org.gradle.api.internal.plugins.DefaultTemplateBasedStartScriptGenerator
+import org.gradle.api.internal.plugins.ExecutableJar
 import org.gradle.api.internal.plugins.StartScriptGenerator
 import org.gradle.api.internal.plugins.StartScriptTemplateBindingFactory
 import org.gradle.api.internal.resources.FileCollectionBackedTextResource
@@ -33,6 +34,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.util.internal.DefaultGradleVersion
 import org.gradle.util.internal.TextUtil
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -76,11 +78,12 @@ abstract class GradleStartScriptGenerator : DefaultTask() {
         logging.captureStandardOutput(LogLevel.INFO)
         val generator = StartScriptGenerator(createUnixStartScriptGenerator(), createWindowsStartScriptGenerator())
         generator.setApplicationName("Gradle")
+        generator.setGitRef(DefaultGradleVersion.current().gitRevision ?: "HEAD")
         generator.setOptsEnvironmentVar("GRADLE_OPTS")
         generator.setExitEnvironmentVar("GRADLE_EXIT_CONSOLE")
-        generator.setMainClassName("org.gradle.launcher.GradleMain")
+        generator.setEntryPoint(ExecutableJar("lib/$launcherJarName"))
         generator.setScriptRelPath("bin/gradle")
-        generator.setClasspath(listOf("lib/$launcherJarName"))
+        generator.setClasspath(emptyList())
         generator.setAppNameSystemProperty("org.gradle.appname")
         generator.setDefaultJvmOpts(listOf("-Xmx64m", "-Xms64m"))
 
@@ -140,9 +143,7 @@ abstract class GradleStartScriptGenerator : DefaultTask() {
                 else -> line
             }
         }.toByteArray(StandardCharsets.UTF_8))
-        if (replacementsCount != 1) {
-            throw IllegalArgumentException("The script file produced by the default start script doesn't match expected layout")
-        }
+        require(replacementsCount == 1) { "The script file produced by the default start script doesn't match expected layout" }
     }
 
     private

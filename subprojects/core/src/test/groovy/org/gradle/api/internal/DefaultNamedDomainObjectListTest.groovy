@@ -28,7 +28,7 @@ class DefaultNamedDomainObjectListTest extends AbstractNamedDomainObjectCollecti
     }
     final DefaultNamedDomainObjectList<CharSequence> list = new DefaultNamedDomainObjectList<CharSequence>(CharSequence, TestUtil.instantiatorFactory().decorateLenient(), toStringNamer, callbackActionDecorator)
 
-    DefaultNamedDomainObjectList<String> container = list
+    DefaultNamedDomainObjectList<CharSequence> container = list
     StringBuffer a = new StringBuffer("a")
     StringBuffer b = new StringBuffer("b")
     StringBuffer c = new StringBuffer("c")
@@ -386,14 +386,6 @@ class DefaultNamedDomainObjectListTest extends AbstractNamedDomainObjectCollecti
 
         then:
         thrown(UnsupportedOperationException)
-    }
-
-    def "can find all elements that match closure"() {
-        given:
-        list.addAll(["a", "b", "c"])
-
-        expect:
-        list.findAll { it != "b" } == ["a", "c"]
     }
 
     def "name based filtering does not realize pending"() {

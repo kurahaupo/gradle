@@ -16,6 +16,7 @@
 
 package org.gradle.model.internal.asm;
 
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
@@ -23,8 +24,8 @@ import org.objectweb.asm.Type;
 
 import java.util.List;
 
-import static org.gradle.internal.classanalysis.AsmConstants.ASM_LEVEL;
-import static org.gradle.internal.reflect.JavaReflectionUtil.getWrapperTypeForPrimitiveType;
+import static org.gradle.model.internal.asm.AsmClassGeneratorUtils.getWrapperTypeForPrimitiveType;
+import static org.gradle.model.internal.asm.AsmConstants.ASM_LEVEL;
 import static org.objectweb.asm.Opcodes.AALOAD;
 import static org.objectweb.asm.Opcodes.AASTORE;
 import static org.objectweb.asm.Opcodes.ACONST_NULL;
@@ -91,6 +92,12 @@ public class MethodVisitorScope extends MethodVisitor {
         bytecode.emit(mv);
     }
 
+    protected AnnotationVisitor visitAnnotation(Class<?> clazz) {
+        return visitAnnotation(
+            getType(clazz).getDescriptor(),
+            true
+        );
+    }
     /**
      * Unboxes or casts the value at the top of the stack.
      */

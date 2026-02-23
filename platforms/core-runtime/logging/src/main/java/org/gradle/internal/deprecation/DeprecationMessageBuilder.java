@@ -17,18 +17,23 @@
 package org.gradle.internal.deprecation;
 
 import com.google.common.base.Joiner;
-import org.gradle.api.problems.internal.DocLink;
-import org.gradle.api.problems.internal.Problem;
+import org.gradle.api.problems.DocLink;
+import org.gradle.api.problems.internal.InternalProblem;
 import org.gradle.util.GradleVersion;
+import org.gradle.util.internal.DefaultGradleVersion;
+import org.jspecify.annotations.Nullable;
 
 import javax.annotation.CheckReturnValue;
 import java.util.List;
 
+@SuppressWarnings("SameNameButDifferent")
 @CheckReturnValue
 public class DeprecationMessageBuilder<T extends DeprecationMessageBuilder<T>> {
 
-    private static final GradleVersion GRADLE9 = GradleVersion.version("9.0");
+    private static final GradleVersion GRADLE10 = GradleVersion.version("10.0.0");
+    private static final GradleVersion GRADLE11 = GradleVersion.version("11.0.0");
 
+    @Nullable
     protected String summary;
     private DeprecationTimeline deprecationTimeline;
     private String context;
@@ -39,10 +44,7 @@ public class DeprecationMessageBuilder<T extends DeprecationMessageBuilder<T>> {
     protected String problemIdDisplayName;
     protected String problemId;
 
-    DeprecationMessageBuilder() {
-    }
-
-    public static WithDocumentation withDocumentation(Problem warning, WithDeprecationTimeline withDeprecationTimeline) {
+    public static WithDocumentation withDocumentation(InternalProblem warning, WithDeprecationTimeline withDeprecationTimeline) {
         DocLink docLink = warning.getDefinition().getDocumentationLink();
         if (docLink != null) {
             return withDeprecationTimeline
@@ -51,6 +53,7 @@ public class DeprecationMessageBuilder<T extends DeprecationMessageBuilder<T>> {
         return withDeprecationTimeline.undocumented();
     }
 
+    @Nullable
     protected String createDefaultDeprecationIdDisplayName() {
         return summary;
     }
@@ -80,26 +83,49 @@ public class DeprecationMessageBuilder<T extends DeprecationMessageBuilder<T>> {
     }
 
     /**
-     * Output: This is scheduled to be removed in Gradle 9.0.
+     * Output: This is scheduled to be removed in Gradle 10.
      */
-    public WithDeprecationTimeline willBeRemovedInGradle9() {
-        this.deprecationTimeline = DeprecationTimeline.willBeRemovedInVersion(GRADLE9);
+    public WithDeprecationTimeline willBeRemovedInGradle10() {
+        this.deprecationTimeline = DeprecationTimeline.willBeRemovedInVersion(GRADLE10);
         return new WithDeprecationTimeline(this);
     }
 
     /**
-     * Output: This will fail with an error in Gradle 9.0.
+     * Output: This will fail with an error in Gradle 10.
      */
-    public WithDeprecationTimeline willBecomeAnErrorInGradle9() {
-        this.deprecationTimeline = DeprecationTimeline.willBecomeAnErrorInVersion(GRADLE9);
+    public WithDeprecationTimeline willBecomeAnErrorInGradle10() {
+        this.deprecationTimeline = DeprecationTimeline.willBecomeAnErrorInVersion(GRADLE10);
         return new WithDeprecationTimeline(this);
     }
 
     /**
-     * Output: Starting with Gradle 9.0, ${message}.
+     * Output: This will fail with an error in Gradle X.
+     * <p>
+     * Where X is the current major Gradle version + 1.
+     *
+     * NOTE: This should be used sparingly. It is better to use the version-specific methods for deprecations that will become errors.
+     * This is intended for persistent deprecations that will never be removed.
+     * As an example, Gradle will always have a deprecation about using a version of Java older than the future minimum version.
      */
-    public WithDeprecationTimeline startingWithGradle9(String message) {
-        this.deprecationTimeline = DeprecationTimeline.startingWithVersion(GRADLE9, message);
+    public WithDeprecationTimeline willBecomeAnErrorInNextMajorGradleVersion() {
+        GradleVersion nextMajor = DefaultGradleVersion.current().getNextMajorVersion();
+        this.deprecationTimeline = DeprecationTimeline.willBecomeAnErrorInVersion(nextMajor);
+        return new WithDeprecationTimeline(this);
+    }
+
+    /**
+     * Output: Starting with Gradle 10, ${message}.
+     */
+    public WithDeprecationTimeline startingWithGradle10(String message) {
+        this.deprecationTimeline = DeprecationTimeline.startingWithVersion(GRADLE10, message);
+        return new WithDeprecationTimeline(this);
+    }
+
+    /**
+     * Output: Starting with Gradle 11, ${message}.
+     */
+    public WithDeprecationTimeline startingWithGradle11(String message) {
+        this.deprecationTimeline = DeprecationTimeline.startingWithVersion(GRADLE11, message);
         return new WithDeprecationTimeline(this);
     }
 
@@ -111,7 +137,7 @@ public class DeprecationMessageBuilder<T extends DeprecationMessageBuilder<T>> {
         this.usageType = DeprecatedFeatureUsage.Type.BUILD_INVOCATION;
     }
 
-    void setSummary(String summary) {
+    void setSummary(@Nullable String summary) {
         this.summary = summary;
     }
 
@@ -119,21 +145,25 @@ public class DeprecationMessageBuilder<T extends DeprecationMessageBuilder<T>> {
         this.advice = advice;
     }
 
-    void setDeprecationTimeline(DeprecationTimeline deprecationTimeline) {
-        this.deprecationTimeline = deprecationTimeline;
-    }
-
     void setDocumentation(DocLink documentation) {
         this.documentation = documentation;
     }
 
-    void setProblemIdDisplayName(String problemIdDisplayName) {
+    void setProblemIdDisplayName(@Nullable String problemIdDisplayName) {
         this.problemIdDisplayName = problemIdDisplayName;
+    }
+
+    void setDeprecationTimeline(DeprecationTimeline deprecationTimeline) {
+        this.deprecationTimeline = deprecationTimeline;
     }
 
     DeprecationMessage build() {
         if (problemIdDisplayName == null) {
             setProblemIdDisplayName(createDefaultDeprecationIdDisplayName());
+        }
+
+        if (problemId == null) {
+            setProblemId(DeprecationMessageBuilder.createDefaultDeprecationId(createDefaultDeprecationIdDisplayName()));
         }
 
         return new DeprecationMessage(summary, deprecationTimeline.toString(), advice, context, documentation, usageType, problemIdDisplayName, problemId);
@@ -271,9 +301,18 @@ public class DeprecationMessageBuilder<T extends DeprecationMessageBuilder<T>> {
             this.property = property;
         }
 
-        @Override
+        /**
+         * DO NOT CALL THIS METHOD
+         */
+        @Deprecated
         public WithDeprecationTimeline willBeRemovedInGradle9() {
-            setDeprecationTimeline(DeprecationTimeline.willBeRemovedInVersion(GRADLE9));
+            setDeprecationTimeline(DeprecationTimeline.willBeRemovedInVersion(GRADLE10));
+            return new WithDeprecationTimeline(this);
+        }
+
+        @Override
+        public WithDeprecationTimeline willBeRemovedInGradle10() {
+            setDeprecationTimeline(DeprecationTimeline.willBeRemovedInVersion(GRADLE10));
             return new WithDeprecationTimeline(this);
         }
 
@@ -578,15 +617,6 @@ public class DeprecationMessageBuilder<T extends DeprecationMessageBuilder<T>> {
 
         public DeprecateBehaviour(String behaviour) {
             this.behaviour = behaviour;
-        }
-
-        /**
-         * Output: This behavior is scheduled to be removed in Gradle 9.0.
-         */
-        @Override
-        public WithDeprecationTimeline willBeRemovedInGradle9() {
-            setDeprecationTimeline(DeprecationTimeline.behaviourWillBeRemovedInVersion(GRADLE9));
-            return new WithDeprecationTimeline(this);
         }
 
         @Override

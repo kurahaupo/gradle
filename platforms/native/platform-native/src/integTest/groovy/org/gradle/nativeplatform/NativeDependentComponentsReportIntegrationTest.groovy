@@ -29,9 +29,10 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "displays dependents report for all components of the task's project"() {
         given:
-        buildScript simpleCppBuild()
+        buildFile simpleCppBuild()
 
         when:
+        executer.withArgument("--no-problems-report")
         run "dependentComponents"
 
         then:
@@ -42,9 +43,10 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "displays dependents of targeted '#component' component"() {
         given:
-        buildScript simpleCppBuild()
+        buildFile simpleCppBuild()
 
         when:
+        executer.withArgument("--no-problems-report")
         run 'dependentComponents', '--component', component
 
         then:
@@ -59,9 +61,10 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "fails when targeted component is not found"() {
         given:
-        buildScript simpleCppBuild()
+        buildFile simpleCppBuild()
 
         when:
+        executer.withArgument("--no-problems-report")
         fails 'dependentComponents', '--component', 'unknown'
 
         then:
@@ -70,9 +73,10 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "fails when some of the targeted components are not found"() {
         given:
-        buildScript simpleBuildWithTestSuites()
+        buildFile simpleBuildWithTestSuites()
 
         when:
+        executer.withArgument("--no-problems-report")
         fails 'dependentComponents', '--test-suites', '--component', 'unknown', '--component', 'anonymous', '--component', 'whatever', '--component', 'lib', '--component', 'main', '--component', 'libTest'
 
         then:
@@ -81,9 +85,10 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "displays dependent of multiple targeted components"() {
         given:
-        buildScript simpleCppBuild()
+        buildFile simpleCppBuild()
 
         when:
+        executer.withArgument("--no-problems-report")
         run 'dependentComponents', '--component', 'lib', '--component', 'main'
 
         then:
@@ -94,7 +99,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "hide non-buildable dependents by default #nonBuildables"() {
         given:
-        buildScript simpleCppBuild()
+        buildFile simpleCppBuild()
         nonBuildables.each { nonBuildable ->
             buildFile << """
                 model {
@@ -131,7 +136,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "displays non-buildable dependents when using #option"() {
         given:
-        buildScript simpleCppBuild() + '''
+        buildFile simpleCppBuild() + '''
             model {
                 components {
                     lib {
@@ -173,7 +178,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "consider components with no buildable binaries as non-buildables"() {
         given:
-        buildScript simpleCppBuild()
+        buildFile simpleCppBuild()
         buildFile << '''
             model {
                 components {
@@ -187,6 +192,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
         '''.stripIndent()
 
         when:
+        executer.withArgument("--no-problems-report")
         run 'dependentComponents'
 
         then:
@@ -197,13 +203,14 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
     def "displays dependents across projects in a build"() {
         given:
         settingsFile.text = multiProjectSettings()
-        buildScript multiProjectBuild()
+        buildFile multiProjectBuild()
 
         when:
+        executer.withArgument("--no-problems-report")
         run 'libraries:dependentComponents', '--component', 'foo'
 
         then:
-        output.contains '''
+        removeIrrelevantOutput(output).contains '''
             ------------------------------------------------------------
             Project ':libraries'
             ------------------------------------------------------------
@@ -218,13 +225,21 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
             '''.stripIndent()
     }
 
+    String removeIrrelevantOutput(String output) {
+        return output.readLines().findAll {
+             !(it ==~ /^Problem found.*$/) && !(it ==~ /.*caused invocation of 'Task.project' in other task at execution.*$/)
+            && !(it ==~ /.*Documentation: https:\/\/docs.gradle.org\/.*$/)
+        }.join('\n')
+    }
+
     @Requires(IntegTestPreconditions.NotParallelExecutor)
     def "can show dependent components in parallel"() {
         given: 'a multiproject build'
         settingsFile.text = multiProjectSettings()
-        buildScript multiProjectBuild()
+        buildFile multiProjectBuild()
 
         when: 'two reports in parallel'
+        executer.withArgument("--no-problems-report")
         succeeds('-q', '--parallel', '--max-workers=4', 'libraries:dependentComponents', 'extensions:dependentComponents')
 
         then: 'reports are not mixed'
@@ -268,17 +283,19 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "don't fail with prebuilt libraries"() {
         given:
-        buildScript simpleBuildWithPrebuiltLibrary()
+        buildFile simpleBuildWithPrebuiltLibrary()
 
         expect:
+        executer.withArgument("--no-problems-report")
         succeeds 'dependentComponents'
     }
 
     def "hide test suites by default"() {
         given:
-        buildScript simpleBuildWithTestSuites()
+        buildFile simpleBuildWithTestSuites()
 
         when:
+        executer.withArgument("--no-problems-report")
         run 'dependentComponents'
 
         then:
@@ -290,7 +307,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
 
     def "displays dependent test suites when using #option"() {
         given:
-        buildScript simpleBuildWithTestSuites()
+        buildFile simpleBuildWithTestSuites()
 
         when:
         run 'dependentComponents', option
@@ -333,7 +350,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
     }
 
     def "direct circular dependencies are handled gracefully"() {
-        buildScript simpleCppBuild()
+        buildFile simpleCppBuild()
         buildFile << '''
             model {
                 components {
@@ -347,6 +364,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
         '''.stripIndent()
 
         when:
+        executer.withArgument("--no-problems-report")
         fails 'dependentComponents'
 
         then:
@@ -362,7 +380,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
     }
 
     def "indirect circular dependencies are handled gracefully"() {
-        buildScript simpleCppBuild()
+        buildFile simpleCppBuild()
         buildFile << '''
             model {
                 components {
@@ -381,6 +399,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
         '''.stripIndent()
 
         when:
+        executer.withArgument("--no-problems-report")
         fails 'dependentComponents'
 
         then:
@@ -399,7 +418,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
     def "circular dependencies across projects are handled gracefully"() {
         given:
         settingsFile.text = multiProjectSettings()
-        buildScript multiProjectBuild()
+        buildFile multiProjectBuild()
         buildFile << '''
             project(':api') {
                 model {
@@ -415,6 +434,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
         '''.stripIndent()
 
         when:
+        executer.withArgument("--no-problems-report")
         fails 'api:dependentComponents'
 
         then:
@@ -453,6 +473,7 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
         """.stripIndent()
 
         when:
+        executer.withArgument("--no-problems-report")
         succeeds("dependentComponents")
 
         then:
@@ -482,9 +503,10 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
     @ToBeFixedForConfigurationCache(because = ":dependentComponents")
     def "report for empty build displays no component"() {
         given:
-        buildScript emptyNativeBuild()
+        buildFile emptyNativeBuild()
 
         when:
+        executer.withArgument("--no-problems-report")
         run 'dependentComponents'
 
         then:
@@ -494,9 +516,10 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
     @ToBeFixedForConfigurationCache(because = ":dependentComponents")
     def "report for empty build displays no component with task option #option"() {
         given:
-        buildScript emptyNativeBuild()
+        buildFile emptyNativeBuild()
 
         when:
+        executer.withArgument("--no-problems-report")
         run 'dependentComponents', option
 
         then:
@@ -750,4 +773,5 @@ class NativeDependentComponentsReportIntegrationTest extends AbstractIntegration
             }
         '''.stripIndent()
     }
+
 }

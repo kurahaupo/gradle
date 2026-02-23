@@ -16,38 +16,42 @@
 
 package org.gradle.internal.component.model;
 
-import org.gradle.api.attributes.HasAttributes;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.external.model.ImmutableCapabilities;
 
-import java.util.List;
-import java.util.Set;
-
 /**
- * Immutable metadata for a component variant instance that is used to perform dependency graph resolution.
- *
- * <p>Note that this metadata does not provide any information about the available artifacts of this variants, as this may be expensive to resolve.
- * Information about the artifacts can be accessed via the methods of {@link ComponentGraphResolveState}.</p>
+ * Immutable metadata for a variant of a component, intended for use during graph resolution.
+ * <p>
+ * This metadata does not provide any information about the available dependencies or artifacts
+ * of this variant, as they may be expensive to resolve. Expensive information about this variant
+ * can be accessed via the methods of {@link VariantGraphResolveState}.
  */
-public interface VariantGraphResolveMetadata extends HasAttributes {
+public interface VariantGraphResolveMetadata {
+
     /**
      * Returns the name for this variant, which is unique for the variants of its owning component.
+     *
+     * In general, this method should be avoided. The internal engine should not need to know the name of a node and
+     * should instead identify nodes based on their integer node ID. This method should only be used for
+     * diagnostics/reporting and for implementing existing public API methods that require this field.
+     *
+     * Prefer {@link #getDisplayName()}.
      */
     String getName();
 
-    @Override
-    ImmutableAttributes getAttributes();
+    /**
+     * Get a name for this variant to be used when displaying it.
+     */
+    default String getDisplayName() {
+        return getName();
+    }
 
     /**
-     * Returns the "sub variants" of this variant.
-     *
-     * <p>This concept should disappear.</p>
+     * Get the ID of this variant.
      */
-    Set<? extends Subvariant> getVariants();
+    VariantIdentifier getId();
 
-    List<? extends DependencyMetadata> getDependencies();
-
-    List<? extends ExcludeMetadata> getExcludes();
+    ImmutableAttributes getAttributes();
 
     ImmutableCapabilities getCapabilities();
 
@@ -60,13 +64,5 @@ public interface VariantGraphResolveMetadata extends HasAttributes {
      */
     default boolean isDeprecated() {
         return false;
-    }
-
-    interface Subvariant {
-        String getName();
-
-        ImmutableAttributes getAttributes();
-
-        ImmutableCapabilities getCapabilities();
     }
 }

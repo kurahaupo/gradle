@@ -16,7 +16,6 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraries
 import org.gradle.test.fixtures.file.TestFile
@@ -29,7 +28,6 @@ class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrati
     @Rule
     GitFileRepository repo = new GitFileRepository(testDirectory)
 
-    @ToBeFixedForConfigurationCache
     def "can combine C++ builds in a composite"() {
         given:
         createDirs("app", "hello", "log")
@@ -58,7 +56,6 @@ class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrati
 
     // NOTE: This method is named in a short way because of the maximum path length
     // on Windows.
-    @ToBeFixedForConfigurationCache
     def "from VCS"() {
         given:
         createDirs("app")
@@ -70,7 +67,7 @@ class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrati
                     all { details ->
                         if (details.requested.group == "org.gradle.cpp") {
                             from(${GitVersionControlSpec.name}) {
-                                url = uri("${repo.url}")
+                                url = "${repo.url}"
                                 rootDir = details.requested.module
                             }
                         }
@@ -102,7 +99,7 @@ class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrati
         if (buildType == "Release" && !toolChain.visualCpp) {
             tasks << [ ":log:stripSymbols${buildType}", ":hello:stripSymbols${buildType}", ":app:stripSymbols${buildType}"]
         }
-        assert result.assertTasksExecuted(tasks)
+        assert result.assertTasksScheduled(tasks)
     }
 
     private void assertAppHasOutputFor(String buildType) {

@@ -18,7 +18,7 @@ package gradlebuild.kotlindsl.generator.tasks
 
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
-import org.gradle.kotlin.dsl.internal.sharedruntime.codegen.licenseHeader
+import org.gradle.kotlin.dsl.internal.sharedruntime.codegen.LICENSE_HEADER
 import org.gradle.work.DisableCachingByDefault
 
 import java.io.File
@@ -34,6 +34,7 @@ abstract class GenerateKotlinDependencyExtensions : CodeGenerationTask() {
     @get:Input
     abstract val kotlinDslPluginsVersion: Property<String>
 
+    @Suppress("LongMethod")
     override fun File.writeFiles() {
 
         val kotlinDslPluginsVersion = kotlinDslPluginsVersion.get()
@@ -42,7 +43,7 @@ abstract class GenerateKotlinDependencyExtensions : CodeGenerationTask() {
         // IMPORTANT: kotlinDslPluginsVersion should NOT be made a `const` to avoid inlining
         writeFile(
             "org/gradle/kotlin/dsl/support/KotlinDslPlugins.kt",
-            """$licenseHeader
+            """$LICENSE_HEADER
 
 package org.gradle.kotlin.dsl.support
 
@@ -58,11 +59,10 @@ val expectedKotlinDslPluginsVersion: String
 
         writeFile(
             "org/gradle/kotlin/dsl/KotlinDependencyExtensions.kt",
-            """$licenseHeader
+            """$LICENSE_HEADER
 
 package org.gradle.kotlin.dsl
 
-import org.gradle.api.Incubating
 import org.gradle.api.artifacts.dsl.DependencyHandler
 
 import org.gradle.plugin.use.PluginDependenciesSpec
@@ -104,7 +104,6 @@ fun DependencyHandler.kotlin(module: String, version: String? = null): Any =
  * @param module simple name of the Kotlin Gradle plugin module, for example "jvm", "android", "kapt", "plugin.allopen" etc...
  * @since 8.3
  */
-@Incubating
 fun PluginDependenciesSpec.embeddedKotlin(module: String): PluginDependencySpec =
     id("org.jetbrains.kotlin.${'$'}module") version embeddedKotlinVersion
 

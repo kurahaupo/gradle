@@ -19,7 +19,6 @@ package org.gradle.ide.visualstudio
 import org.gradle.ide.visualstudio.fixtures.AbstractVisualStudioIntegrationSpec
 import org.gradle.ide.visualstudio.fixtures.ProjectFile
 import org.gradle.ide.visualstudio.fixtures.SolutionFile
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.language.VariantContext
 import org.gradle.nativeplatform.OperatingSystemFamily
 import org.gradle.nativeplatform.fixtures.app.CppSourceElement
@@ -44,7 +43,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         """
     }
 
-    @ToBeFixedForConfigurationCache
     def "ignores target machine not buildable from project configuration dimensions"() {
         assumeFalse(toolChain.meets(WINDOWS_GCC))
 
@@ -59,7 +57,7 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         run "visualStudio"
 
         then:
-        result.assertTasksExecuted(":visualStudio", ":appVisualStudioSolution", projectTasks)
+        result.assertTasksScheduled(":visualStudio", ":appVisualStudioSolution", projectTasks)
 
         and:
         def contexts = VariantContext.from(dimensions("buildType", ['debug', 'release']), dimensions("architecture", ['x86', 'x86-64']))
@@ -70,7 +68,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         solutionFile.assertReferencesProject(projectFile, projectConfigurations)
     }
 
-    @ToBeFixedForConfigurationCache
     def "create visual studio solution for component with multiple target machines"() {
         assumeFalse(toolChain.meets(WINDOWS_GCC))
 
@@ -85,7 +82,7 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         run "visualStudio"
 
         then:
-        result.assertTasksExecuted(":visualStudio", ":appVisualStudioSolution", projectTasks)
+        result.assertTasksScheduled(":visualStudio", ":appVisualStudioSolution", projectTasks)
 
         and:
         projectFile.assertHasComponentSources(componentUnderTest, "src/main")
@@ -105,7 +102,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
     }
 
     @Requires(IntegTestPreconditions.HasMsBuild)
-    @ToBeFixedForConfigurationCache
     def "build generated visual studio solution with multiple target machines"() {
         assumeFalse(toolChain.meets(WINDOWS_GCC))
         useMsbuildTool()
@@ -128,7 +124,7 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
 
         then:
         resultDebug.size() == 1
-        resultDebug[0].assertTasksExecuted(getTasksToBuildFromIde("debugX86"))
+        resultDebug[0].assertTasksScheduled(getTasksToBuildFromIde("debugX86"))
         file(getBuildFile(VariantContext.of(buildType: 'debug', architecture: 'x86'))).assertIsFile()
 
         when:
@@ -141,7 +137,7 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
 
         then:
         resultRelease.size() == 1
-        resultRelease[0].assertTasksExecuted(getTasksToBuildFromIde("releaseX86-64"))
+        resultRelease[0].assertTasksScheduled(getTasksToBuildFromIde("releaseX86-64"))
         file(getBuildFile(VariantContext.of(buildType: 'release', architecture: 'x86-64'))).assertIsFile()
     }
 
@@ -161,7 +157,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         succeeds "help"
     }
 
-    @ToBeFixedForConfigurationCache
     def "can create visual studio project for unbuildable component"() {
         given:
         makeSingleProject()
@@ -185,7 +180,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         solutionFile.assertReferencesProject(projectFile, projectConfigurations)
     }
 
-    @ToBeFixedForConfigurationCache
     def "warns about unbuildable components in generated visual studio project"() {
         given:
         makeSingleProject()
@@ -203,7 +197,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
     }
 
     @Requires(IntegTestPreconditions.HasMsBuild)
-    @ToBeFixedForConfigurationCache
     def "returns meaningful errors from visual studio when component product is unbuildable due to operating system"() {
         assumeFalse(toolChain.meets(WINDOWS_GCC))
         useMsbuildTool()
@@ -238,7 +231,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
     }
 
     @Requires(IntegTestPreconditions.HasMsBuild)
-    @ToBeFixedForConfigurationCache
     def "returns meaningful errors from visual studio when component product is unbuildable due to architecture"() {
         assumeFalse(toolChain.meets(WINDOWS_GCC))
         useMsbuildTool()
@@ -263,7 +255,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         result.assertHasCause("No tool chain is available to build C++")
     }
 
-    @ToBeFixedForConfigurationCache
     def "can detect the language standard for Visual Studio IntelliSense [#expectedLanguageStandard] #uniqueIndex"() {
         assumeFalse(toolChain.meets(WINDOWS_GCC))
 
@@ -280,12 +271,12 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         succeeds "visualStudio"
 
         then:
-        result.assertTasksExecuted(":visualStudio", ":appVisualStudioSolution", projectTasks)
+        result.assertTasksScheduled(":visualStudio", ":appVisualStudioSolution", projectTasks)
 
         and:
         projectFile.projectConfigurations.size() == 2
         projectFile.projectConfigurations.values().each {
-            it.languageStandard == expectedLanguageStandard
+            assert it.languageStandard == expectedLanguageStandard
         }
 
         where:
@@ -299,7 +290,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         '-std:c++latest' | 'stdcpplatest'           | 6
     }
 
-    @ToBeFixedForConfigurationCache
     def "can detect different language standard per component for Visual Studio IntelliSense"() {
         assumeFalse(toolChain.meets(WINDOWS_GCC))
 
@@ -320,7 +310,7 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         succeeds "visualStudio"
 
         then:
-        result.assertTasksExecuted(":visualStudio", ":appVisualStudioSolution", projectTasks)
+        result.assertTasksScheduled(":visualStudio", ":appVisualStudioSolution", projectTasks)
 
         and:
         projectFile.projectConfigurations.size() == 2
@@ -328,7 +318,6 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         projectFile.projectConfigurations['release'].languageStandard == 'stdcpp17'
     }
 
-    @ToBeFixedForConfigurationCache
     def "does not configure language standard when compiler flag is absent for Visual Studio Intellisense"() {
         assumeFalse(toolChain.meets(WINDOWS_GCC))
 
@@ -340,7 +329,7 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
         succeeds "visualStudio"
 
         then:
-        result.assertTasksExecuted(":visualStudio", ":appVisualStudioSolution", projectTasks)
+        result.assertTasksScheduled(":visualStudio", ":appVisualStudioSolution", projectTasks)
 
         and:
         projectFile.projectConfigurations.size() == 2
@@ -401,12 +390,10 @@ abstract class AbstractVisualStudioProjectIntegrationTest extends AbstractVisual
 
     protected String configureToolChainSupport(String architecture) {
         return """
-            model {
-                toolChains {
-                    toolChainFor${architecture.capitalize()}Architecture(Gcc) {
-                        path "/not/found"
-                        target("host:${architecture}")
-                    }
+            toolChains {
+                toolChainFor${architecture.capitalize()}Architecture(Gcc) {
+                    path "/not/found"
+                    target("host:${architecture}")
                 }
             }
         """

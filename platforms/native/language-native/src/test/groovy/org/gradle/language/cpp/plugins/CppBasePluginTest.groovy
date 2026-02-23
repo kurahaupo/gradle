@@ -16,8 +16,9 @@
 
 package org.gradle.language.cpp.plugins
 
-import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal
+
 import org.gradle.api.internal.artifacts.ivyservice.projectmodule.ProjectPublicationRegistry
+import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.provider.Property
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.language.cpp.CppPlatform
@@ -46,7 +47,7 @@ class CppBasePluginTest extends Specification {
     @Rule
     TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider(getClass())
     def projectDir = tmpDir.createDir("project")
-    def project = ProjectBuilder.builder().withProjectDir(projectDir).withName("test").build()
+    ProjectInternal project = ProjectBuilder.builder().withProjectDir(projectDir).withName("test").build()
 
     def "adds compile task for binary"() {
         def binary = Stub(DefaultCppBinary)
@@ -82,7 +83,8 @@ class CppBasePluginTest extends Specification {
         executable.getExecutableFile() >> executableFile
         executable.targetMachine >> Stub(CppPlatform)
         executable.platformToolProvider >> new TestPlatformToolProvider()
-        executable.implementationDependencies >> Stub(ConfigurationInternal)
+        def implementation = project.configurations.dependencyScope("implementation").get()
+        executable.implementationDependencies >> implementation
 
         when:
         project.pluginManager.apply(CppBasePlugin)
@@ -115,7 +117,8 @@ class CppBasePluginTest extends Specification {
         library.targetMachine >> Stub(CppPlatform)
         library.platformToolProvider >> new TestPlatformToolProvider()
         library.linkFile >> project.objects.fileProperty()
-        library.implementationDependencies >> Stub(ConfigurationInternal)
+        def implementation = project.configurations.dependencyScope("implementation").get()
+        library.implementationDependencies >> implementation
 
         when:
         project.pluginManager.apply(CppBasePlugin)
@@ -146,7 +149,7 @@ class CppBasePluginTest extends Specification {
         project.evaluate()
 
         then:
-        def publications = project.services.get(ProjectPublicationRegistry).getPublications(NativeProjectPublication, project.identityPath)
+        def publications = project.services.get(ProjectPublicationRegistry).getPublicationsForProject(NativeProjectPublication, project.identityPath)
         publications.size() == 1
         publications.first().getCoordinates(SwiftPmTarget).targetName == "SomeApp"
     }

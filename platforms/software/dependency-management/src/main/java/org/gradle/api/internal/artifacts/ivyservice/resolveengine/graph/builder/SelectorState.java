@@ -17,22 +17,20 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder;
 
 import com.google.common.base.Joiner;
-import com.google.common.collect.Lists;
 import org.gradle.api.Describable;
-import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ProjectComponentSelector;
-import org.gradle.api.artifacts.result.ComponentSelectionCause;
 import org.gradle.api.internal.artifacts.ResolvedVersionConstraint;
 import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelector;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.selectors.ResolvableSelectorState;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionDescriptorInternal;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionReasonInternal;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionReasons;
 import org.gradle.api.internal.attributes.AttributeDesugaring;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.internal.component.model.ComponentOverrideMetadata;
 import org.gradle.internal.component.model.DefaultComponentOverrideMetadata;
 import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.IvyArtifactName;
@@ -46,11 +44,13 @@ import org.gradle.internal.resolve.resolver.DependencyToComponentIdResolver;
 import org.gradle.internal.resolve.result.BuildableComponentIdResolveResult;
 import org.gradle.internal.resolve.result.ComponentIdResolveResult;
 import org.gradle.internal.resolve.result.DefaultBuildableComponentIdResolveResult;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
 
 import static org.gradle.util.internal.TextUtil.getPluralEnding;
 
@@ -64,17 +64,18 @@ import static org.gradle.util.internal.TextUtil.getPluralEnding;
  * In this case {@link #resolved} will be `true` and {@link ModuleResolveState#getSelected()} will point to the selected component.
  */
 class SelectorState implements DependencyGraphSelector, ResolvableSelectorState {
-    private final Long id;
+
     private final DependencyState dependencyState;
     private final DependencyToComponentIdResolver resolver;
+    private final ResolveState resolveState;
     private final ResolvedVersionConstraint versionConstraint;
-    private final List<ComponentSelectionDescriptorInternal> dependencyReasons = Lists.newArrayListWithExpectedSize(4);
+    private final boolean versionByAncestor;
     private final boolean isProjectSelector;
     private final AttributeDesugaring attributeDesugaring;
 
-    private ComponentIdResolveResult preferResult;
-    private ComponentIdResolveResult requireResult;
-    private ModuleVersionResolveException failure;
+    private @Nullable ComponentIdResolveResult preferResult;
+    private @Nullable ComponentIdResolveResult requireResult;
+    private @Nullable ModuleVersionResolveException failure;
     private ModuleResolveState targetModule;
     private boolean resolved;
     private boolean forced;
@@ -82,9 +83,6 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
     private boolean fromLock;
     private boolean reusable;
     private boolean markedReusableAlready;
-
-    @SuppressWarnings("deprecation")
-    private org.gradle.api.artifacts.ClientModule clientModule;
     private boolean changing;
 
     // An internal counter used to track the number of outgoing edges
@@ -95,13 +93,11 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
     // evicted, but it can still be reintegrated later in a different path.
     private int outgoingEdgeCount;
 
-    SelectorState(Long id, DependencyState dependencyState, DependencyToComponentIdResolver resolver, ResolveState resolveState, ModuleIdentifier targetModuleId, boolean versionByAncestor) {
-        this.id = id;
+    SelectorState(DependencyState dependencyState, DependencyToComponentIdResolver resolver, ResolveState resolveState, ModuleIdentifier targetModuleId, boolean versionByAncestor) {
         this.resolver = resolver;
+        this.resolveState = resolveState;
         this.targetModule = resolveState.getModule(targetModuleId);
-        if (versionByAncestor) {
-            dependencyReasons.add(ComponentSelectionReasons.BY_ANCESTOR);
-        }
+        this.versionByAncestor = versionByAncestor;
         update(dependencyState);
         this.dependencyState = dependencyState;
         this.versionConstraint = versionByAncestor ?
@@ -124,22 +120,17 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
         }
     }
 
-    public void release(ResolutionConflictTracker conflictTracker) {
+    public void release() {
         outgoingEdgeCount--;
-        assert outgoingEdgeCount >= 0 : "Inconsistent selector state detected: outgoing edge count cannot be negative";
+        assert outgoingEdgeCount >= 0 : "Inconsistent selector state detected for '" + this + "': outgoing edge count cannot be negative";
         if (outgoingEdgeCount == 0) {
-            removeAndMarkSelectorForReuse(conflictTracker);
+            removeAndMarkSelectorForReuse();
         }
     }
 
-    private void removeAndMarkSelectorForReuse(ResolutionConflictTracker conflictTracker) {
-        targetModule.removeSelector(this, conflictTracker);
+    private void removeAndMarkSelectorForReuse() {
+        targetModule.removeSelector(this);
         resolved = false;
-    }
-
-    @Override
-    public Long getResultId() {
-        return id;
     }
 
     @Override
@@ -190,10 +181,13 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
             }
 
             BuildableComponentIdResolveResult idResolveResult = new DefaultBuildableComponentIdResolveResult();
-            if (dependencyState.failure != null) {
-                idResolveResult.failed(dependencyState.failure);
+            if (dependencyState.getSubstitutionFailure() != null) {
+                idResolveResult.failed(dependencyState.getSubstitutionFailure());
             } else {
-                resolver.resolve(dependencyState.getDependency(), selector, rejector, idResolveResult);
+                IvyArtifactName firstArtifact = getFirstDependencyArtifact();
+                ComponentOverrideMetadata overrideMetadata = DefaultComponentOverrideMetadata.forDependency(changing, firstArtifact);
+                ImmutableAttributes requestAttributes = resolveState.getAttributesFactory().concat(resolveState.getConsumerAttributes(), targetModule.getMergedConstraintAttributes());
+                resolver.resolve(dependencyState.getDependency().getSelector(), overrideMetadata, selector, rejector, idResolveResult, requestAttributes);
             }
 
             if (idResolveResult.getFailure() != null) {
@@ -249,6 +243,9 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
         }
         this.reusable = true;
         if (markedReusableAlready) {
+            // TODO: We have hit an unstable graph. This selector has already added, removed, added again,
+            // and we are removing it once again. We should fail the resolution here and ask the user
+            // to fix the graph -- likely by adding a version constraint.
             return true;
         } else {
             markedReusableAlready = true;
@@ -257,11 +254,11 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
     }
 
     /**
-     * Checks if the selector can be used for resolution.
+     * Checks if the selector affects selection at the moment it is added to a module
      *
      * @return {@code true} if the selector can resolve, {@code false} otherwise
      */
-    boolean canResolve() {
+    boolean canAffectSelection() {
         if (reusable) {
             return true;
         }
@@ -276,50 +273,67 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
         this.resolved = true;
         this.reusable = false;
 
-        // Target module can change, if this is called as the result of a module replacement conflict.
+        // Target module can change, if this is called as the result of a module or capability replacement conflict.
         this.targetModule = selected.getModule();
     }
 
-    /**
-     * Create a component selection reason specific to this selector.
-     * The reason produced here is not enhanced with 'unmatched' and 'rejected' descriptions.
-     */
-    public ComponentSelectionReasonInternal getSelectionReason() {
-        return ComponentSelectionReasons.of(dependencyReasons);
+    public boolean isVersionProvidedByAncestor() {
+        return versionByAncestor;
     }
 
-    /**
-     * Append selection descriptors to the supplied "reason", enhancing with any 'unmatched' or 'rejected' reasons.
-     */
-    public void addReasonsForSelector(ComponentSelectionReasonInternal selectionReason) {
-        ComponentIdResolveResult result = preferResult == null ? requireResult : preferResult;
-        Collection<String> rejectedBySelector = null;
+    public void visitSelectionReasons(Consumer<ComponentSelectionDescriptorInternal> visitor) {
+        ComponentIdResolveResult result = getResult();
         if (result != null) {
             for (RejectedVersion rejectedVersion : result.getRejectedVersions()) {
                 String version = rejectedVersion.getId().getVersion();
-                if (rejectedVersion instanceof RejectedBySelectorVersion) {
-                    if (rejectedBySelector == null) {
-                        rejectedBySelector = new ArrayList<>();
-                    }
-                    rejectedBySelector.add(version);
-                } else if (rejectedVersion instanceof RejectedByRuleVersion) {
+                if (rejectedVersion instanceof RejectedByRuleVersion) {
                     String reason = ((RejectedByRuleVersion) rejectedVersion).getReason();
-                    selectionReason.addCause(ComponentSelectionReasons.REJECTION.withDescription(new RejectedByRuleReason(version, reason)));
+                    visitor.accept(ComponentSelectionReasons.REJECTION.withDescription(new RejectedByRuleReason(version, reason)));
                 } else if (rejectedVersion instanceof RejectedByAttributesVersion) {
-                    selectionReason.addCause(ComponentSelectionReasons.REJECTION.withDescription(new RejectedByAttributesReason((RejectedByAttributesVersion) rejectedVersion)));
+                    visitor.accept(ComponentSelectionReasons.REJECTION.withDescription(new RejectedByAttributesReason((RejectedByAttributesVersion) rejectedVersion)));
                 }
             }
         }
+    }
 
-        for (ComponentSelectionDescriptorInternal descriptor : dependencyReasons) {
-            if (descriptor.getCause() == ComponentSelectionCause.REQUESTED || descriptor.getCause() == ComponentSelectionCause.CONSTRAINT) {
-                if (rejectedBySelector != null) {
-                    descriptor = descriptor.withDescription(new RejectedBySelectorReason(rejectedBySelector, descriptor));
-                } else if (result != null && !result.getUnmatchedVersions().isEmpty()) {
-                    descriptor = descriptor.withDescription(new UnmatchedVersionsReason(result.getUnmatchedVersions(), descriptor));
+    /**
+     * Add additional details to the given reason descriptor, including any 'unmatched' or 'rejected' reasons.
+     */
+    public ComponentSelectionDescriptorInternal maybeEnhanceReason(ComponentSelectionDescriptorInternal descriptor) {
+        ComponentIdResolveResult result = getResult();
+        if (result == null) {
+            return descriptor;
+        }
+
+        Collection<RejectedVersion> rejectedVersions = result.getRejectedVersions();
+        if (!rejectedVersions.isEmpty()) {
+            List<String> rejectedBySelector = null;
+            for (RejectedVersion rejectedVersion : rejectedVersions) {
+                if (rejectedVersion instanceof RejectedBySelectorVersion) {
+                    if (rejectedBySelector == null) {
+                        rejectedBySelector = new ArrayList<>(rejectedVersions.size());
+                    }
+                    rejectedBySelector.add(rejectedVersion.getId().getVersion());
                 }
             }
-            selectionReason.addCause(descriptor);
+            if (rejectedBySelector != null) {
+                return descriptor.withDescription(new RejectedBySelectorReason(rejectedBySelector, descriptor));
+            }
+        }
+
+        Set<String> unmatchedVersions = result.getUnmatchedVersions();
+        if (!unmatchedVersions.isEmpty()) {
+            return descriptor.withDescription(new UnmatchedVersionsReason(unmatchedVersions, descriptor));
+        }
+
+        return descriptor;
+    }
+
+    private @Nullable ComponentIdResolveResult getResult() {
+        if (preferResult == null) {
+            return requireResult;
+        } else {
+            return preferResult;
         }
     }
 
@@ -330,13 +344,7 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
     @Override
     public IvyArtifactName getFirstDependencyArtifact() {
         List<IvyArtifactName> artifacts = dependencyState.getDependency().getArtifacts();
-        return artifacts == null || artifacts.isEmpty() ? null : artifacts.get(0);
-    }
-
-    @Override
-    @Deprecated
-    public org.gradle.api.artifacts.ClientModule getClientModule() {
-        return clientModule;
+        return artifacts.isEmpty() ? null : artifacts.get(0);
     }
 
     @Override
@@ -345,6 +353,7 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
     }
 
     @Override
+    @Nullable
     public ResolvedVersionConstraint getVersionConstraint() {
         return versionConstraint;
     }
@@ -388,31 +397,23 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
                 fromLock = true;
                 resolved = false; // when a selector changes from non lock to lock, we must reselect
             }
-            dependencyState.addSelectionReasons(dependencyReasons);
-            trackDetailsForOverrideMetadata(dependencyState);
-        }
-    }
 
-    @SuppressWarnings("deprecation")
-    private void trackDetailsForOverrideMetadata(DependencyState dependencyState) {
-        org.gradle.api.artifacts.ClientModule nextClientModule = DefaultComponentOverrideMetadata.extractClientModule(dependencyState.getDependency());
-        if (nextClientModule != null && !nextClientModule.equals(clientModule)) {
-            if (clientModule == null) {
-                clientModule = nextClientModule;
-            } else {
-                throw new InvalidUserDataException(dependencyState.getDependency().getSelector().getDisplayName() + " has more than one client module definitions.");
-            }
+            changing = changing || dependencyState.getDependency().isChanging();
         }
-        changing = changing || dependencyState.getDependency().isChanging();
     }
 
     private static class UnmatchedVersionsReason implements Describable {
-        private final Collection<String> rejectedVersions;
+
+        private final Set<String> rejectedVersions;
         private final ComponentSelectionDescriptorInternal descriptor;
 
-        private UnmatchedVersionsReason(Collection<String> rejectedVersions, ComponentSelectionDescriptorInternal descriptor) {
+        private final int hashCode;
+
+        public UnmatchedVersionsReason(Set<String> rejectedVersions, ComponentSelectionDescriptorInternal descriptor) {
             this.rejectedVersions = rejectedVersions;
             this.descriptor = descriptor;
+
+            this.hashCode = computeHashCode(descriptor, rejectedVersions);
         }
 
         @Override
@@ -430,6 +431,29 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
         private int estimateSize(boolean hasCustomDescription) {
             return 24 + rejectedVersions.size() * 8 + (hasCustomDescription ? 24 : 0);
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            UnmatchedVersionsReason that = (UnmatchedVersionsReason) o;
+            return rejectedVersions.equals(that.rejectedVersions) &&
+                descriptor.equals(that.descriptor);
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+
+        private static int computeHashCode(ComponentSelectionDescriptorInternal descriptor, Set<String> rejectedVersions) {
+            int result = rejectedVersions.hashCode();
+            result = 31 * result + descriptor.hashCode();
+            return result;
+        }
+
     }
 
     private static class RejectedByRuleReason implements Describable {
@@ -454,7 +478,6 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
             this.version = version;
         }
 
-
         @Override
         public String getDisplayName() {
             TreeFormatter formatter = new TreeFormatter();
@@ -465,12 +488,16 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
 
     private static class RejectedBySelectorReason implements Describable {
 
-        private final Collection<String> rejectedVersions;
+        private final List<String> rejectedVersions;
         private final ComponentSelectionDescriptorInternal descriptor;
 
-        private RejectedBySelectorReason(Collection<String> rejectedVersions, ComponentSelectionDescriptorInternal descriptor) {
+        private final int hashCode;
+
+        public RejectedBySelectorReason(List<String> rejectedVersions, ComponentSelectionDescriptorInternal descriptor) {
             this.rejectedVersions = rejectedVersions;
             this.descriptor = descriptor;
+
+            this.hashCode = computeHashCode(descriptor, rejectedVersions);
         }
 
         @Override
@@ -488,6 +515,29 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
         private int estimateSize(boolean hasCustomDescription) {
             return 20 + rejectedVersions.size() * 8 + (hasCustomDescription ? 24 : 0);
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            RejectedBySelectorReason that = (RejectedBySelectorReason) o;
+            return rejectedVersions.equals(that.rejectedVersions) &&
+                descriptor.equals(that.descriptor);
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+
+        private static int computeHashCode(ComponentSelectionDescriptorInternal descriptor, List<String> rejectedVersions) {
+            int result = rejectedVersions.hashCode();
+            result = 31 * result + descriptor.hashCode();
+            return result;
+        }
+
     }
 
 }

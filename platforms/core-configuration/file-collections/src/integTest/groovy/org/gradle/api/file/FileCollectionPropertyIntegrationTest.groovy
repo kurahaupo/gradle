@@ -80,7 +80,7 @@ class FileCollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
                     prop.set([layout.projectDir.dir("other.dir")])
                 }
             }
-"""
+        """
 
         when:
         fails("show")
@@ -88,6 +88,43 @@ class FileCollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
         then:
         failure.assertHasDescription("Execution failed for task ':show'.")
         failure.assertHasCause("The value for task ':show' property 'prop' is final and cannot be changed any further.")
+    }
+
+    def "UPGRADED task #annotation file property is LENIENTLY implicitly finalized when task starts execution UNTIL NEXT MAJOR"() {
+        executer.requireOwnGradleUserHomeDir("temp")
+        buildFile << """
+            import org.gradle.internal.instrumentation.api.annotations.ReplacesEagerProperty
+
+            abstract class SomeTask extends DefaultTask {
+                @ReplacesEagerProperty
+                ${annotation}
+                ${propertyImpl}
+
+                @TaskAction
+                void go() {
+                    println "value: " + prop.get()
+                }
+            }
+
+            task show(type: SomeTask) {
+                def layout = project.layout
+                prop = [layout.projectDir.$fileMethod("in")]
+                doFirst {
+                    prop.set([layout.projectDir.$fileMethod("other")])
+                }
+            }
+"""
+
+        expect:
+        executer.expectDocumentedDeprecationWarning("Changing property value of task ':show' property 'prop' at execution time. This behavior has been deprecated. Starting with Gradle 11, changing property value of task ':show' property 'prop' at execution time will become an error.")
+        succeeds("show")
+        outputContains("value: [${file('other')}]")
+
+        where:
+        annotation           | propertyImpl                                  | fileMethod
+        "@InputFiles"        | "abstract SetProperty<RegularFile> getProp()" | 'file'
+        "@OutputFiles"       | "abstract SetProperty<RegularFile> getProp()" | 'file'
+        "@OutputDirectories" | "abstract SetProperty<Directory> getProp()"   | 'dir'
     }
 
     def "can wire the output file of multiple tasks as input to another task using property"() {
@@ -141,21 +178,21 @@ class FileCollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
         run("merge")
 
         then:
-        result.assertTasksExecuted(":createFile1", ":createFile2", ":merge")
+        result.assertTasksScheduled(":createFile1", ":createFile2", ":merge")
         file("output/merged.txt").text == 'file1,file2'
 
         when:
         run("merge")
 
         then:
-        result.assertTasksNotSkipped()
+        result.assertAllTasksSkipped()
 
         when:
         file("file1-source.txt").text = "new-file1"
         run("merge")
 
         then:
-        result.assertTasksNotSkipped(":createFile1", ":merge")
+        result.assertTasksExecuted(":createFile1", ":merge")
         file("output/merged.txt").text == 'new-file1,file2'
     }
 
@@ -208,21 +245,21 @@ class FileCollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
         run("merge")
 
         then:
-        result.assertTasksExecuted(":createFiles", ":merge")
+        result.assertTasksScheduled(":createFiles", ":merge")
         file("output/merged.txt").text == 'file1,file1'
 
         when:
         run("merge")
 
         then:
-        result.assertTasksNotSkipped()
+        result.assertAllTasksSkipped()
 
         when:
         file("file-source.txt").text = "new-file1"
         run("merge")
 
         then:
-        result.assertTasksNotSkipped(":createFiles", ":merge")
+        result.assertTasksExecuted(":createFiles", ":merge")
         file("output/merged.txt").text == 'new-file1,new-file1'
     }
 
@@ -278,21 +315,21 @@ class FileCollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
         run("merge")
 
         then:
-        result.assertTasksExecuted(":createDir1", ":createDir2", ":merge")
+        result.assertTasksScheduled(":createDir1", ":createDir2", ":merge")
         file("output/merged.txt").text == 'dir1,dir2'
 
         when:
         run("merge")
 
         then:
-        result.assertTasksNotSkipped()
+        result.assertAllTasksSkipped()
 
         when:
         file("dir1-source.txt").text = "new-dir1"
         run("merge")
 
         then:
-        result.assertTasksNotSkipped(":createDir1", ":merge")
+        result.assertTasksExecuted(":createDir1", ":merge")
         file("output/merged.txt").text == 'new-dir1,dir2'
     }
 
@@ -346,21 +383,21 @@ class FileCollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
         run("merge")
 
         then:
-        result.assertTasksExecuted(":createDirs", ":merge")
+        result.assertTasksScheduled(":createDirs", ":merge")
         file("output/merged.txt").text == 'dir1,dir1'
 
         when:
         run("merge")
 
         then:
-        result.assertTasksNotSkipped()
+        result.assertAllTasksSkipped()
 
         when:
         file("dir-source.txt").text = "new-dir1"
         run("merge")
 
         then:
-        result.assertTasksNotSkipped(":createDirs", ":merge")
+        result.assertTasksExecuted(":createDirs", ":merge")
         file("output/merged.txt").text == 'new-dir1,new-dir1'
     }
 
@@ -420,21 +457,21 @@ class FileCollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
         run("merge")
 
         then:
-        result.assertTasksExecuted(":createFile1", ":createFile2", ":merge")
+        result.assertTasksScheduled(":createFile1", ":createFile2", ":merge")
         file("output/merged.txt").text == 'file1,file2'
 
         when:
         run("merge")
 
         then:
-        result.assertTasksNotSkipped()
+        result.assertAllTasksSkipped()
 
         when:
         file("file1-source.txt").text = "new-file1"
         run("merge")
 
         then:
-        result.assertTasksNotSkipped(":createFile1", ":merge")
+        result.assertTasksExecuted(":createFile1", ":merge")
         file("output/merged.txt").text == 'new-file1,file2'
     }
 
@@ -495,21 +532,21 @@ class FileCollectionPropertyIntegrationTest extends AbstractIntegrationSpec {
         run("merge")
 
         then:
-        result.assertTasksExecuted(":createDir1", ":createDir2", ":merge")
+        result.assertTasksScheduled(":createDir1", ":createDir2", ":merge")
         file("output/merged.txt").text == 'dir1,dir2'
 
         when:
         run("merge")
 
         then:
-        result.assertTasksNotSkipped()
+        result.assertAllTasksSkipped()
 
         when:
         file("dir1-source.txt").text = "new-dir1"
         run("merge")
 
         then:
-        result.assertTasksNotSkipped(":createDir1", ":merge")
+        result.assertTasksExecuted(":createDir1", ":merge")
         file("output/merged.txt").text == 'new-dir1,dir2'
     }
 }

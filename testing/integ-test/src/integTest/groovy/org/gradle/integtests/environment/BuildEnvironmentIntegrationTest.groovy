@@ -155,9 +155,12 @@ assert classesDir.directory
         outputContains("prop2=other-value")
     }
 
-    @Requires(IntegTestPreconditions.JavaHomeWithDifferentVersionAvailable)
+    @Requires(value = [
+        IntegTestPreconditions.JavaHomeWithDifferentVersionAvailable,
+        IntegTestPreconditions.NotEmbeddedExecutor,
+    ], reason = "must run with specific JDK different from the current test JDK")
     def "java home from environment should be used to run build"() {
-        def alternateJavaHome = AvailableJavaHomes.differentJdk.javaHome
+        def alternateJdk = AvailableJavaHomes.differentVersion
 
         buildFile << """
             task printJavaHome {
@@ -174,15 +177,16 @@ assert classesDir.directory
         out.contains("javaHome=" + Jvm.current().javaHome.canonicalPath)
 
         when:
-        out = executer.withJavaHome(alternateJavaHome).withTasks('printJavaHome').run().output
+        out = executer.withJvm(alternateJdk).withTasks('printJavaHome').run().output
 
         then:
-        out.contains("javaHome=" + alternateJavaHome.canonicalPath)
+        out.contains("javaHome=" + alternateJdk.javaHome.canonicalPath)
     }
 
     @Requires(IntegTestPreconditions.JavaHomeWithDifferentVersionAvailable)
     def "java home from gradle properties should be used to run build"() {
-        def alternateJavaHome = AvailableJavaHomes.differentJdk.javaHome
+        def jvm = AvailableJavaHomes.differentVersion
+        def alternateJavaHome = jvm.javaHome
 
         file('gradle.properties') << """
 org.gradle.java.home=${TextUtil.escapeString(alternateJavaHome.canonicalPath)}

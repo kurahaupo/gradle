@@ -25,11 +25,9 @@ class SwiftMissingToolchainIntegrationTest extends AbstractIntegrationSpec imple
         given:
         buildFile << """
             apply plugin: 'swift-application'
-            model {
-                toolChains {
-                    withType(Swiftc) {
-                        path(file('swift-bin'))
-                    }
+            toolChains {
+                withType(Swiftc) {
+                    path(file('swift-bin'))
                 }
             }
 """

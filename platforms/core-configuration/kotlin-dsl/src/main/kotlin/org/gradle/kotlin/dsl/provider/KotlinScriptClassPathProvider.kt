@@ -21,12 +21,15 @@ import org.gradle.api.artifacts.FileCollectionDependency
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.ClassPathRegistry
 import org.gradle.api.internal.artifacts.dsl.dependencies.DependencyFactoryInternal
+import org.gradle.api.internal.classpath.GradleApiClasspathProvider
 import org.gradle.api.internal.classpath.ModuleRegistry
 import org.gradle.api.internal.file.FileCollectionFactory
 import org.gradle.api.internal.initialization.ClassLoaderScope
 import org.gradle.internal.classloader.ClassLoaderVisitor
 import org.gradle.internal.classpath.ClassPath
 import org.gradle.internal.classpath.DefaultClassPath
+import org.gradle.internal.service.scopes.Scope
+import org.gradle.internal.service.scopes.ServiceScope
 import org.gradle.kotlin.dsl.support.isGradleKotlinDslJar
 import org.gradle.kotlin.dsl.support.isGradleKotlinDslJarName
 import org.gradle.kotlin.dsl.support.serviceOf
@@ -40,7 +43,7 @@ import java.util.concurrent.ConcurrentHashMap
 internal
 fun gradleKotlinDslOf(project: Project): List<File> =
     kotlinScriptClassPathProviderOf(project).run {
-        gradleKotlinDsl.asFiles
+        gradleKotlinDslApi.asFiles
     }
 
 
@@ -65,32 +68,39 @@ internal
 typealias JarsProvider = () -> Collection<File>
 
 
+@ServiceScope(Scope.Build::class)
 class KotlinScriptClassPathProvider(
     private val moduleRegistry: ModuleRegistry,
     private val classPathRegistry: ClassPathRegistry,
     private val coreAndPluginsScope: ClassLoaderScope,
     private val gradleApiJarsProvider: JarsProvider,
-) {
+) : GradleApiClasspathProvider {
 
     /**
      * Generated Gradle API jar plus supporting libraries such as groovy-all.jar and generated API extensions.
      */
-    internal
-    val gradleKotlinDsl: ClassPath by lazy {
+    private
+    val gradleKotlinDslClasspath: ClassPath by lazy {
         gradleApi + gradleApiExtensions + gradleKotlinDslJars
     }
 
+    override fun getGradleKotlinDslApi(): ClassPath =
+        gradleKotlinDslClasspath
+
     private
-    val gradleApi: ClassPath by lazy {
+    val gradleApiClasspath: ClassPath by lazy {
         DefaultClassPath.of(gradleApiJarsProvider())
     }
+
+    override fun getGradleApi(): ClassPath =
+        gradleApiClasspath
 
     /**
      * Generated extensions to the Gradle API.
      */
     private
     val gradleApiExtensions: ClassPath by lazy {
-        moduleRegistry.getModule("gradle-kotlin-dsl-extensions").classpath
+        moduleRegistry.getRuntimeClasspath("gradle-kotlin-dsl-extensions")
     }
 
     /**
@@ -115,7 +125,7 @@ class KotlinScriptClassPathProvider(
 
     private
     fun computeCompilationClassPath(scope: ClassLoaderScope): ClassPath {
-        return gradleKotlinDsl + exportClassPathFromHierarchyOf(scope)
+        return gradleKotlinDslApi + exportClassPathFromHierarchyOf(scope)
     }
 
     internal
@@ -202,7 +212,7 @@ private
 fun toURI(url: URL): URI =
     try {
         url.toURI()
-    } catch (e: URISyntaxException) {
+    } catch (_: URISyntaxException) {
         URL(
             url.protocol,
             url.host,

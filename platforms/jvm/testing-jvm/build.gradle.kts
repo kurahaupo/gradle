@@ -1,6 +1,5 @@
 plugins {
     id("gradlebuild.distribution.api-java")
-    id("gradlebuild.instrumented-project")
 }
 
 description = """JVM-specific testing functionality, including the Test type and support for configuring options for and detecting
@@ -11,59 +10,66 @@ This project is a implementation dependency of many other testing-related subpro
 dependency for any projects working directly with Test tasks.
 """
 
-errorprone {
-    disabledChecks.addAll(
-        "EmptyBlockTag", // 1 occurrences
-    )
-}
-
 dependencies {
-    api(projects.javaLanguageExtensions)
+    api(projects.baseServices)
+    api(projects.buildOperations)
+    api(projects.buildProcessServices)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.fileOperations)
+    api(projects.jvmServices)
+    api(projects.messaging)
+    api(projects.modelCore)
+    api(projects.reporting)
+    api(projects.stdlibJavaExtensions)
+    api(projects.testingBase)
+    api(projects.testingBaseInfrastructure)
     api(projects.time)
-    api(project(":base-services"))
-    api(project(":build-operations"))
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":logging"))
-    api(project(":messaging"))
-    api(project(":process-services"))
-    api(project(":reporting"))
-    api(project(":testing-base"))
-    api(project(":testing-base-infrastructure"))
-    api(project(":toolchains-jvm"))
-    api(project(":toolchains-jvm-shared"))
-    api(project(":build-process-services"))
+    api(projects.toolchainsJvm)
+    api(projects.toolchainsJvmShared)
 
     api(libs.asm)
     api(libs.groovy)
     api(libs.groovyXml)
     api(libs.inject)
-    api(libs.jsr305)
+    api(libs.jspecify)
 
+    implementation(projects.logging)
+    implementation(projects.classloaders)
     implementation(projects.concurrent)
-    implementation(project(":file-temp"))
-    implementation(project(":functional"))
-    implementation(project(":logging-api"))
-    implementation(project(":model-core"))
-    implementation(project(":platform-base"))
-    implementation(project(":testing-jvm-infrastructure"))
+    implementation(projects.fileTemp)
+    implementation(projects.functional)
+    implementation(projects.loggingApi)
+    implementation(projects.platformBase)
+    implementation(projects.serviceLookup)
+    implementation(projects.testingJvmInfrastructure)
 
     implementation(libs.commonsIo)
     implementation(libs.commonsLang)
     implementation(libs.guava)
-    implementation(libs.junit)
     implementation(libs.slf4jApi)
 
-    testImplementation(testFixtures(project(":core")))
-    testImplementation(testFixtures(project(":model-core")))
+    compileOnly(providedLibs.junit) {
+        because("The actual version is provided by the user on the testRuntimeClasspath")
+    }
 
-    integTestImplementation(testFixtures(project(":testing-base")))
-    integTestImplementation(testFixtures(project(":language-groovy")))
+    testImplementation(testFixtures(projects.core))
+    testImplementation(testFixtures(projects.modelReflect))
+    testImplementation(testFixtures(projects.time))
 
-    testRuntimeOnly(project(":distributions-core")) {
+    integTestImplementation(testFixtures(projects.languageGroovy))
+    integTestImplementation(testFixtures(projects.scala))
+    integTestImplementation(testFixtures(projects.testingBase))
+    integTestImplementation(testFixtures(projects.toolingApi))
+
+    testRuntimeOnly(projects.distributionsCore) {
         because("Tests instantiate DefaultClassLoaderRegistry which requires a 'gradle-plugins.properties' through DefaultPluginModuleRegistry")
     }
-    integTestDistributionRuntimeOnly(project(":distributions-jvm"))
+    integTestDistributionRuntimeOnly(projects.distributionsFull) {
+        because("TestTaskCusomExecutorIntegrationTest requires the full distribution to apply the DV plugin")
+    }
+
+    testFixturesImplementation(projects.internalIntegTesting)
 }
 
 strictCompile {
@@ -75,4 +81,6 @@ packageCycles {
     excludePatterns.add("org/gradle/api/internal/tasks/testing/**")
 }
 
-integTest.usesJavadocCodeSnippets = true
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}

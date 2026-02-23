@@ -88,12 +88,12 @@ class HttpBuildCacheServiceIntegrationTest extends HttpBuildCacheFixture {
 
     def "tasks get cached when source code changes back to previous state"() {
         expect:
-        withBuildCache().run "jar" assertTaskNotSkipped ":compileJava" assertTaskNotSkipped ":jar"
+        withBuildCache().run "jar" assertTaskExecuted ":compileJava" assertTaskExecuted ":jar"
 
         when:
         file("src/main/java/Hello.java").text = CHANGED_HELLO_WORLD
         then:
-        withBuildCache().run "jar" assertTaskNotSkipped ":compileJava" assertTaskNotSkipped ":jar"
+        withBuildCache().run "jar" assertTaskExecuted ":compileJava" assertTaskExecuted ":jar"
 
         when:
         file("src/main/java/Hello.java").text = ORIGINAL_HELLO_WORLD
@@ -285,7 +285,6 @@ class HttpBuildCacheServiceIntegrationTest extends HttpBuildCacheFixture {
         settingsFile.text = useHttpBuildCache(httpBuildCacheServer.uri)
 
         when:
-        executer.withStackTraceChecksDisabled()
         withBuildCache().run "jar"
 
         then:
@@ -329,7 +328,6 @@ class HttpBuildCacheServiceIntegrationTest extends HttpBuildCacheFixture {
         """
 
         when:
-        executer.withStackTraceChecksDisabled()
         withBuildCache().run "jar"
         then:
         output.contains "response status 401: Unauthorized"
@@ -515,7 +513,6 @@ class HttpBuildCacheServiceIntegrationTest extends HttpBuildCacheFixture {
         }
 
         when:
-        executer.withStackTraceChecksDisabled()
         withBuildCache().run "jar"
         then:
         noneSkipped()

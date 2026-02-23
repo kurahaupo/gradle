@@ -58,6 +58,7 @@ import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.internal.buildoption.FeatureFlags;
 import org.gradle.internal.file.Deleter;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 import org.gradle.jvm.toolchain.JavaInstallationMetadata;
 import org.gradle.jvm.toolchain.JavaLauncher;
 import org.gradle.jvm.toolchain.JavaToolchainService;
@@ -79,34 +80,30 @@ import static org.gradle.api.internal.FeaturePreviews.Feature.GROOVY_COMPILATION
  */
 @CacheableTask
 public abstract class GroovyCompile extends AbstractCompile implements HasCompileOptions {
+
     private FileCollection groovyClasspath;
-    private final ConfigurableFileCollection astTransformationClasspath;
-    private final CompileOptions compileOptions;
-    private final GroovyCompileOptions groovyCompileOptions = getProject().getObjects().newInstance(GroovyCompileOptions.class);
-    private final FileCollection stableSources = getProject().files((Callable<FileTree>) this::getSource);
-    private final Property<JavaLauncher> javaLauncher;
+    private final FileCollection stableSources;
     private File previousCompilationDataFile;
 
     public GroovyCompile() {
-        ObjectFactory objectFactory = getObjectFactory();
-        CompileOptions compileOptions = objectFactory.newInstance(CompileOptions.class);
-        compileOptions.setIncremental(false);
-        compileOptions.getIncrementalAfterFailure().convention(true);
-        this.compileOptions = compileOptions;
+        this.stableSources = getObjectFactory().fileCollection().from((Callable<FileTree>) this::getSource);
 
-        JavaToolchainService javaToolchainService = getJavaToolchainService();
-        this.javaLauncher = objectFactory.property(JavaLauncher.class).convention(javaToolchainService.launcherFor(it -> {}));
+        getOptions().setIncremental(false);
+        getOptions().getIncrementalAfterFailure().convention(true);
 
-        this.astTransformationClasspath = objectFactory.fileCollection();
+        getJavaLauncher().convention(getJavaToolchainService().launcherFor(it -> {}));
+
         if (!experimentalCompilationAvoidanceEnabled()) {
-            this.astTransformationClasspath.from((Callable<FileCollection>) this::getClasspath);
+            getAstTransformationClasspath().from((Callable<FileCollection>) this::getClasspath);
         }
-        CompilerForkUtils.doNotCacheIfForkingViaExecutable(compileOptions, getOutputs());
+
+        CompilerForkUtils.doNotCacheIfForkingViaExecutable(getOptions(), getOutputs());
     }
 
     @Override
     @CompileClasspath
     @Incremental
+    @ToBeReplacedByLazyProperty
     public FileCollection getClasspath() {
         // Note that @CompileClasspath here is an approximation and must be fixed before de-incubating getAstTransformationClasspath()
         // See https://github.com/gradle/gradle/pull/9513
@@ -119,9 +116,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
      * @since 5.6
      */
     @Classpath
-    public ConfigurableFileCollection getAstTransformationClasspath() {
-        return astTransformationClasspath;
-    }
+    public abstract ConfigurableFileCollection getAstTransformationClasspath();
 
     private boolean experimentalCompilationAvoidanceEnabled() {
         return getFeatureFlags().isEnabled(GROOVY_COMPILATION_AVOIDANCE);
@@ -205,7 +200,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
 
     private FileCollection determineGroovyCompileClasspath() {
         if (experimentalCompilationAvoidanceEnabled()) {
-            return astTransformationClasspath.plus(getClasspath());
+            return getAstTransformationClasspath().plus(getClasspath());
         } else {
             return getClasspath();
         }
@@ -222,7 +217,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
     }
 
     private GroovyJavaJointCompileSpec createSpec() {
-        DefaultGroovyJavaJointCompileSpec spec = new DefaultGroovyJavaJointCompileSpecFactory(compileOptions, getToolchain()).create();
+        DefaultGroovyJavaJointCompileSpec spec = new DefaultGroovyJavaJointCompileSpecFactory(getOptions(), getToolchain()).create();
         assert spec != null;
 
         FileTreeInternal stableSourcesAsFileTree = (FileTreeInternal) getStableSources().getAsFileTree();
@@ -235,10 +230,10 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
         spec.setTempDir(getTemporaryDir());
         spec.setCompileClasspath(ImmutableList.copyOf(determineGroovyCompileClasspath()));
         configureCompatibilityOptions(spec);
-        spec.setAnnotationProcessorPath(Lists.newArrayList(compileOptions.getAnnotationProcessorPath() == null ? getProjectLayout().files() : compileOptions.getAnnotationProcessorPath()));
+        spec.setAnnotationProcessorPath(Lists.newArrayList(getOptions().getAnnotationProcessorPath() == null ? getProjectLayout().files() : getOptions().getAnnotationProcessorPath()));
         spec.setGroovyClasspath(Lists.newArrayList(getGroovyClasspath()));
-        spec.setCompileOptions(compileOptions);
-        spec.setGroovyCompileOptions(new MinimalGroovyCompileOptions(groovyCompileOptions));
+        spec.setCompileOptions(getOptions());
+        spec.setGroovyCompileOptions(new MinimalGroovyCompileOptions(getGroovyOptions()));
         spec.getCompileOptions().setSupportsCompilerApi(true);
         if (getOptions().isIncremental()) {
             validateIncrementalCompilationOptions(sourceRoots, spec.annotationProcessingConfigured());
@@ -273,7 +268,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
     }
 
     private JavaInstallationMetadata getToolchain() {
-        return javaLauncher.map(JavaLauncher::getMetadata).get();
+        return getJavaLauncher().map(JavaLauncher::getMetadata).get();
     }
 
     private void checkGroovyClasspathIsNonEmpty() {
@@ -300,6 +295,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
      */
     @Override
     @Internal("tracked via stableSources")
+    @ToBeReplacedByLazyProperty
     public FileTree getSource() {
         return super.getSource();
     }
@@ -311,9 +307,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
      * @return The Groovy compile options. Never returns null.
      */
     @Nested
-    public GroovyCompileOptions getGroovyOptions() {
-        return groovyCompileOptions;
-    }
+    public abstract GroovyCompileOptions getGroovyOptions();
 
     /**
      * Returns the options for Java compilation.
@@ -322,9 +316,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
      */
     @Nested
     @Override
-    public CompileOptions getOptions() {
-        return compileOptions;
-    }
+    public abstract CompileOptions getOptions();
 
     /**
      * Returns the classpath containing the version of Groovy to use for compilation.
@@ -332,6 +324,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
      * @return The classpath.
      */
     @Classpath
+    @ToBeReplacedByLazyProperty
     public FileCollection getGroovyClasspath() {
         return groovyClasspath;
     }
@@ -352,9 +345,7 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
      * @since 6.8
      */
     @Nested
-    public Property<JavaLauncher> getJavaLauncher() {
-        return javaLauncher;
-    }
+    public abstract Property<JavaLauncher> getJavaLauncher();
 
     @Inject
     protected abstract IncrementalCompilerFactory getIncrementalCompilerFactory();
@@ -381,4 +372,5 @@ public abstract class GroovyCompile extends AbstractCompile implements HasCompil
         // Do not create the temporary folder, since that causes problems.
         return getServices().get(TemporaryFileProvider.class).newTemporaryFile(getName());
     }
+
 }

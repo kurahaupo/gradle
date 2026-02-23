@@ -21,26 +21,66 @@ plugins {
 description = "Services used by the Gradle client to interact with the daemon"
 
 dependencies {
-    api(project(":concurrent"))
-    api(project(":messaging"))
-    api(project(":logging"))
-    api(project(":daemon-protocol"))
-    api(project(":base-services"))
+    api(projects.baseServices)
+    api(projects.buildDiscovery)
+    api(projects.buildDiscoveryImpl)
+    api(projects.buildOperations)
+    api(projects.classloaders)
+    api(projects.concurrent)
+    api(projects.daemonProtocol)
+    api(projects.enterpriseLogging)
+    api(projects.functional)
+    api(projects.jvmServices)
+    api(projects.logging)
+    api(projects.messaging)
+    api(projects.modelCore)
+    api(projects.native)
+    api(projects.persistentCache)
+    api(projects.processServices)
+    api(projects.resources)
+    api(projects.resourcesHttp)
+    api(projects.scopedPersistentCache)
+    api(projects.serialization)
+    api(projects.serviceLookup)
+    api(projects.serviceProvider)
+    api(projects.stdlibJavaExtensions)
+    api(projects.time)
+    api(projects.toolchainsJvmShared)
+    api(projects.toolingApi)
 
-    // The client should not depend on core, but core still contains some types that are shared between the client and daemon
-    api(project(":core"))
+    // The client should not depend on core or core-api or projects that depend on these.
+    // However, these project still contains some types that are shared between the client and daemon.
+    api(projects.core)
+    api(projects.fileCollections)
+    api(projects.fileTemp)
 
-    implementation(libs.jsr305)
-    implementation(libs.guava)
+    api(libs.jspecify)
+    api(libs.nativePlatform)
+
+    implementation(projects.baseAsm)
+    implementation(projects.buildConfiguration)
+    implementation(projects.buildEvents)
+    implementation(projects.buildProcessServices)
+    implementation(projects.coreApi)
+    implementation(projects.daemonLogging)
+    implementation(projects.fileOperations)
+    implementation(projects.files)
+    implementation(projects.hashing)
+    implementation(projects.instrumentationAgentServices)
+    implementation(projects.io)
+    implementation(projects.loggingApi)
+    implementation(projects.serviceRegistryBuilder)
+
     implementation(libs.asm)
+    implementation(libs.guava)
+    implementation(libs.jsr305)
     implementation(libs.slf4jApi)
-    implementation(project(":java-language-extensions"))
 
-    testImplementation(testFixtures(project(":core"))) {
+    testImplementation(testFixtures(projects.core)) {
         because("ConcurrentSpecification")
     }
-    testImplementation(project(":tooling-api")) {
+    testImplementation(projects.toolingApi) {
         because("Unit tests verify serialization works with TAPI types")
     }
-    testImplementation(testFixtures(project(":daemon-protocol")))
+    testImplementation(testFixtures(projects.daemonProtocol))
 }

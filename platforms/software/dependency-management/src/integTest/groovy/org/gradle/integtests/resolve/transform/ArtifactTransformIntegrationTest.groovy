@@ -99,7 +99,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
         given:
         buildFile << """
             repositories {
-                maven { url "${mavenRepo.uri}" }
+                maven { url = "${mavenRepo.uri}" }
             }
             dependencies {
                 compile 'test:test:1.3'
@@ -184,7 +184,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
             task jars
 
             dependencies {
-                compile files([a, b]) { builtBy jars }
+                compile files([a, b]) { builtBy tasks.jars }
             }
 
             ${configurationAndTransform('FileSizer')}
@@ -235,7 +235,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                 }
 
                 artifacts {
-                    compile jar1, jar2
+                    compile tasks.jar1, tasks.jar2
                 }
             }
 
@@ -296,7 +296,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                 }
 
                 artifacts {
-                    compile blueThing.output
+                    compile tasks.blueThing.output
                 }
             }
 
@@ -394,7 +394,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
         buildFile << """
             allprojects {
                 repositories {
-                    maven { url "${mavenRepo.uri}" }
+                    maven { url = "${mavenRepo.uri}" }
                 }
             }
 
@@ -404,7 +404,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                     archiveFileName = 'common.jar'
                 }
                 artifacts {
-                    compile jar
+                    compile tasks.jar
                     compile file("common-file.jar")
                 }
             }
@@ -426,7 +426,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                 }
 
                 artifacts {
-                    compile jar1, jar2
+                    compile tasks.jar1, tasks.jar2
                 }
             }
 
@@ -478,8 +478,8 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                     compile.outgoing.variants {
                         files {
                             attributes.attribute(Attribute.of('artifactType', String), 'jar')
-                            artifact jar1
-                            artifact zip1
+                            artifact tasks.jar1
+                            artifact tasks.zip1
                         }
                     }
                 }
@@ -584,8 +584,8 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                     compile.outgoing.variants {
                         files {
                             attributes.attribute(Attribute.of('artifactType', String), 'size')
-                            artifact jar1
-                            artifact jar2
+                            artifact tasks.jar1
+                            artifact tasks.jar2
                         }
                     }
                 }
@@ -644,12 +644,12 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                         java7 {
                             attributes.attribute(Attribute.of('javaVersion', String), '7')
                             attributes.attribute(Attribute.of('color', String), 'green')
-                            artifact jar1
+                            artifact tasks.jar1
                         }
                         java8 {
                             attributes.attribute(Attribute.of('javaVersion', String), '8')
                             attributes.attribute(Attribute.of('color', String), 'red')
-                            artifact jar2
+                            artifact tasks.jar2
                         }
                     }
                 }
@@ -748,12 +748,12 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                         java7 {
                             attributes.attribute(Attribute.of('javaVersion', String), '7')
                             attributes.attribute(Attribute.of('color', String), 'green')
-                            artifact jar1
+                            artifact tasks.jar1
                         }
                         java8 {
                             attributes.attribute(Attribute.of('javaVersion', String), '8')
                             attributes.attribute(Attribute.of('color', String), 'red')
-                            artifact jar2
+                            artifact tasks.jar2
                         }
                     }
                 }
@@ -1016,8 +1016,8 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
             }
 
             dependencies {
-                api1 files(producer1)
-                api2 files(producer2)
+                api1 files(tasks.producer1)
+                api2 files(tasks.producer2)
             }
         """)
 
@@ -1068,19 +1068,19 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                             attribute(artifactType, "jar")
                             attribute(extraAttribute, "preferred")
                         }
-                        artifact jar
+                        artifact tasks.jar
                     }
                     secondary {
                         attributes {
                             attribute(artifactType, "intermediate")
                         }
-                        artifact jar
+                        artifact tasks.jar
                     }
                 }
             }
 
             // Provides a default value of `preferred` if a given attribute is not requested.
-            abstract class DefaultingDisambiguationRule implements AttributeDisambiguationRule<String>, org.gradle.api.internal.ReusableAction {
+            abstract class DefaultingDisambiguationRule implements AttributeDisambiguationRule<String> {
                 @Inject
                 protected abstract ObjectFactory getObjectFactory()
                 @Override
@@ -1151,7 +1151,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
         given:
         buildFile << """
             repositories {
-                maven { url "${mavenRepo.uri}" }
+                maven { url = "${mavenRepo.uri}" }
             }
             dependencies {
                 compile 'test:test:1.3'
@@ -1196,7 +1196,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
         given:
         buildFile << """
             repositories {
-                maven { url "${mavenRepo.uri}" }
+                maven { url = "${mavenRepo.uri}" }
             }
             dependencies {
                 compile 'test:test:1.3'
@@ -1245,7 +1245,7 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
                 }
 
                 artifacts {
-                    compile(jar1)
+                    compile(tasks.jar1)
                 }
             }
 
@@ -1289,23 +1289,31 @@ class ArtifactTransformIntegrationTest extends AbstractHttpDependencyResolutionT
         fails "resolve"
 
         then:
-        failure.assertHasCause """Found multiple transforms that can produce a variant of project :lib with requested attributes:
+        failure.assertHasCause """Found multiple transformation chains that produce a variant of 'project :lib' with requested attributes:
   - artifactType 'transformed'
   - usage 'api'
-Found the following transforms:
-  - From 'configuration ':lib:compile'':
+Found the following transformation chains:
+  - From configuration ':lib:compile':
       - With source attributes:
           - artifactType 'custom'
           - usage 'api'
-      - Candidate transform(s):
-          - Transform 'BrokenTransform' producing attributes:
-              - artifactType 'transformed'
-              - extra 'bar'
-              - usage 'api'
-          - Transform 'BrokenTransform' producing attributes:
-              - artifactType 'transformed'
-              - extra 'baz'
-              - usage 'api'"""
+      - Candidate transformation chains:
+          - Transformation chain: 'BrokenTransform':
+              - 'BrokenTransform':
+                  - Converts from attributes:
+                      - artifactType 'custom'
+                      - extra 'foo'
+                  - To attributes:
+                      - artifactType 'transformed'
+                      - extra 'bar'
+          - Transformation chain: 'BrokenTransform':
+              - 'BrokenTransform':
+                  - Converts from attributes:
+                      - artifactType 'custom'
+                      - extra 'foo'
+                  - To attributes:
+                      - artifactType 'transformed'
+                      - extra 'baz'"""
     }
 
     def "user receives reasonable error message when multiple variants can be transformed to produce requested variant"() {
@@ -1329,17 +1337,17 @@ Found the following transforms:
                         variant1 {
                             attributes.attribute(buildType, 'release')
                             attributes.attribute(flavor, 'free')
-                            artifact jar1
+                            artifact tasks.jar1
                         }
                         variant2 {
                             attributes.attribute(buildType, 'release')
                             attributes.attribute(flavor, 'paid')
-                            artifact jar1
+                            artifact tasks.jar1
                         }
                         variant3 {
                             attributes.attribute(buildType, 'debug')
                             attributes.attribute(flavor, 'free')
-                            artifact jar1
+                            artifact tasks.jar1
                         }
                     }
                 }
@@ -1385,52 +1393,61 @@ Found the following transforms:
         fails "resolve"
 
         then:
-        failure.assertHasCause """Found multiple transforms that can produce a variant of project :lib with requested attributes:
+        failure.assertHasCause """Found multiple transformation chains that produce a variant of 'project :lib' with requested attributes:
   - artifactType 'transformed'
   - usage 'api'
-Found the following transforms:
-  - From 'configuration ':lib:compile' variant variant1':
+Found the following transformation chains:
+  - From configuration ':lib:compile' variant 'variant1':
       - With source attributes:
           - artifactType 'jar'
           - buildType 'release'
           - flavor 'free'
           - usage 'api'
-      - Candidate transform(s):
-          - Transform 'BrokenTransform' producing attributes:
-              - artifactType 'transformed'
-              - buildType 'release'
-              - flavor 'free'
-              - usage 'api'
-  - From 'configuration ':lib:compile' variant variant2':
+      - Candidate transformation chains:
+          - Transformation chain: 'BrokenTransform':
+              - 'BrokenTransform':
+                  - Converts from attributes:
+                      - artifactType 'jar'
+                      - buildType 'release'
+                  - To attributes:
+                      - artifactType 'transformed'
+  - From configuration ':lib:compile' variant 'variant2':
       - With source attributes:
           - artifactType 'jar'
           - buildType 'release'
           - flavor 'paid'
           - usage 'api'
-      - Candidate transform(s):
-          - Transform 'BrokenTransform' producing attributes:
-              - artifactType 'transformed'
-              - buildType 'release'
-              - flavor 'paid'
-              - usage 'api'
-  - From 'configuration ':lib:compile' variant variant3':
+      - Candidate transformation chains:
+          - Transformation chain: 'BrokenTransform':
+              - 'BrokenTransform':
+                  - Converts from attributes:
+                      - artifactType 'jar'
+                      - buildType 'release'
+                  - To attributes:
+                      - artifactType 'transformed'
+  - From configuration ':lib:compile' variant 'variant3':
       - With source attributes:
           - artifactType 'jar'
           - buildType 'debug'
           - flavor 'free'
           - usage 'api'
-      - Candidate transform(s):
-          - Transform 'BrokenTransform' producing attributes:
-              - artifactType 'transformed'
-              - buildType 'debug'
-              - flavor 'free'
-              - usage 'api'"""
+      - Candidate transformation chains:
+          - Transformation chain: 'BrokenTransform':
+              - 'BrokenTransform':
+                  - Converts from attributes:
+                      - artifactType 'jar'
+                      - buildType 'debug'
+                  - To attributes:
+                      - artifactType 'transformed'"""
     }
 
     def "result is applied for all query methods"() {
-        def fixture = new ResolveTestFixture(buildFile, "compile")
+        def resolve = new ResolveTestFixture(testDirectory)
 
         given:
+        settingsFile << """
+            ${resolve.configureSettings("compile")}
+        """
         buildFile << """
             project(':lib') {
                 projectDir.mkdirs()
@@ -1457,12 +1474,12 @@ Found the following transforms:
                 }
             }
         """
-        fixture.expectDefaultConfiguration("compile")
-        fixture.prepare()
 
-        expect:
+        when:
         succeeds ":app:checkDeps"
-        fixture.expectGraph {
+
+        then:
+        resolve.expectGraph(":app") {
             root(":app", "root:app:") {
                 project(":lib", "root:lib:") {
                     artifact(name: "lib.jar", type: "txt")
@@ -1478,7 +1495,7 @@ Found the following transforms:
         given:
         buildFile << """
             repositories {
-                maven { url '${mavenHttpRepo.uri}' }
+                maven { url = '${mavenHttpRepo.uri}' }
             }
             configurations {
                 config1 {
@@ -1563,7 +1580,7 @@ Found the following transforms:
                 task jar1(type: Jar) { archiveFileName = 'jar1.jar' }
                 task jar2(type: Jar) { archiveFileName = 'jar2.jar' }
                 tasks.withType(Jar) { destinationDirectory = buildDir }
-                artifacts { compile jar1, jar2 }
+                artifacts { compile tasks.jar1, tasks.jar2 }
             }
 
             abstract class Hasher implements TransformAction<TransformParameters.None> {
@@ -1703,7 +1720,7 @@ Found the following transforms:
             ${configurationAndTransform('FileSizer')}
 
             repositories {
-                ivy { url "${ivyHttpRepo.uri}" }
+                ivy { url = "${ivyHttpRepo.uri}" }
             }
 
             dependencies {
@@ -1804,7 +1821,7 @@ Found the following transforms:
         failure.assertHasCause("Could not resolve all files for configuration ':compile'.")
         failure.assertHasCause("Failed to transform a.jar to match attributes {artifactType=size}")
         failure.assertHasCause("Execution failed for ToNullTransform: ${file("a.jar").absolutePath}.")
-        failure.assertHasCause("path may not be null or empty string. path='null'")
+        failure.assertHasCause("Cannot convert 'null' to File")
 
         where:
         method << ['dir', 'file']
@@ -2109,7 +2126,7 @@ Found the following transforms:
         given:
         buildFile << """
             repositories {
-                maven { url '$mavenHttpRepo.uri' }
+                maven { url = '$mavenHttpRepo.uri' }
             }
 
             def a = file("a.jar")
@@ -2204,12 +2221,12 @@ Found the following transforms:
                     archiveFileName = 'lib.jar'
                 }
                 artifacts {
-                    compile jar
+                    compile tasks.jar
                 }
             }
 
             repositories {
-                maven { url '$mavenRepo.uri' }
+                maven { url = '$mavenRepo.uri' }
             }
 
             dependencies {
@@ -2270,7 +2287,7 @@ Found the following transforms:
 
         buildFile << """
             repositories {
-                maven { url '$mavenRepo.uri' }
+                maven { url = '$mavenRepo.uri' }
             }
 
             dependencies {
@@ -2333,7 +2350,7 @@ Found the following transforms:
         given:
         buildFile << """
             repositories {
-                maven { url "${mavenRepo.uri}" }
+                maven { url = "${mavenRepo.uri}" }
             }
             dependencies {
                 compile 'test:test:1.3:foo'
@@ -2389,7 +2406,7 @@ Found the following transforms:
         taskTypeLogsArtifactCollectionDetails()
         buildFile << """
             repositories {
-                ivy { url "${ivyRepo.uri}" }
+                ivy { url = "${ivyRepo.uri}" }
             }
             configurations {
                 compile1 {
@@ -2466,12 +2483,12 @@ Found the following transforms:
         buildFile << """
             project(":a") {
                 repositories {
-                    maven { url "${repo1.uri}" }
+                    maven { url = "${repo1.uri}" }
                 }
             }
             project(":b") {
                 repositories {
-                    maven { url "${repo2.uri}" }
+                    maven { url = "${repo2.uri}" }
                 }
             }
             allprojects {
@@ -2529,7 +2546,7 @@ Found the following transforms:
                 }
 
                 dependencies {
-                    compile files(lib1)
+                    compile files(tasks.lib1)
                 }
                 artifacts {
                     compile file1
@@ -2632,7 +2649,7 @@ Found the following transforms:
                     destinationDirectory = buildDir
                 }
                 artifacts {
-                    compile jar
+                    compile tasks.jar
                 }
             }
 
@@ -2658,7 +2675,7 @@ Found the following transforms:
         with(executeTransformationOp.details) {
             transformerName == "FileSizer"
             subjectName == "lib.jar (project :lib)"
-            with(plannedTransformStepIdentity) {
+            this.with(plannedTransformStepIdentity) {
                 nodeType == "TRANSFORM_STEP"
                 consumerBuildPath == ":"
                 consumerProjectPath == ":app"
@@ -2699,7 +2716,7 @@ Found the following transforms:
                     destinationDirectory = buildDir
                 }
                 artifacts {
-                    compile jar
+                    compile tasks.jar
                 }
             }
 
@@ -2731,7 +2748,7 @@ Found the following transforms:
         with(executeTransformationOp.details) {
             transformerName == "BrokenTransform"
             subjectName == "lib.jar (project :lib)"
-            with(plannedTransformStepIdentity) {
+            this.with(plannedTransformStepIdentity) {
                 nodeType == "TRANSFORM_STEP"
                 consumerBuildPath == ":"
                 consumerProjectPath == ":app"
@@ -2757,7 +2774,7 @@ Found the following transforms:
                 }
 
                 artifacts {
-                    compile jar
+                    compile tasks.jar
                 }
             }
 
@@ -2770,7 +2787,7 @@ Found the following transforms:
                 ${configurationAndTransform()}
 
                 task dependent {
-                    dependsOn resolve
+                    dependsOn tasks.resolve
                 }
             }
 
@@ -2791,6 +2808,74 @@ Found the following transforms:
         output.contains("> Dependency: task ':app:dependent' -> task ':app:resolve'")
         output.contains("> Transform lib1.jar (project :lib) with FileSizer")
         output.contains("> Task :app:resolve")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/33298")
+    def "does not OOM due to exhaustively searching all possible transform paths when many unrelated transforms are registered"() {
+        buildFile << """
+            @CacheableTransform
+            abstract class Transform implements TransformAction<TransformParameters.None> {
+                @PathSensitive(PathSensitivity.RELATIVE)
+                @InputArtifact
+                abstract Provider<FileSystemLocation> getInputArtifact()
+
+                @Override
+                public void transform(TransformOutputs outputs) {
+                    outputs.file(getInputArtifact().get().getAsFile())
+                }
+            }
+
+            def direct = Attribute.of("attr", String)
+
+            def stubJar = tasks.register("stubJar", Jar) {
+                from(layout.projectDirectory.file("build.gradle.kts"))
+                destinationDirectory.set(layout.buildDirectory.dir("stubJar"))
+            }
+
+            def consumable = configurations.consumable("consumable") {
+                attributes.attribute(direct, "direct")
+                outgoing.artifact(stubJar)
+            }
+
+            def numberOfUnrelatedTransformedAttributes = 10
+            def transformedAttribute = Attribute.of("transformedAttribute", String)
+
+            dependencies.artifactTypes.register("jar") {
+                attributes.attribute(transformedAttribute, "initial_state")
+            }
+
+            // Technically registering this transform doesn't change anything
+            dependencies.registerTransform(Transform) {
+                from.attribute(transformedAttribute, "initial_state")
+                to.attribute(transformedAttribute, "unrequested_state")
+            }
+
+            for (int i = 0; i < numberOfUnrelatedTransformedAttributes; i++) {
+                def unrelated = Attribute.of("unrelated\$i", String)
+                dependencies.registerTransform(Transform) {
+                    from.attribute(unrelated, "a")
+                    to.attribute(unrelated, "b")
+                }
+            }
+            def deps = configurations.dependencyScope("deps") {
+                dependencies.add(dependencyFactory.create(project))
+            }
+            def resolvable = configurations.resolvable("res") {
+                attributes.attribute(direct, "direct")
+                attributes.attribute(transformedAttribute, "requested_state")
+                extendsFrom(deps.get())
+            }
+            tasks.register("explodeGradleWithOOM") {
+                inputs.files(resolvable)
+            }
+        """
+
+        when:
+        fails("explodeGradleWithOOM")
+
+        then:
+        // Previously, this test would fail with an OOM.
+        failure.assertHasCause("No variants of root project : match the consumer attributes")
     }
 
     def declareTransform(String transformImplementation) {

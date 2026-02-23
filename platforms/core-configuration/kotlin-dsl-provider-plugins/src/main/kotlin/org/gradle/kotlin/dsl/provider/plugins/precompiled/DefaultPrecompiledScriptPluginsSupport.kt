@@ -17,18 +17,18 @@ package org.gradle.kotlin.dsl.provider.plugins.precompiled
 
 
 import org.gradle.api.InvalidUserCodeException
-import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.Task
-import org.gradle.api.Transformer
 import org.gradle.api.file.Directory
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileCollection
 import org.gradle.api.file.SourceDirectorySet
 import org.gradle.api.initialization.Settings
 import org.gradle.api.internal.plugins.DefaultPluginManager
+import org.gradle.api.internal.tasks.JvmConstants
 import org.gradle.api.invocation.Gradle
 import org.gradle.api.model.ObjectFactory
-import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.api.plugins.jvm.internal.JvmPluginServices
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.ClasspathNormalizer
@@ -37,10 +37,7 @@ import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.TaskContainer
 import org.gradle.api.tasks.TaskProvider
-import org.gradle.internal.deprecation.DeprecationLogger
 import org.gradle.internal.deprecation.Documentation
-import org.gradle.internal.fingerprint.classpath.ClasspathFingerprinter
-import org.gradle.jvm.toolchain.JavaToolchainService
 import org.gradle.kotlin.dsl.*
 import org.gradle.kotlin.dsl.precompile.v1.PrecompiledInitScript
 import org.gradle.kotlin.dsl.precompile.v1.PrecompiledProjectScript
@@ -48,7 +45,6 @@ import org.gradle.kotlin.dsl.precompile.v1.PrecompiledSettingsScript
 import org.gradle.kotlin.dsl.provider.PrecompiledScriptPluginsSupport
 import org.gradle.kotlin.dsl.provider.inClassPathMode
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.DefaultPrecompiledScriptPluginsSupport.Companion.PRECOMPILED_SCRIPT_MANUAL
-import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.CompilePrecompiledScriptPluginPlugins
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.ConfigurePrecompiledScriptDependenciesResolver
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.ExtractPrecompiledScriptPluginPlugins
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.GenerateExternalPluginSpecBuilders
@@ -56,7 +52,6 @@ import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.GeneratePrecompi
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.GenerateScriptPluginAdapters
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.HashedProjectSchema
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.resolverEnvironmentStringFor
-import org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks.strictModeSystemPropertyName
 import org.gradle.kotlin.dsl.support.ImplicitImports
 import org.gradle.kotlin.dsl.support.expectedKotlinDslPluginsVersion
 import org.gradle.kotlin.dsl.support.serviceOf
@@ -121,13 +116,25 @@ import javax.inject.Inject
  * External plugin dependencies are declared as regular artifact dependencies but a more
  * semantic preserving model could be introduced in the future.
  *
+ * ### Configuring the Kotlin Gradle Plugin
+ * The implementation does configure KGP.
+ * The KGP types are not available in the Gradle distribution, thus are not available to this implementation.
+ *
+ * This matter of fact makes the implementation convoluted because it needs to use reflection and [withGroovyBuilder].
+ *
+ * ### Backwards compatibility
+ * While it is strongly recommended to use the default version of the published `kotlin-dsl` plugins,
+ * this implementation must currently support some previous versions according to [KotlinDslPluginCrossVersionSmokeTest].
+ *
+ * This requirement makes the implementation convoluted because it needs to handle different setup types.
+ *
  * ### Type-safe accessors
  * The process of generating type-safe accessors for precompiled script plugins is carried out by the
  * following tasks:
  *  - [ExtractPrecompiledScriptPluginPlugins] - extracts the `plugins` block of every precompiled script plugin and
  *  saves it to a file with the same name in the output directory
  *  - [GenerateExternalPluginSpecBuilders] - generates plugin spec builders for the plugins in the compile classpath
- *  - [CompilePrecompiledScriptPluginPlugins] - compiles the extracted `plugins` blocks along with the internal
+ *  - `compilePluginsBlocks`, a regular `KotlinCompile` task - compiles the extracted `plugins` blocks along with the internal
  *  and external plugin spec builders
  *  - [GeneratePrecompiledScriptPluginAccessors] - uses the compiled `plugins` block of each precompiled script plugin
  *  to compute its [HashedProjectSchema] and emit the corresponding type-safe accessors
@@ -148,7 +155,6 @@ class DefaultPrecompiledScriptPluginsSupport : PrecompiledScriptPluginsSupport {
         val scriptPlugins = scriptPluginFiles.map(::PrecompiledScriptPlugin)
         enableScriptCompilationOf(
             scriptPlugins,
-            target.jvmTarget,
             target.kotlinSourceDirectorySet
         )
 
@@ -169,7 +175,6 @@ class DefaultPrecompiledScriptPluginsSupport : PrecompiledScriptPluginsSupport {
 private
 fun Project.enableScriptCompilationOf(
     scriptPlugins: List<PrecompiledScriptPlugin>,
-    jvmTargetProvider: Provider<JavaVersion>,
     kotlinSourceDirectorySet: SourceDirectorySet
 ) {
 
@@ -186,7 +191,7 @@ fun Project.enableScriptCompilationOf(
     tasks {
 
         val extractPrecompiledScriptPluginPlugins by registering(ExtractPrecompiledScriptPluginPlugins::class) {
-            plugins = scriptPlugins
+            plugins.value(scriptPlugins)
             outputDir.set(extractedPluginsBlocks)
         }
 
@@ -201,19 +206,23 @@ fun Project.enableScriptCompilationOf(
                 metadataOutputDir.set(pluginSpecBuildersMetadata)
             }
 
-        val compilePluginsBlocks by registering(CompilePrecompiledScriptPluginPlugins::class) {
+        val compilePluginsBlocks = registerCompilePluginsBlocksTask(
+            compileClasspath = compileClasspath,
+            extractPluginsBlocksTask = extractPrecompiledScriptPluginPlugins,
+            extractedPluginsBlocksDir = extractedPluginsBlocks,
+            externalPluginSpecBuildersTask = generateExternalPluginSpecBuilders,
+            externalPluginSpecBuildersDir = externalPluginSpecBuilders,
+            outputDir = compiledPluginsBlocks
+        )
 
-            javaLauncher.set(javaToolchainService.launcherFor(java.toolchain))
-            @Suppress("DEPRECATION") jvmTarget.set(jvmTargetProvider)
-
-            dependsOn(extractPrecompiledScriptPluginPlugins)
-            sourceDir(extractedPluginsBlocks)
-
-            dependsOn(generateExternalPluginSpecBuilders)
-            sourceDir(externalPluginSpecBuilders)
-
-            classPathFiles.from(compileClasspath)
-            outputDir.set(compiledPluginsBlocks)
+        val accessorsGenerationClasspath = configurations.resolvable("precompiledScriptPluginAccessorsGenerationClasspath") {
+            // We combine compile and runtime classpath to allow for compileOnly dependencies to be used for code generation
+            it.extendsFrom(
+                configurations[JvmConstants.COMPILE_ONLY_CONFIGURATION_NAME],
+                configurations[JvmConstants.IMPLEMENTATION_CONFIGURATION_NAME],
+                configurations[JvmConstants.RUNTIME_ONLY_CONFIGURATION_NAME],
+            )
+            serviceOf<JvmPluginServices>().configureAsRuntimeClasspath(it)
         }
 
         val (generatePrecompiledScriptPluginAccessors, _) =
@@ -224,18 +233,11 @@ fun Project.enableScriptCompilationOf(
             ) {
                 dependsOn(compilePluginsBlocks)
                 classPathFiles.from(compileClasspath)
-                runtimeClassPathArtifactCollection.set(configurations["runtimeClasspath"].incoming.artifacts)
+                accessorsGenerationClassPathArtifactCollection.set(accessorsGenerationClasspath.get().incoming.artifacts)
                 sourceCodeOutputDir.set(it)
                 metadataOutputDir.set(accessorsMetadata)
                 compiledPluginsBlocksDir.set(compiledPluginsBlocks)
-                @Suppress("DEPRECATION")
-                strict.set(
-                    providers
-                        .systemProperty(strictModeSystemPropertyName)
-                        .map(strictModeSystemPropertyNameMapper)
-                        .orElse(true)
-                )
-                plugins = scriptPlugins
+                plugins.value(scriptPlugins)
             }
 
         compileKotlin {
@@ -255,7 +257,6 @@ fun Project.enableScriptCompilationOf(
         configureKotlinCompilerArguments(
             objects,
             serviceOf(),
-            serviceOf(),
             compileClasspath,
             generatePrecompiledScriptPluginAccessors.flatMap { it.metadataOutputDir }
         )
@@ -264,7 +265,7 @@ fun Project.enableScriptCompilationOf(
 
             val configurePrecompiledScriptDependenciesResolver by registering(ConfigurePrecompiledScriptDependenciesResolver::class) {
                 dependsOn(generatePrecompiledScriptPluginAccessors)
-                metadataDir.set(accessorsMetadata)
+                metadataDir.set(generatePrecompiledScriptPluginAccessors.flatMap { it.metadataOutputDir })
                 classPathFiles.from(compileClasspath)
                 val objects = objects
                 onConfigure { resolverEnvironment ->
@@ -279,23 +280,42 @@ fun Project.enableScriptCompilationOf(
     }
 }
 
-
-private
-val strictModeSystemPropertyNameMapper: Transformer<Boolean, String> = Transformer { prop ->
-    DeprecationLogger.deprecateSystemProperty(strictModeSystemPropertyName)
-        .willBeRemovedInGradle9()
-        .withUpgradeGuideSection(7, "strict-kotlin-dsl-precompiled-scripts-accessors-by-default")
-        .nagUser()
-    if (prop.isBlank()) true
-    else java.lang.Boolean.parseBoolean(prop)
-}
+private fun Project.registerCompilePluginsBlocksTask(
+    compileClasspath: FileCollection,
+    extractPluginsBlocksTask: TaskProvider<ExtractPrecompiledScriptPluginPlugins>,
+    extractedPluginsBlocksDir: Provider<Directory>,
+    externalPluginSpecBuildersTask: TaskProvider<GenerateExternalPluginSpecBuilders>,
+    externalPluginSpecBuildersDir: Provider<Directory>,
+    outputDir: Provider<Directory>
+) =
+    // Let's use a regular KotlinCompile task, created by PrecompiledScriptPlugins
+    tasks.named("compilePluginsBlocks") { task ->
+        task.enabled = true
+        task.dependsOn(externalPluginSpecBuildersTask)
+        task.dependsOn(extractPluginsBlocksTask)
+        task.withGroovyBuilder {
+            "source"(externalPluginSpecBuildersDir)
+            "source"(extractedPluginsBlocksDir)
+            val destinationDirectory = getProperty("destinationDirectory") as DirectoryProperty
+            destinationDirectory.set(outputDir)
+        }
+        task.configureKotlinCompilerArgumentsLazily(
+            resolverEnvironmentStringFor(
+                project.serviceOf(),
+                compileClasspath,
+                externalPluginSpecBuildersTask.flatMap { it.metadataOutputDir },
+            )
+        )
+        task.doFirst {
+            task.validateKotlinCompilerArguments()
+        }
+    }
 
 
 private
 fun configureKotlinCompilerArguments(
     objects: ObjectFactory,
     implicitImports: ImplicitImports,
-    classpathFingerprinter: ClasspathFingerprinter,
     compileClasspath: FileCollection,
     accessorsMetadata: Provider<Directory>
 ) {
@@ -303,7 +323,6 @@ fun configureKotlinCompilerArguments(
         objects,
         resolverEnvironmentStringFor(
             implicitImports,
-            classpathFingerprinter,
             compileClasspath,
             accessorsMetadata
         )
@@ -324,9 +343,7 @@ fun configureKotlinCompilerArguments(
                     validateKotlinCompilerArguments()
                 }
             } else {
-                doFirst {
-                    configureKotlinCompilerArgumentsEagerly(resolverEnvironment)
-                }
+                configureKotlinCompilerArgumentsEagerly()
             }
         }
     }
@@ -345,6 +362,7 @@ fun Task.configureKotlinCompilerArgumentsLazily(resolverEnvironment: Provider<St
             @Suppress("unchecked_cast")
             val freeCompilerArgs = getProperty("freeCompilerArgs") as ListProperty<String>
             freeCompilerArgs.addAll(scriptTemplatesArgs)
+            freeCompilerArgs.add("-Xallow-any-scripts-in-source-roots")
             freeCompilerArgs.add(resolverEnvironment.mappedToScriptResolverEnvironmentArg)
         }
     }
@@ -371,23 +389,13 @@ fun Task.validateKotlinCompilerArguments() {
 
 
 private
-fun Task.configureKotlinCompilerArgumentsEagerly(resolverEnvironment: Provider<String>) {
-    DeprecationLogger.deprecateBehaviour("Using the `kotlin-dsl` plugin together with Kotlin Gradle Plugin < 1.8.0.")
-        .withAdvice(
+fun configureKotlinCompilerArgumentsEagerly() {
+    throw PrecompiledScriptException(
+        "Using the `kotlin-dsl` plugin together with Kotlin Gradle Plugin < 1.8.0. " +
             "Please let Gradle control the version of `kotlin-dsl` by removing any explicit `kotlin-dsl` version constraints from your build logic. " +
-                "Or use version $expectedKotlinDslPluginsVersion which is the expected version for this Gradle release. " +
-                "If you explicitly declare which version of the Kotlin Gradle Plugin to use for your build logic, update it to >= 1.8.0."
-        )
-        .willBecomeAnErrorInGradle9()
-        .withUpgradeGuideSection(8, "kotlin_dsl_with_kgp_lt_1_8_0")
-        .nagUser()
-    withGroovyBuilder {
-        getProperty("kotlinOptions").withGroovyBuilder {
-            @Suppress("unchecked_cast")
-            val freeCompilerArgs: List<String> = getProperty("freeCompilerArgs") as List<String>
-            setProperty("freeCompilerArgs", freeCompilerArgs + scriptTemplatesArgs + resolverEnvironment.mappedToScriptResolverEnvironmentArg.get())
-        }
-    }
+            "Or use version $expectedKotlinDslPluginsVersion which is the expected version for this Gradle release. " +
+            "If you explicitly declare which version of the Kotlin Gradle Plugin to use for your build logic, update it to >= 1.8.0."
+    )
 }
 
 
@@ -482,24 +490,19 @@ fun Project.validateScriptPlugin(scriptPlugin: PrecompiledScriptPlugin) {
 
     if (scriptPlugin.id == DefaultPluginManager.CORE_PLUGIN_NAMESPACE || scriptPlugin.id.startsWith(DefaultPluginManager.CORE_PLUGIN_PREFIX)) {
         throw PrecompiledScriptException(
-            String.format(
-                "The precompiled plugin (%s) cannot start with '%s' or be in the '%s' package.", this.relativePath(scriptPlugin.scriptFile),
-                DefaultPluginManager.CORE_PLUGIN_NAMESPACE, DefaultPluginManager.CORE_PLUGIN_NAMESPACE
-            ),
+            "The precompiled plugin (${this.relativePath(scriptPlugin.scriptFile)}) cannot start with '${DefaultPluginManager.CORE_PLUGIN_NAMESPACE}' " +
+                "or be in the '${DefaultPluginManager.CORE_PLUGIN_NAMESPACE}' package.",
             null,
-            PRECOMPILED_SCRIPT_MANUAL.getConsultDocumentationMessage()
+            PRECOMPILED_SCRIPT_MANUAL.consultDocumentationMessage
         )
     }
     val existingPlugin = plugins.findPlugin(scriptPlugin.id)
     if (existingPlugin != null && existingPlugin.javaClass.getPackage().name.startsWith(DefaultPluginManager.CORE_PLUGIN_PREFIX)) {
         throw PrecompiledScriptException(
-            String.format(
-                "The precompiled plugin (%s) conflicts with the core plugin '%s'. Rename your plugin.",
-                this.relativePath(scriptPlugin.scriptFile),
-                scriptPlugin.id
-            ),
+            "The precompiled plugin (${this.relativePath(scriptPlugin.scriptFile)}) conflicts with the core plugin '${scriptPlugin.id}'. " +
+                "Rename your plugin.",
             null,
-            PRECOMPILED_SCRIPT_MANUAL.getConsultDocumentationMessage()
+            PRECOMPILED_SCRIPT_MANUAL.consultDocumentationMessage
         )
     }
 }
@@ -527,7 +530,7 @@ fun Project.generatePluginAdaptersFor(scriptPlugins: List<PrecompiledScriptPlugi
         "generateScriptPluginAdapters",
         kotlinSourceDirectorySet
     ) {
-        plugins = scriptPlugins
+        plugins.value(scriptPlugins)
         outputDirectory.set(it)
     }
 }
@@ -554,14 +557,4 @@ fun Project.buildDir(path: String) = layout.buildDirectory.dir(path)
 
 private
 val Project.sourceSets: SourceSetContainer
-    get() = extensions.getByType()
-
-
-private
-val Project.javaToolchainService: JavaToolchainService
-    get() = serviceOf()
-
-
-private
-val Project.java: JavaPluginExtension
     get() = extensions.getByType()

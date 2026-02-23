@@ -34,6 +34,7 @@ sealed class ApiSourceFile {
     internal
     abstract val currentSourceRoot: File
 
+    @ConsistentCopyVisibility
     data class Java internal constructor(
 
         override val currentFile: File,
@@ -42,6 +43,7 @@ sealed class ApiSourceFile {
 
     ) : ApiSourceFile()
 
+    @ConsistentCopyVisibility
     data class Kotlin internal constructor(
 
         override val currentFile: File,
@@ -122,7 +124,7 @@ class SourcesRepository(
         sourceRoots.asSequence()
             .map { it.resolve(sourceFilePath) to it }
             .firstOrNull { it.first.isFile }
-            ?: throw IllegalStateException("Source file '$sourceFilePath' not found, searched in source roots:\n  - ${sourceRoots.joinToString("\n  - ")}")
+            ?: error("Source file '$sourceFilePath' not found, searched in source roots:\n  - ${sourceRoots.joinToString("\n  - ")}")
 
     private
     val KtFile.normalizedPath: String?

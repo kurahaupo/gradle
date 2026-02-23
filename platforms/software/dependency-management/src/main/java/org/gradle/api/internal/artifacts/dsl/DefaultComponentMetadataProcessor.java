@@ -34,7 +34,7 @@ import org.gradle.api.internal.artifacts.repositories.resolver.ComponentMetadata
 import org.gradle.api.internal.artifacts.repositories.resolver.DependencyConstraintMetadataImpl;
 import org.gradle.api.internal.artifacts.repositories.resolver.DirectDependencyMetadataImpl;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.internal.Actions;
 import org.gradle.internal.action.ConfigurableRule;
@@ -59,7 +59,6 @@ import org.gradle.internal.typeconversion.NotationParser;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -95,25 +94,11 @@ public class DefaultComponentMetadataProcessor implements ComponentMetadataProce
 
     private ModuleComponentResolveMetadata forceSerialization(ModuleComponentResolveMetadata metadata) {
         Serializer<ModuleComponentResolveMetadata> serializer = ruleExecutor.getComponentMetadataContextSerializer();
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        byte[] bytes;
-        try {
-            serializer.write(new OutputStreamBackedEncoder(byteArrayOutputStream), metadata);
-            bytes = byteArrayOutputStream.toByteArray();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        } finally {
-            try {
-                byteArrayOutputStream.close();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        try {
-            ModuleComponentResolveMetadata forceRead = serializer.read(new InputStreamBackedDecoder(new ByteArrayInputStream(bytes)));
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            serializer.write(new OutputStreamBackedEncoder(baos), metadata);
             // TODO: CC cannot enable this assertion because moduleSource is not serialized, so doesn't appear in the deserialized form
-            //assert metadata.equals(forceRead);
-            metadata = forceRead;
+            //assert metadata.equals(rereadMetadata);
+            metadata = serializer.read(new InputStreamBackedDecoder(new ByteArrayInputStream(baos.toByteArray())));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -124,7 +109,7 @@ public class DefaultComponentMetadataProcessor implements ComponentMetadataProce
     private final NotationParser<Object, DirectDependencyMetadataImpl> dependencyMetadataNotationParser;
     private final NotationParser<Object, DependencyConstraintMetadataImpl> dependencyConstraintMetadataNotationParser;
     private final NotationParser<Object, ComponentIdentifier> componentIdentifierNotationParser;
-    private final ImmutableAttributesFactory attributesFactory;
+    private final AttributesFactory attributesFactory;
     private final ComponentMetadataRuleExecutor ruleExecutor;
     private final MetadataResolutionContext metadataResolutionContext;
     private final ComponentMetadataRuleContainer metadataRuleContainer;
@@ -135,7 +120,7 @@ public class DefaultComponentMetadataProcessor implements ComponentMetadataProce
                                              NotationParser<Object, DirectDependencyMetadataImpl> dependencyMetadataNotationParser,
                                              NotationParser<Object, DependencyConstraintMetadataImpl> dependencyConstraintMetadataNotationParser,
                                              NotationParser<Object, ComponentIdentifier> componentIdentifierNotationParser,
-                                             ImmutableAttributesFactory attributesFactory,
+                                             AttributesFactory attributesFactory,
                                              ComponentMetadataRuleExecutor ruleExecutor,
                                              PlatformSupport platformSupport,
                                              MetadataResolutionContext resolutionContext) {
@@ -198,7 +183,7 @@ public class DefaultComponentMetadataProcessor implements ComponentMetadataProce
         if (metadataRuleContainer.isEmpty()) {
             updatedMetadata = metadata;
         } else {
-            ShallowComponentMetadataAdapter details = new ShallowComponentMetadataAdapter(componentIdentifierNotationParser, metadata, attributesFactory);
+            ShallowComponentMetadataAdapter details = new ShallowComponentMetadataAdapter(metadata, attributesFactory);
             processAllRules(null, details, metadata.getId());
             updatedMetadata = details.asImmutable();
         }
@@ -239,7 +224,7 @@ public class DefaultComponentMetadataProcessor implements ComponentMetadataProce
     private ModuleComponentResolveMetadata processClassRuleWithCaching(InstantiatingAction<ComponentMetadataContext> action, final ModuleComponentResolveMetadata metadata, MetadataResolutionContext metadataResolutionContext) {
         try {
             return ruleExecutor.execute(metadata, action, DETAILS_TO_RESULT,
-                moduleVersionIdentifier -> new WrappingComponentMetadataContext(metadata, instantiator, dependencyMetadataNotationParser, dependencyConstraintMetadataNotationParser, componentIdentifierNotationParser, platformSupport), metadataResolutionContext.getCachePolicy());
+                moduleVersionIdentifier -> new WrappingComponentMetadataContext(metadata, instantiator, dependencyMetadataNotationParser, dependencyConstraintMetadataNotationParser, componentIdentifierNotationParser, platformSupport), metadataResolutionContext.getCacheExpirationControl());
         } catch (InvalidUserCodeException e) {
             throw e;
         } catch (Exception e) {
@@ -315,14 +300,12 @@ public class DefaultComponentMetadataProcessor implements ComponentMetadataProce
     }
 
     static class ShallowComponentMetadataAdapter implements ComponentMetadataDetails {
-        private final NotationParser<Object, ComponentIdentifier> componentIdentifierNotationParser;
         private final ModuleVersionIdentifier id;
         private boolean changing;
         private List<String> statusScheme;
         private final AttributeContainerInternal attributes;
 
-        public ShallowComponentMetadataAdapter(NotationParser<Object, ComponentIdentifier> componentIdentifierNotationParser, ComponentMetadata source, ImmutableAttributesFactory attributesFactory) {
-            this.componentIdentifierNotationParser = componentIdentifierNotationParser;
+        public ShallowComponentMetadataAdapter(ComponentMetadata source, AttributesFactory attributesFactory) {
             id = source.getId();
             changing = source.isChanging();
             statusScheme = source.getStatusScheme();

@@ -22,6 +22,9 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.internal.buildconfiguration.DaemonJvmPropertiesDefaults
 import org.gradle.internal.buildconfiguration.fixture.DaemonJvmPropertiesFixture
 import org.gradle.internal.jvm.Jvm
+import org.gradle.internal.os.OperatingSystem
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.IntegTestPreconditions
 
 class DaemonToolchainInvalidCriteriaIntegrationTest extends AbstractIntegrationSpec implements DaemonJvmPropertiesFixture {
 
@@ -53,7 +56,11 @@ class DaemonToolchainInvalidCriteriaIntegrationTest extends AbstractIntegrationS
         failure.assertHasDescription("Value '-1' given for toolchainVersion is an invalid Java version")
     }
 
-    @NotYetImplemented
+    // FIXME: running embedded this test passes as it picks up the running Temurin Java 17 and uses that
+    @Requires(
+        value = [IntegTestPreconditions.NotEmbeddedExecutor],
+        reason = "embedded may pick up the running JVM where it should not"
+    )
     def "Given unexpected toolchain vendor When execute any task Then fails with expected exception message"() {
         given:
         writeJvmCriteria(JavaVersion.VERSION_17, "unexpectedVendor")
@@ -62,8 +69,7 @@ class DaemonToolchainInvalidCriteriaIntegrationTest extends AbstractIntegrationS
         fails 'help'
 
         then:
-        failureDescriptionContains("Option toolchainVendor doesn't accept value 'unexpectedVendor'. Possible values are " +
-            "[ADOPTIUM, ADOPTOPENJDK, AMAZON, APPLE, AZUL, BELLSOFT, GRAAL_VM, HEWLETT_PACKARD, IBM, JETBRAINS, MICROSOFT, ORACLE, SAP, TENCENT, UNKNOWN]")
+        failureDescriptionContains("Cannot find a Java installation on your machine (${OperatingSystem.current()}) matching: {languageVersion=17, vendor=vendor matching('unexpectedVendor'), implementation=vendor-specific, nativeImageCapable=false}.")
     }
 
     @NotYetImplemented

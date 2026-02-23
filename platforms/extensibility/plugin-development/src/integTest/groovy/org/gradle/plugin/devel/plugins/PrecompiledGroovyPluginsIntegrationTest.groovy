@@ -17,6 +17,8 @@
 package org.gradle.plugin.devel.plugins
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.configurationcache.ConfigurationCacheFixture
+import org.gradle.test.fixtures.dsl.GradleDsl
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
@@ -255,7 +257,7 @@ class PrecompiledGroovyPluginsIntegrationTest extends AbstractIntegrationSpec {
             publishing {
                 repositories {
                     maven {
-                        url '${mavenRepo.uri}'
+                        url = "${mavenRepo.uri}"
                     }
                 }
             }
@@ -270,7 +272,7 @@ class PrecompiledGroovyPluginsIntegrationTest extends AbstractIntegrationSpec {
             pluginManagement {
                 repositories {
                     maven {
-                        url '${mavenRepo.uri}'
+                        url = "${mavenRepo.uri}"
                     }
                 }
             }
@@ -605,7 +607,91 @@ class PrecompiledGroovyPluginsIntegrationTest extends AbstractIntegrationSpec {
         fails("help")
 
         then:
-        failureDescriptionContains("Invalid plugin request [id: 'some-plugin', version: '42.0']. Plugin requests from precompiled scripts must not include a version number. Please remove the version from the offending request and make sure the module containing the requested plugin 'some-plugin' is an implementation dependency")
+        failureDescriptionContains("Invalid plugin request [id: 'some-plugin', version: '42.0']. Plugin requests from precompiled scripts must not include a version number. Please remove the version from the offending request. Make sure the module containing the requested plugin 'some-plugin' is an implementation dependency")
+    }
+
+    def "fails the build with help message for settings plugin spec with version"() {
+        given:
+        enablePrecompiledPluginsInBuildLogic()
+        file("build-logic/src/main/groovy/plugins/foo.settings.gradle") << """
+            plugins {
+                id 'some-plugin' version "42.0"
+            }
+        """
+
+        settingsFile << """
+            pluginManagement {
+                includeBuild("build-logic")
+            }
+            plugins {
+                id 'foo'
+            }
+        """
+
+        when:
+        fails("help")
+
+        then:
+        failureDescriptionContains("Invalid plugin request [id: 'some-plugin', version: '42.0']. Plugin requests from precompiled scripts must not include a version number. Please remove the version from the offending request. Make sure the module containing the requested plugin 'some-plugin' is an implementation dependency")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/14437")
+    def "raises a deprecation warning with help message for plugin spec with apply false"() {
+        given:
+        enablePrecompiledPluginsInBuildSrc()
+        file("buildSrc/src/main/groovy/plugins/some-plugin.gradle") << ""
+        file("buildSrc/src/main/groovy/plugins/foo.gradle") << """
+            plugins {
+                id 'some-plugin' apply false
+            }
+        """
+
+        buildFile << """
+            plugins {
+                id 'foo'
+            }
+        """
+
+        executer.expectDocumentedDeprecationWarning(
+            "'apply false' in precompiled script plugins has been deprecated. This will fail with an error in Gradle 10. " +
+                "'apply false' does not do anything as the plugin will already be added to the classpath when added as a dependency to the precompiled script plugin's build file. " +
+                "Remove 'apply false' from the plugin request for 'some-plugin' in 'src/main/groovy/plugins/foo.gradle'. " +
+                "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_9.html#deprecate_apply_false_in_precompiled_script_plugins"
+        )
+
+        expect:
+        succeeds("help")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/14437")
+    def "raises a deprecation warning with help message for settings plugin spec with apply false"() {
+        given:
+        enablePrecompiledPluginsInBuildLogic()
+        file("build-logic/src/main/groovy/plugins/some-plugin.settings.gradle") << ""
+        file("build-logic/src/main/groovy/plugins/foo.settings.gradle") << """
+            plugins {
+                id 'some-plugin' apply false
+            }
+        """
+
+        settingsFile << """
+            pluginManagement {
+                includeBuild("build-logic")
+            }
+            plugins {
+                id 'foo'
+            }
+        """
+
+        executer.expectDocumentedDeprecationWarning(
+            "'apply false' in precompiled script plugins has been deprecated. This will fail with an error in Gradle 10. " +
+                "'apply false' does not do anything as the plugin will already be added to the classpath when added as a dependency to the precompiled script plugin's build file. " +
+                "Remove 'apply false' from the plugin request for 'some-plugin' in 'src/main/groovy/plugins/foo.settings.gradle'. " +
+                "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_9.html#deprecate_apply_false_in_precompiled_script_plugins"
+        )
+
+        expect:
+        succeeds("help")
     }
 
     def "can use classes from project sources"() {
@@ -675,6 +761,48 @@ class PrecompiledGroovyPluginsIntegrationTest extends AbstractIntegrationSpec {
         then:
         outputContains('class org.apache.commons.lang3.StringUtils')
         outputContains('Test')
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/33528")
+    def "can use inner classes that reference external plugin types"() {
+        given:
+        settingsFile("""
+            include("parent")
+        """)
+        buildFile("""
+            plugins {
+                id("groovy-gradle-plugin")
+            }
+
+            dependencies {
+                implementation(project(":parent"))
+            }
+        """)
+        file("src/main/groovy/test.gradle") << """
+            plugins {
+                id("parent")
+            }
+
+            new ParentThing() {
+            }
+        """
+
+        buildFile(getBuildFile(GradleDsl.GROOVY, "parent"), """
+            plugins {
+                id("groovy-gradle-plugin")
+            }
+        """)
+        file("src/main/groovy/parent.gradle") << """
+        """
+        file("src/main/groovy/ParentThing.groovy") << """
+            abstract class ParentThing {}
+        """
+
+        when:
+        succeeds("build")
+
+        then:
+        file("build/groovy-dsl-plugins/output/plugin-classes/precompiled_Test\$1.class").assertExists()
     }
 
     def "can apply configuration in a precompiled script plugin to the current project"() {
@@ -883,7 +1011,7 @@ class PrecompiledGroovyPluginsIntegrationTest extends AbstractIntegrationSpec {
         then:
         outputContains('my-plugin applied')
         cachedTasks.forEach {
-            result.assertTaskExecuted(it)
+            result.assertTaskScheduled(it)
         }
 
         when:
@@ -990,6 +1118,40 @@ class PrecompiledGroovyPluginsIntegrationTest extends AbstractIntegrationSpec {
         pluginName << ["org.gradle.my-plugin", "org.gradle"]
     }
 
+    @Requires(IntegTestPreconditions.NotConfigCached)
+    @Issue("https://github.com/gradle/gradle/issues/23267")
+    def "hits configuration cache when no changes are present"() {
+        given:
+        enablePrecompiledPluginsInBuildSrc()
+
+        buildFile("buildSrc/src/main/groovy/plugins/foo.gradle", """
+            plugins {
+                id("java")
+            }
+        """)
+
+        buildFile """
+            plugins {
+                id("foo")
+            }
+        """
+        def configurationCacheFixture = new ConfigurationCacheFixture(this)
+
+        when:
+        executer.withConfigurationCacheEnabled()
+        run("help")
+
+        then:
+        configurationCacheFixture.assertStateStored()
+
+        when:
+        executer.withConfigurationCacheEnabled()
+        run("help")
+
+        then:
+        configurationCacheFixture.assertStateLoaded()
+    }
+
     private String packagePrecompiledPlugin(String pluginFile, String pluginContent = REGISTER_SAMPLE_TASK) {
         return packagePrecompiledPlugins(Collections.singletonMap(pluginFile, pluginContent))
     }
@@ -1020,6 +1182,14 @@ class PrecompiledGroovyPluginsIntegrationTest extends AbstractIntegrationSpec {
 
     private void enablePrecompiledPluginsInBuildSrc() {
         file("buildSrc/build.gradle") << """
+            plugins {
+                id 'groovy-gradle-plugin'
+            }
+        """
+    }
+
+    private void enablePrecompiledPluginsInBuildLogic() {
+        file("build-logic/build.gradle") << """
             plugins {
                 id 'groovy-gradle-plugin'
             }

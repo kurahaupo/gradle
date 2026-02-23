@@ -16,7 +16,9 @@
 
 package org.gradle.kotlin.dsl.accessors
 
+import org.gradle.api.Incubating
 import org.gradle.api.NamedDomainObjectContainer
+import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.initialization.Settings
 import org.gradle.kotlin.dsl.concurrent.IO
@@ -169,9 +171,11 @@ private
 fun importsRequiredBy(accessor: Accessor): List<String> = accessor.run {
     when (this) {
         is Accessor.ForExtension -> importsRequiredBy(spec.receiver, spec.type)
-        is Accessor.ForConvention -> importsRequiredBy(spec.receiver, spec.type)
         is Accessor.ForTask -> importsRequiredBy(spec.type)
         is Accessor.ForContainerElement -> importsRequiredBy(spec.receiver, spec.type)
+        is Accessor.ForModelDefault -> importsRequiredBy(spec.receiver, spec.type)
+        is Accessor.ForProjectType -> importsRequiredBy(spec.modelType) + importsRequiredBy(spec.targetType) + listOf(Incubating::class.java.name, Project::class.java.name)
+        is Accessor.ForContainerElementFactory -> importsRequiredBy(spec.receiverType, spec.elementType) + listOf(Incubating::class.java.name)
         else -> emptyList()
     }
 }
@@ -189,11 +193,17 @@ sealed class Accessor {
 
     data class ForExtension(val spec: TypedAccessorSpec) : Accessor()
 
-    data class ForConvention(val spec: TypedAccessorSpec) : Accessor()
-
     data class ForContainerElement(val spec: TypedAccessorSpec) : Accessor()
 
     data class ForTask(val spec: TypedAccessorSpec) : Accessor()
+
+    data class ForModelDefault(val spec: TypedAccessorSpec) : Accessor()
+
+    data class ForProjectType(val spec: TypedProjectFeatureEntry) : Accessor()
+
+    data class ForContainerElementFactory(val spec: TypedContainerElementFactoryEntry) : Accessor()
+
+    data class ForDeclarativeNestedModel(val spec: TypedAccessorSpec) : Accessor()
 }
 
 
@@ -202,17 +212,23 @@ fun accessorsFor(schema: ProjectSchema<TypeAccessibility>): Sequence<Accessor> =
     schema.run {
         AccessorScope().run {
             yieldAll(uniqueAccessorsFor(extensions).map(Accessor::ForExtension))
-            yieldAll(uniqueAccessorsFor(conventions).map(Accessor::ForConvention))
             yieldAll(uniqueAccessorsFor(tasks).map(Accessor::ForTask))
             yieldAll(uniqueAccessorsFor(containerElements).map(Accessor::ForContainerElement))
 
-            val configurationNames = configurations.map { it.map(::AccessorNameSpec) }.asSequence()
+            val configurationNames = configurations.asSequence().mapNotNull { entry ->
+                AccessorNameSpec.createOrNull(entry.target)?.let { accessorNameSpec -> entry.map { accessorNameSpec } }
+            }
             yieldAll(
                 uniqueAccessorsFrom(
                     configurationNames.map { it.target }.map(::configurationAccessorSpec)
                 ).map(Accessor::ForContainerElement)
             )
             yieldAll(configurationNames.map(Accessor::ForConfiguration))
+
+            yieldAll(uniqueAccessorsFor(modelDefaults).map(Accessor::ForModelDefault))
+            yieldAll(uniqueProjectFeatureEntries(projectFeatureEntries.mapNotNull(::typedProjectType)).map(Accessor::ForProjectType))
+            yieldAll(uniqueContainerElementFactories(containerElementFactories.mapNotNull(::typedContainerElementFactory)).map(Accessor::ForContainerElementFactory))
+            yieldAll(nestedModelEntries.mapNotNull(::typedNestedModel).map(Accessor::ForDeclarativeNestedModel))
         }
     }
 }
@@ -226,7 +242,31 @@ fun configurationAccessorSpec(nameSpec: AccessorNameSpec) =
         accessibleType<Configuration>()
     )
 
+private fun typedProjectType(projectFeatureEntry: ProjectFeatureEntry<TypeAccessibility>) : TypedProjectFeatureEntry? {
+    val name = AccessorNameSpec.createOrNull(projectFeatureEntry.featureName)
+    return name?.let {
+        TypedProjectFeatureEntry(name, projectFeatureEntry.ownDefinitionType, projectFeatureEntry.targetDefinitionType)
+    }
+}
+
+private fun typedContainerElementFactory(containerElementFactoryEntry: ContainerElementFactoryEntry<TypeAccessibility>) : TypedContainerElementFactoryEntry? {
+    val name = AccessorNameSpec.createOrNull(containerElementFactoryEntry.factoryName)
+    return name?.let {
+        TypedContainerElementFactoryEntry(name, containerElementFactoryEntry.containerReceiverType, containerElementFactoryEntry.publicType)
+    }
+}
+
+private fun typedNestedModel(nestedModelEntry: NestedModelEntry<TypeAccessibility>) : TypedAccessorSpec? {
+    val name = AccessorNameSpec.createOrNull(nestedModelEntry.nestedModelPropertyName)
+    return name?.let {
+        TypedAccessorSpec(
+            nestedModelEntry.ownerType as? TypeAccessibility.Accessible ?: return null,
+            name,
+            nestedModelEntry.nestedModelType
+        )
+    }
+}
 
 private
 inline fun <reified T> accessibleType() =
-    TypeAccessibility.Accessible(SchemaType.of<T>())
+    TypeAccessibility.Accessible(SchemaType.of<T>(), emptyList())

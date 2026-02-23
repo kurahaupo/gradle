@@ -24,7 +24,8 @@ import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.ExternalModuleDependency;
 import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.artifacts.ModuleIdentifier;
-import org.gradle.api.artifacts.ModuleVersionSelector;
+import org.gradle.api.artifacts.component.ComponentSelector;
+import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.artifacts.dsl.DependencyFactory;
 import org.gradle.api.artifacts.repositories.ArtifactRepository;
 import org.gradle.api.internal.artifacts.DefaultModuleIdentifier;
@@ -95,8 +96,9 @@ public class ArtifactRepositoriesPluginResolver implements PluginResolver {
 
         @Override
         public String getPluginVersion() {
-            if (pluginRequest.getModule() != null) {
-                return pluginRequest.getModule().getVersion();
+            ComponentSelector selector = pluginRequest.getSelector();
+            if (selector instanceof ModuleComponentSelector) {
+                return ((ModuleComponentSelector) selector).getVersion();
             } else {
                 return pluginRequest.getVersion();
             }
@@ -106,9 +108,9 @@ public class ArtifactRepositoriesPluginResolver implements PluginResolver {
         public void accept(PluginResolutionVisitor visitor) {
             String id = pluginRequest.getId().getId();
 
-            ModuleVersionSelector selector = pluginRequest.getModule();
-            ModuleIdentifier module = selector != null
-                ? selector.getModule()
+            ComponentSelector selector = pluginRequest.getSelector();
+            ModuleIdentifier module = selector instanceof ModuleComponentSelector
+                ? ((ModuleComponentSelector) selector).getModuleIdentifier()
                 : DefaultModuleIdentifier.newId(id, id + PLUGIN_MARKER_SUFFIX);
 
             visitDependency(visitor, module);
@@ -136,8 +138,10 @@ public class ArtifactRepositoriesPluginResolver implements PluginResolver {
                 DefaultModuleIdentifier.newId(altId, altId + PLUGIN_MARKER_SUFFIX)
             );
 
-            if (altCoords.getModule() != null) {
-                visitor.visitReplacement(module, altCoords.getModule().getModule());
+            ComponentSelector selector = altCoords.getSelector();
+            if (selector instanceof ModuleComponentSelector) {
+                ModuleComponentSelector moduleSelector = (ModuleComponentSelector) selector;
+                visitor.visitReplacement(module, moduleSelector.getModuleIdentifier());
             }
         }
 
@@ -163,8 +167,14 @@ public class ArtifactRepositoriesPluginResolver implements PluginResolver {
         return PluginResolutionResult.notFound(SOURCE_NAME, message, detail.toString());
     }
 
-    /*
+    /**
      * Checks whether the plugin marker artifact exists in the backing artifacts repositories.
+     *
+     * TODO: Performing resolution here is likely quite inefficient. This performs resolution
+     * for each plugin request that is not already found on the classpath. Doing this allows
+     * us to produce a better error message at the cost of performance. We should limit the
+     * number of resolutions we perform in the buildscript context in order to avoid IO and
+     * serial bottlenecks before the build can start configuration and thus perform actual work.
      */
     private boolean exists(ModuleDependency dependency) {
         ConfigurationContainer configurations = resolutionServices.getConfigurationContainer();
@@ -177,12 +187,13 @@ public class ArtifactRepositoriesPluginResolver implements PluginResolver {
     }
 
     private ModuleDependency getMarkerDependency(PluginRequestInternal pluginRequest) {
-        ModuleVersionSelector selector = pluginRequest.getModule();
-        if (selector == null) {
+        ComponentSelector selector = pluginRequest.getSelector();
+        if (!(selector instanceof ModuleComponentSelector)) {
             String id = pluginRequest.getId().getId();
             return getDependencyFactory().create(id, id + PLUGIN_MARKER_SUFFIX, pluginRequest.getVersion());
         } else {
-            return getDependencyFactory().create(selector.getGroup(), selector.getName(), selector.getVersion());
+            ModuleComponentSelector moduleSelector = (ModuleComponentSelector) selector;
+            return getDependencyFactory().create(moduleSelector.getGroup(), moduleSelector.getModule(), moduleSelector.getVersion());
         }
     }
 

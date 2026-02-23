@@ -17,31 +17,36 @@
 package org.gradle.integtests.fixtures.problems
 
 import groovy.transform.CompileStatic
+import org.gradle.api.problems.AdditionalData
+import org.gradle.api.problems.FileLocation
+import org.gradle.api.problems.LineInFileLocation
+import org.gradle.api.problems.OffsetInFileLocation
+import org.gradle.api.problems.ProblemDefinition
 import org.gradle.api.problems.ProblemGroup
 import org.gradle.api.problems.ProblemId
+import org.gradle.api.problems.ProblemLocation
 import org.gradle.api.problems.Severity
-import org.gradle.api.problems.internal.DocLink
-import org.gradle.api.problems.internal.FileLocation
+import org.gradle.api.problems.internal.InternalDocLink
+import org.gradle.api.problems.internal.InternalProblem
 import org.gradle.api.problems.internal.InternalProblemBuilder
-import org.gradle.api.problems.internal.LineInFileLocation
-import org.gradle.api.problems.internal.OffsetInFileLocation
 import org.gradle.api.problems.internal.PluginIdLocation
-import org.gradle.api.problems.internal.Problem
-import org.gradle.api.problems.internal.ProblemDefinition
-import org.gradle.api.problems.internal.ProblemLocation
+import org.gradle.api.problems.internal.ProblemsInfrastructure
+import org.gradle.api.problems.internal.StackTraceLocation
+import org.gradle.api.problems.internal.TaskLocation
 
 /*
  * A deserialized representation of a problem received from the build operation trace.
  */
 @CompileStatic
-class ReceivedProblem implements Problem {
+class ReceivedProblem implements InternalProblem {
     private final long operationId
     private final ReceivedProblemDefinition definition
     private final String contextualLabel
     private final String details
     private final List<String> solutions
-    private final List<ProblemLocation> locations
-    private final Map<String, Object> additionalData
+    private final List<ProblemLocation> originLocations
+    private final List<ProblemLocation> contextualLocations
+    private final ReceivedAdditionalData additionalData
     private final ReceivedException exception
 
     ReceivedProblem(long operationId, Map<String, Object> problemDetails) {
@@ -50,25 +55,36 @@ class ReceivedProblem implements Problem {
         this.contextualLabel = problemDetails['contextualLabel'] as String
         this.details =  problemDetails['details'] as String
         this.solutions = problemDetails['solutions'] as List<String>
-        this.locations = fromList(problemDetails['locations'] as List<Object>)
-        this.additionalData = (problemDetails['additionalData'] as Map<String, Object>).findAll { k, v -> v != null }
+        this.originLocations = fromList(problemDetails['originLocations'] as List<Object>)
+        this.contextualLocations = fromList(problemDetails['contextualLocations'] as List<Object>)
+        this.additionalData = new ReceivedAdditionalData(problemDetails['additionalData'] as Map<String, Object>)
         this.exception = problemDetails['exception'] == null ? null : new ReceivedException(problemDetails['exception'] as Map<String, Object>)
     }
 
     private static List<ProblemLocation> fromList(List<Object> locations) {
         List<ProblemLocation> result = []
         locations.each { location ->
-            if (location['pluginId'] != null) {
-                result += new ReceivedPluginIdLocation(location as Map<String, Object>)
-            } else if (location['line'] != null) {
-                result += new ReceivedLineInFileLocation(location as Map<String, Object>)
-            } else if (location['offset'] != null) {
-                result += new ReceivedOffsetInFileLocation(location as Map<String, Object>)
-            } else {
-                result += new ReceivedFileLocation(location as Map<String, Object>)
-            }
+            result += fromLocation(location)
         }
         result
+    }
+
+    private static ProblemLocation fromLocation(location) {
+        if (location['pluginId'] != null) {
+            return new ReceivedPluginIdLocation(location as Map<String, Object>)
+        } else if (location['line'] != null) {
+            return new ReceivedLineInFileLocation(location as Map<String, Object>)
+        } else if (location['offset'] != null) {
+            return new ReceivedOffsetInFileLocation(location as Map<String, Object>)
+        } else if (location['path'] != null) {
+            return new ReceivedFileLocation(location as Map<String, Object>)
+        } else if (location['buildTreePath'] != null) {
+            return new ReceivedTaskLocation(location as Map<String, Object>)
+        } else if (location['stackTrace'] != null) {
+            return new ReceivedStackTraceLocation(location as Map<String, Object>)
+        } else {
+            return new ReceivedFileLocation(location as Map<String, Object>)
+        }
     }
 
     long getOperationId() {
@@ -76,15 +92,26 @@ class ReceivedProblem implements Problem {
     }
 
     <T> T oneLocation(Class<T> type) {
-        def locations = getLocations()
-        assert locations.size() == 1
-        assert type.isInstance(locations[0])
-        locations[0] as T
+        def result = allLocations(type)
+        assert result.size() == 1
+        result.first()
+    }
+
+    <T> List<T> allLocations(Class<T> type) {
+        allLocations.findAll { type.isInstance(it) } as List<T>
+    }
+
+    private List<?> getAllLocations() {
+        getOriginLocations() + getContextualLocations()
     }
 
     @Override
     ReceivedProblemDefinition getDefinition() {
         definition
+    }
+
+    Severity getSeverity() {
+        definition.severity
     }
 
     // The content of the problem definition is tested in `KnownProblemIds`; in the integration tests we only want to verify if we receive a problem with the expected identifier.
@@ -108,22 +135,36 @@ class ReceivedProblem implements Problem {
     }
 
     @Override
-    List<ProblemLocation> getLocations() {
-        locations
+    List<ProblemLocation> getOriginLocations() {
+        originLocations
     }
 
-    <T extends ProblemLocation> T getSingleLocation(Class<T> locationType) {
+    @Override
+    List<ProblemLocation> getContextualLocations() {
+        contextualLocations
+    }
+
+    <T extends ProblemLocation> T getSingleOriginLocation(Class<T> locationType) {
+        return getSingleLocation(locationType, originLocations)
+    }
+
+    <T extends ProblemLocation> T getSingleContextualLocation(Class<T> locationType) {
+        return getSingleLocation(locationType, contextualLocations)
+    }
+
+    private static <T extends ProblemLocation> T getSingleLocation(Class<T> locationType, List<ProblemLocation> locations) {
         def location = locations.find {
             locationType.isInstance(it)
         }
-        assert location != null : "Expected a location of type $locationType, but found none."
+        assert location != null : "Expected a location of type $locationType, but found none. Available locations: ${locations.collect { it.getClass().name }}"
         return locationType.cast(location)
     }
 
     @Override
-    Map<String, Object> getAdditionalData() {
+    ReceivedAdditionalData getAdditionalData() {
        additionalData
     }
+
 
     @Override
     ReceivedException getException() {
@@ -131,7 +172,48 @@ class ReceivedProblem implements Problem {
     }
 
     @Override
-    InternalProblemBuilder toBuilder() {
+    String toString() {
+        String originLocationsStr = originLocations.collect { formatLocation(it) }.join(", ")
+        String contextualLocationsStr = contextualLocations.collect { formatLocation(it) }.join(", ")
+        String solutionsStr = solutions.collect { "'${it}'" }.join(", ")
+
+        return "ReceivedProblem{" +
+            "id=${definition.id.fqid}" +
+            ", severity=${severity}" +
+            ", label='${contextualLabel}'" +
+            ", details='${details}'" +
+            ", originLocations=[${originLocationsStr}]" +
+            ", contextualLocations=[${contextualLocationsStr}]" +
+            ", solutions=[${solutionsStr}]" +
+            "}"
+    }
+
+    private String formatLocation(ProblemLocation location) {
+        if (location instanceof FileLocation) {
+            String result = "File(" + ((FileLocation) location).path
+            if (location instanceof LineInFileLocation) {
+                LineInFileLocation lineLocation = (LineInFileLocation) location
+                result += ", line=" + lineLocation.line + ", column=" + lineLocation.column
+            } else if (location instanceof OffsetInFileLocation) {
+                OffsetInFileLocation offsetLocation = (OffsetInFileLocation) location
+                result += ", offset=" + offsetLocation.offset
+            }
+            result += ")"
+            return result
+        } else if (location instanceof PluginIdLocation) {
+            return "Plugin(" + ((PluginIdLocation) location).pluginId + ")"
+        } else if (location instanceof TaskLocation) {
+            return "Task(" + ((TaskLocation) location).buildTreePath + ")"
+        } else if (location instanceof StackTraceLocation) {
+            StackTraceLocation stackLocation = (StackTraceLocation) location
+            return "StackTrace(elements=" + stackLocation.stackTrace.size() + ")"
+        } else {
+            return location.toString()
+        }
+    }
+
+    @Override
+    InternalProblemBuilder toBuilder(ProblemsInfrastructure infrastructure) {
         throw new UnsupportedOperationException("Not implemented")
     }
 
@@ -162,7 +244,7 @@ class ReceivedProblem implements Problem {
         }
     }
 
-    static class ReceivedProblemId implements ProblemId {
+    static class ReceivedProblemId extends ProblemId {
         private final String name
         private final String displayName
         private final ReceivedProblemGroup group
@@ -205,7 +287,7 @@ class ReceivedProblem implements Problem {
         }
     }
 
-    static class ReceivedProblemGroup implements ProblemGroup {
+    static class ReceivedProblemGroup extends ProblemGroup {
         private final String name
         private final String displayName
         private final ReceivedProblemGroup parent
@@ -232,7 +314,7 @@ class ReceivedProblem implements Problem {
         }
     }
 
-    static class ReceivedDocumentationLink implements DocLink {
+    static class ReceivedDocumentationLink implements InternalDocLink {
         private final String url
         private final String consultDocumentationMessage
 
@@ -333,6 +415,19 @@ class ReceivedProblem implements Problem {
         }
     }
 
+    static class ReceivedStackTraceLocation implements StackTraceLocation {
+        final List<StackTraceElement> stackTrace
+        final FileLocation fileLocation
+
+        ReceivedStackTraceLocation(Map<String, Object> location) {
+            def fileLocationJson = location['fileLocation']
+            this.fileLocation = fileLocationJson == null ? null : fromLocation(fileLocationJson) as FileLocation
+            this.stackTrace = location.stackTrace.collect {
+                new StackTraceElement(it['className'] as String, it['methodName'] as String, it['fileName'] as String, it['lineNumber'] as int)
+            }
+        }
+    }
+
     static class ReceivedPluginIdLocation implements PluginIdLocation {
         private final String pluginId
 
@@ -343,6 +438,45 @@ class ReceivedProblem implements Problem {
         @Override
         String getPluginId() {
             pluginId
+        }
+    }
+
+    static class ReceivedTaskLocation implements TaskLocation {
+        private final String buildTreePath
+
+        ReceivedTaskLocation(Map<String, Object> location) {
+            this.buildTreePath = location['buildTreePath'] as String
+        }
+
+        @Override
+        String getBuildTreePath() {
+            buildTreePath
+        }
+    }
+
+    static class ReceivedAdditionalData implements AdditionalData {
+        private final Map<String, Object> data
+
+        ReceivedAdditionalData(Map<String, Object> data) {
+            if (data == null) {
+                this.data = [:]
+            } else {
+                def d = data.findAll { k, v -> v != null }
+                // GeneralData already contains asMap property; it is removed for clarity
+                if (d['asMap'] instanceof Map) {
+                    this.data = d['asMap'] as Map<String, Object>
+                } else {
+                    this.data = d
+                }
+            }
+        }
+
+        Map<String, Object> getAsMap() {
+            data
+        }
+
+        boolean containsAll(Map<String, Object> properties) {
+            data.entrySet().containsAll(properties.entrySet())
         }
     }
 }

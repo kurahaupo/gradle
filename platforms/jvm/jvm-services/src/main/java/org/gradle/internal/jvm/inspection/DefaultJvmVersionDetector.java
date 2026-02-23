@@ -17,10 +17,10 @@
 package org.gradle.internal.jvm.inspection;
 
 import org.gradle.api.GradleException;
-import org.gradle.api.JavaVersion;
+import org.gradle.api.internal.jvm.JavaVersionParser;
 import org.gradle.internal.jvm.JavaInfo;
 import org.gradle.jvm.toolchain.internal.InstallationLocation;
-import org.gradle.process.internal.ExecException;
+import org.gradle.process.ProcessExecutionException;
 
 import java.io.File;
 import java.nio.file.NoSuchFileException;
@@ -34,23 +34,24 @@ public class DefaultJvmVersionDetector implements JvmVersionDetector {
     }
 
     @Override
-    public JavaVersion getJavaVersion(JavaInfo jvm) {
+    public int getJavaVersionMajor(JavaInfo jvm) {
         return getVersionFromJavaHome(jvm.getJavaHome());
     }
 
     @Override
-    public JavaVersion getJavaVersion(String javaCommand) {
+    public int getJavaVersionMajor(String javaCommand) {
         File executable = new File(javaCommand);
         File parentFolder = executable.getParentFile();
         if(parentFolder == null || !parentFolder.exists()) {
             Exception cause = new NoSuchFileException(javaCommand);
-            throw new ExecException("A problem occurred starting process 'command '" + javaCommand + "''", cause);
+            throw new ProcessExecutionException("A problem occurred starting process 'command '" + javaCommand + "''", cause);
         }
         return getVersionFromJavaHome(parentFolder.getParentFile());
     }
 
-    private JavaVersion getVersionFromJavaHome(File javaHome) {
-        return validate(detector.getMetadata(InstallationLocation.autoDetected(javaHome, "specific path"))).getLanguageVersion();
+    private int getVersionFromJavaHome(File javaHome) {
+        JvmInstallationMetadata metadata = validate(detector.getMetadata(InstallationLocation.autoDetected(javaHome, "specific path")));
+        return JavaVersionParser.parseMajorVersion(metadata.getJavaVersion());
     }
 
     private JvmInstallationMetadata validate(JvmInstallationMetadata metadata) {

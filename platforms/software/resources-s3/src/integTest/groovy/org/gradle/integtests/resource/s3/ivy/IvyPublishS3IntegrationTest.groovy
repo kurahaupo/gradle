@@ -28,7 +28,10 @@ class IvyPublishS3IntegrationTest extends AbstractIvyPublishIntegTest {
     public S3Server server = new S3Server(temporaryFolder)
 
     def setup() {
-        executer.withArgument("-Dorg.gradle.s3.endpoint=${server.getUri()}")
+        executer.beforeExecute {
+            executer.withArgument("-Dorg.gradle.s3.endpoint=${server.getUri()}")
+            executer.withArgument("-Daws.java.v1.disableDeprecationAnnouncement=true")
+        }
     }
 
     def "can publish to an S3 Ivy repository"() {
@@ -47,7 +50,7 @@ version = '1.0'
 publishing {
     repositories {
         ivy {
-            url "${ivyRepo.uri}"
+            url = "${ivyRepo.uri}"
             credentials(AwsCredentials)
         }
     }
@@ -74,6 +77,7 @@ publishing {
         module.moduleMetadata.sha256.expectUpload()
         module.moduleMetadata.sha512.expectUpload()
 
+        System.setProperty("aws.java.v1.disableDeprecationAnnouncement", "true") // AWS SDK for Java 1.x has reached end of support on December 31, 2025; by default it prints a deprecation message
         succeeds 'publish'
 
         then:

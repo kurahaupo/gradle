@@ -16,23 +16,19 @@
 
 package org.gradle.initialization
 
-
 import org.gradle.api.Plugin
 import org.gradle.api.initialization.Settings
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.test.fixtures.file.LeaksFileHandles
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.plugin.PluginBuilder
 import spock.lang.Issue
 
-import static org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache.Skip.INVESTIGATE
-
 @LeaksFileHandles
 class InitScriptIntegrationTest extends AbstractIntegrationSpec {
 
     private void createProject() {
-        buildScript """
+        buildFile """
             task hello() {
                 doLast {
                     println "Hello from main project"
@@ -83,7 +79,6 @@ class InitScriptIntegrationTest extends AbstractIntegrationSpec {
         output.contains("Project hello evaluated")
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
     def 'init script can contribute to settings - before and after'() {
         given:
         createDirs("sub1", "sub2")
@@ -105,10 +100,11 @@ class InitScriptIntegrationTest extends AbstractIntegrationSpec {
 
         executer.usingInitScript(file('init.gradle'))
 
-        buildFile << """
+        buildFile """
             task info {
+                def subprojectPaths = provider { subprojects.path.join(" - ") }
                 doLast {
-                    println "subprojects: " + subprojects.path.join(" - ")
+                    println "subprojects: " + subprojectPaths.get()
                 }
             }
         """
@@ -120,7 +116,6 @@ class InitScriptIntegrationTest extends AbstractIntegrationSpec {
         output.contains("subprojects: :sub1 - :sub2")
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
     def "can apply settings plugin from init script"() {
         given:
         createDirs("sub1", "sub2")
@@ -160,10 +155,11 @@ class InitScriptIntegrationTest extends AbstractIntegrationSpec {
 
         executer.usingInitScript(file('init.gradle'))
 
-        buildFile << """
+        buildFile """
             task info {
+                def subprojectPaths = provider { subprojects.path.join(" - ") }
                 doLast {
-                    println "subprojects: " + subprojects.path.join(" - ")
+                    println "subprojects: " + subprojectPaths.get()
                 }
             }
         """
@@ -181,5 +177,81 @@ class InitScriptIntegrationTest extends AbstractIntegrationSpec {
                 println "Project \${p.name} evaluated"
             }
         """
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/29678")
+    def "can use lazy gradle.providers.exec in init script"() {
+        given:
+        file("version.txt") << "1.2.3"
+
+        file("init.gradle") << """
+            def versionProvider = gradle.providers.exec {
+                commandLine ${org.gradle.internal.os.OperatingSystem.current().windows ? '"cmd.exe", "/d", "/c", "type"' : '"cat"'}, "version.txt"
+            }.standardOutput.asText
+
+            gradle.settingsEvaluated {
+                println "Version from lazy provider: " + versionProvider.get().trim()
+            }
+        """
+
+        executer.usingInitScript(file('init.gradle'))
+        settingsFile << "rootProject.name = 'test'"
+        buildFile << "task hello"
+
+        when:
+        succeeds 'hello'
+
+        then:
+        outputContains("Version from lazy provider: 1.2.3")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/29678")
+    def "can use gradle.providers for other provider factory methods"() {
+        given:
+        file("init.gradle") << """
+            def envVar = gradle.providers.environmentVariable("PATH")
+            def sysProp = gradle.providers.systemProperty("java.version")
+            def custom = gradle.providers.provider { "custom value" }
+
+            println "Has PATH: " + envVar.present
+            println "Has Java version: " + sysProp.present
+            println "Custom: " + custom.get()
+        """
+
+        executer.usingInitScript(file('init.gradle'))
+        buildFile << "task hello"
+
+        when:
+        succeeds 'hello'
+
+        then:
+        outputContains("Has PATH: true")
+        outputContains("Has Java version: true")
+        outputContains("Custom: custom value")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/29678")
+    def "can use gradle.providers from initscript block"() {
+        given:
+        file("config.txt") << "gradle-providers-test"
+
+        file("init.gradle") << """
+            initscript {
+                // Test that gradle.providers is accessible from within initscript block
+                def configValue = gradle.providers.exec {
+                    commandLine ${org.gradle.internal.os.OperatingSystem.current().windows ? '"cmd.exe", "/d", "/c", "type"' : '"cat"'}, "config.txt"
+                }.standardOutput.asText.get().trim()
+                println "Config using gradle.providers from initscript block: \${configValue}"
+            }
+        """
+
+        executer.usingInitScript(file('init.gradle'))
+        buildFile << "task hello"
+
+        when:
+        succeeds 'hello'
+
+        then:
+        outputContains("Config using gradle.providers from initscript block: gradle-providers-test")
     }
 }

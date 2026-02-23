@@ -22,16 +22,17 @@ import org.gradle.api.internal.artifacts.verification.model.ComponentVerificatio
 import org.gradle.api.internal.artifacts.verification.model.IgnoredKey;
 import org.gradle.api.internal.artifacts.verification.verifier.DependencyVerificationConfiguration;
 import org.gradle.api.internal.artifacts.verification.verifier.DependencyVerifier;
+import org.gradle.internal.UncheckedException;
 import org.gradle.internal.xml.SimpleMarkupWriter;
 import org.gradle.internal.xml.SimpleXmlWriter;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.UncheckedIOException;
 import java.net.URI;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -90,7 +91,7 @@ public class DependencyVerificationsXmlWriter {
             try {
                 writer.comment(comment);
             } catch (IOException e) {
-                throw new UncheckedIOException(e);
+                throw UncheckedException.throwAsUncheckedException(e);
             }
         });
         writer.startElement(VERIFICATION_METADATA);
@@ -121,7 +122,7 @@ public class DependencyVerificationsXmlWriter {
             return;
         }
         writer.startElement(KEYRING_FORMAT);
-        writer.write(String.valueOf(keyRingFormat).toLowerCase());
+        writer.write(String.valueOf(keyRingFormat).toLowerCase(Locale.ROOT));
         writer.endElement();
     }
 
@@ -155,7 +156,7 @@ public class DependencyVerificationsXmlWriter {
                 writeTrustCoordinates(trustedKey);
                 writer.endElement();
             } catch (IOException e) {
-                throw new UncheckedIOException(e);
+                throw UncheckedException.throwAsUncheckedException(e);
             }
         });
         writer.endElement();
@@ -176,7 +177,7 @@ public class DependencyVerificationsXmlWriter {
                 try {
                     writeIgnoredKey(ignoredKey);
                 } catch (IOException ex) {
-                    throw new UncheckedIOException(ex);
+                    throw UncheckedException.throwAsUncheckedException(ex);
                 }
             });
             writer.endElement();
@@ -206,7 +207,7 @@ public class DependencyVerificationsXmlWriter {
             writeTrustCoordinates(trustedArtifact);
             writer.endElement();
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 

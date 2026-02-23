@@ -16,8 +16,10 @@
 
 package org.gradle.launcher.daemon
 
-import org.apache.commons.lang.LocaleUtils
+import org.apache.commons.lang3.LocaleUtils
 import org.gradle.integtests.fixtures.daemon.DaemonIntegrationSpec
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.IntegTestPreconditions
 import org.gradle.util.GradleVersion
 import org.gradle.util.internal.DefaultGradleVersion
 import spock.lang.Issue
@@ -33,9 +35,10 @@ class LocaleSupportDaemonIntegrationTest extends DaemonIntegrationSpec {
         it != Locale.default
     }
 
+    @Requires(value = IntegTestPreconditions.NotEmbeddedExecutor, reason = "explicit locale")
     def "custom locale is applied to daemon"() {
 
-        buildScript """
+        buildFile """
             task printLocale {
                 doFirst {
                     println "defaultLocale: " + Locale.default
@@ -62,7 +65,7 @@ class LocaleSupportDaemonIntegrationTest extends DaemonIntegrationSpec {
         def startLocale = locales[0]
         def changeLocale = locales[1]
 
-        buildScript """
+        buildFile """
             task printLocale {
                 doFirst {
                     Locale.setDefault(new Locale("$changeLocale.language", "$changeLocale.country", "$changeLocale.variant"))
@@ -89,7 +92,7 @@ class LocaleSupportDaemonIntegrationTest extends DaemonIntegrationSpec {
     @Issue("https://github.com/gradle/gradle/issues/4973")
     def "can use a locale without region (#overrideVersion)"() {
         Locale locale = Locale.ENGLISH
-        buildScript """
+        buildFile """
             import org.gradle.util.GradleVersion
 
             task printLocale {

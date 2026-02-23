@@ -73,7 +73,6 @@ class PmdPluginTest extends AbstractProjectBuilderSpec {
 
         expect:
         config != null
-        !config.visible
         config.transitive
         config.description == 'The PMD libraries to be used for this project.'
     }
@@ -108,8 +107,8 @@ class PmdPluginTest extends AbstractProjectBuilderSpec {
     def "configures pmd targetjdk based on sourcecompatibilityLevel"() {
         project.pluginManager.apply(JavaBasePlugin)
         when:
-        project.setSourceCompatibility(sourceCompatibility)
-        project.sourceSets {
+        project.java.setSourceCompatibility(sourceCompatibility)
+        project.java.sourceSets {
             main
         }
         then:
@@ -253,6 +252,36 @@ class PmdPluginTest extends AbstractProjectBuilderSpec {
         task.maxFailures.get() == 5
         task.rulesMinimumPriority.get() == 3
         task.threads.get() == 2
+    }
+
+    def "can enable PMD CSV report via extension"() {
+        def task = project.tasks.create("pmdCustom", Pmd)
+        task.reports {
+            csv.required = true
+        }
+
+        expect:
+        task.reports.csv.required.get() == true
+    }
+
+    def "can enable PMD code climate report via extension"() {
+        def task = project.tasks.create("pmdCustom", Pmd)
+        task.reports {
+            codeClimate.required = true
+        }
+
+        expect:
+        task.reports.codeClimate.required.get() == true
+    }
+
+    def "can enable PMD sarif report via extension"() {
+        def task = project.tasks.create("pmdCustom", Pmd)
+        task.reports {
+            sarif.required = true
+        }
+
+        expect:
+        task.reports.sarif.required.get() == true
     }
 
     def "configures pmd classpath based on sourcesets"() {

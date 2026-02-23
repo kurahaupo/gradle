@@ -22,6 +22,7 @@ import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
 import org.gradle.internal.execution.timeout.impl.DefaultTimeoutHandler
 import org.gradle.internal.logging.events.operations.LogEventBuildOperationProgressDetails
+import org.gradle.test.fixtures.Flaky
 import org.gradle.test.fixtures.file.LeaksFileHandles
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
@@ -108,7 +109,7 @@ class TaskTimeoutIntegrationTest extends AbstractIntegrationSpec {
         expect:
         2.times {
             fails "block", "foo", "--continue"
-            result.assertTaskExecuted(":foo")
+            result.assertTaskScheduled(":foo")
             failure.assertHasDescription("Execution failed for task ':block'.")
             failure.assertHasCause("Timeout has been exceeded")
         }
@@ -180,6 +181,7 @@ class TaskTimeoutIntegrationTest extends AbstractIntegrationSpec {
 
     @LeaksFileHandles
     // TODO https://github.com/gradle/gradle-private/issues/1532
+    @Flaky(because = 'https://github.com/gradle/gradle-private/issues/5086')
     def "timeout stops long running work items with #isolationMode isolation"() {
         given:
         if (isolationMode == 'process') {
@@ -269,6 +271,7 @@ class TaskTimeoutIntegrationTest extends AbstractIntegrationSpec {
             """
 
         expect:
+        executer.withArgument("--no-problems-report")
         fails "block"
 
         and:

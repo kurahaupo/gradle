@@ -24,10 +24,12 @@ import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.SwiftAppWithLibraries
 import org.gradle.nativeplatform.fixtures.app.SwiftLib
 import org.gradle.nativeplatform.fixtures.app.SwiftSingleFileLib
+import org.gradle.test.fixtures.file.DoesNotSupportNonAsciiPaths
 
 import static org.gradle.util.Matchers.containsText
 
 @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC)
+@DoesNotSupportNonAsciiPaths(reason = "swiftc does not support these paths")
 class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
     def "skip compile and link tasks when no source"() {
         given:
@@ -37,7 +39,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assemble")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assemble")
         // TODO - should skip the task as NO-SOURCE
         result.assertTasksSkipped(":compileDebugSwift", ":linkDebug", ":assemble")
     }
@@ -73,18 +75,19 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
         succeeds "assembleDebug"
 
         then:
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assembleDebug")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assembleDebug")
         file("build/modules/main/debug/${lib.moduleName}.swiftmodule").assertIsFile()
         sharedLibrary("build/lib/main/debug/${lib.moduleName}").assertExists()
+        sharedLibrary("build/lib/main/debug/${lib.moduleName}").assertHasDebugSymbolsFor(lib.sourceFileNames)
 
         when:
         succeeds "assembleRelease"
 
         then:
-        result.assertTasksExecuted(":compileReleaseSwift", ":linkRelease", ":extractSymbolsRelease", ":stripSymbolsRelease", ":assembleRelease")
+        result.assertTasksScheduled(":compileReleaseSwift", ":linkRelease", ":extractSymbolsRelease", ":stripSymbolsRelease", ":assembleRelease")
         file("build/modules/main/release/${lib.moduleName}.swiftmodule").assertIsFile()
         sharedLibrary("build/lib/main/release/${lib.moduleName}").assertExists()
-        sharedLibrary("build/lib/main/release/${lib.moduleName}").assertHasStrippedDebugSymbolsFor(["greeter.o", "sum.o", "multiply.o"])
+        sharedLibrary("build/lib/main/release/${lib.moduleName}").assertHasStrippedDebugSymbolsFor(lib.sourceFileNames)
     }
 
     def "can use link file as task dependency"() {
@@ -104,7 +107,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assembleLinkDebug"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assembleLinkDebug")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assembleLinkDebug")
         sharedLibrary("build/lib/main/debug/${lib.moduleName}").assertExists()
     }
 
@@ -125,7 +128,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assembleRuntimeDebug"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assembleRuntimeDebug")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assembleRuntimeDebug")
         sharedLibrary("build/lib/main/debug/${lib.moduleName}").assertExists()
     }
 
@@ -146,7 +149,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "compileDebug"
-        result.assertTasksExecuted(":compileDebugSwift", ":compileDebug")
+        result.assertTasksScheduled(":compileDebugSwift", ":compileDebug")
         objectFiles(lib)*.assertExists()
         sharedLibrary("build/lib/main/debug/${lib.moduleName}").assertDoesNotExist()
     }
@@ -169,7 +172,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assemble")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assemble")
         sharedLibrary("build/lib/main/debug/${lib.moduleName}").assertExists()
     }
 
@@ -194,7 +197,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assemble")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assemble")
         sharedLibrary("build/lib/main/debug/${lib.moduleName}").assertExists()
     }
 
@@ -212,7 +215,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assemble")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assemble")
 
         !file("build").exists()
         file("output/obj/main/debug").assertIsDir()
@@ -238,7 +241,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assemble")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assemble")
 
         file("build/object-files").assertIsDir()
         file("build/some-lib.swiftmodule").assertIsFile()
@@ -258,7 +261,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assemble")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assemble")
         file("build/modules/main/debug/${lib.moduleName}.swiftmodule").assertExists()
         sharedLibrary("build/lib/main/debug/${lib.moduleName}").assertExists()
     }
@@ -286,17 +289,17 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
         expect:
         succeeds ":hello:assemble"
 
-        result.assertTasksExecuted(":log:compileDebugSwift", ":log:linkDebug", ":hello:compileDebugSwift", ":hello:linkDebug", ":hello:assemble")
+        result.assertTasksScheduled(":log:compileDebugSwift", ":log:linkDebug", ":hello:compileDebugSwift", ":hello:linkDebug", ":hello:assemble")
         sharedLibrary("hello/build/lib/main/debug/Hello").assertExists()
         sharedLibrary("log/build/lib/main/debug/Log").assertExists()
 
         succeeds ":hello:assembleRelease"
 
-        result.assertTasksExecuted(":log:compileReleaseSwift", ":log:linkRelease", ":log:stripSymbolsRelease", ":hello:compileReleaseSwift", ":hello:linkRelease", ":hello:extractSymbolsRelease", ":hello:stripSymbolsRelease", ":hello:assembleRelease")
+        result.assertTasksScheduled(":log:compileReleaseSwift", ":log:linkRelease", ":log:stripSymbolsRelease", ":hello:compileReleaseSwift", ":hello:linkRelease", ":hello:extractSymbolsRelease", ":hello:stripSymbolsRelease", ":hello:assembleRelease")
         sharedLibrary("hello/build/lib/main/release/Hello").assertExists()
-        sharedLibrary("hello/build/lib/main/release/Hello").assertHasStrippedDebugSymbolsFor(['greeter.o'])
+        sharedLibrary("hello/build/lib/main/release/Hello").assertHasStrippedDebugSymbolsFor(app.library.sourceFileNames)
         sharedLibrary("log/build/lib/main/release/Log").assertExists()
-        sharedLibrary("log/build/lib/main/release/Log").assertHasDebugSymbolsFor(['log.o'])
+        sharedLibrary("log/build/lib/main/release/Log").assertHasDebugSymbolsFor(app.logLibrary.sourceFileNames)
     }
 
     def "can change default module name and successfully link against library"() {
@@ -327,7 +330,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds ":lib1:assemble"
-        result.assertTasksExecuted(":lib2:compileDebugSwift", ":lib2:linkDebug", ":lib1:compileDebugSwift", ":lib1:linkDebug", ":lib1:assemble")
+        result.assertTasksScheduled(":lib2:compileDebugSwift", ":lib2:linkDebug", ":lib1:compileDebugSwift", ":lib1:linkDebug", ":lib1:assemble")
         sharedLibrary("lib1/build/lib/main/debug/Hello").assertExists()
         sharedLibrary("lib2/build/lib/main/debug/Log").assertExists()
     }
@@ -345,7 +348,7 @@ class SwiftLibraryIntegrationTest extends AbstractInstalledToolChainIntegrationS
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(":compileDebugSwift", ":linkDebug", ":assemble")
+        result.assertTasksScheduled(":compileDebugSwift", ":linkDebug", ":assemble")
         assertMainSymbolIsAbsent(objectFiles(lib))
         assertMainSymbolIsAbsent(sharedLibrary("build/lib/main/debug/Greeter"))
     }

@@ -16,17 +16,29 @@
 
 package org.gradle.buildinit.plugins
 
+import org.gradle.api.JavaVersion
+import org.gradle.api.internal.tasks.testing.report.generic.GenericTestExecutionResult
 import org.gradle.buildinit.plugins.fixtures.ScriptDslFixture
 import org.gradle.test.fixtures.file.LeaksFileHandles
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.UnitTestPreconditions
+import spock.lang.Issue
 
 import static org.gradle.buildinit.plugins.internal.modifiers.BuildInitDsl.KOTLIN
+import static org.hamcrest.CoreMatchers.allOf
 import static org.hamcrest.CoreMatchers.containsString
+import static org.hamcrest.CoreMatchers.not
 
 @LeaksFileHandles
 class KotlinLibraryInitIntegrationTest extends AbstractJvmLibraryInitIntegrationSpec {
 
     public static final String SAMPLE_LIBRARY_CLASS = "org/example/Library.kt"
     public static final String SAMPLE_LIBRARY_TEST_CLASS = "org/example/LibraryTest.kt"
+
+    @Override
+    def setup() {
+        resultsTestFramework(GenericTestExecutionResult.TestFramework.KOTLIN_TEST)
+    }
 
     def "defaults to kotlin build scripts"() {
         when:
@@ -36,11 +48,12 @@ class KotlinLibraryInitIntegrationTest extends AbstractJvmLibraryInitIntegration
         dslFixtureFor(KOTLIN).assertGradleFilesGenerated()
     }
 
+    @Requires(value = UnitTestPreconditions.KotlinSupportedJdk.class)
     def "creates sample source if no source present with #scriptDsl build scripts"() {
         def dslFixture = dslFixtureFor(scriptDsl)
 
         when:
-        run('init', '--type', 'kotlin-library', '--dsl', scriptDsl.id)
+        run('init', '--type', 'kotlin-library', '--dsl', scriptDsl.id, '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/kotlin").assertHasDescendants(SAMPLE_LIBRARY_CLASS)
@@ -60,11 +73,12 @@ class KotlinLibraryInitIntegrationTest extends AbstractJvmLibraryInitIntegration
         scriptDsl << ScriptDslFixture.SCRIPT_DSLS
     }
 
+    @Requires(value = UnitTestPreconditions.KotlinSupportedJdk.class)
     def "creates build using test suites with #scriptDsl build scripts when using --incubating"() {
         def dslFixture = dslFixtureFor(scriptDsl)
 
         when:
-        run ('init', '--type', 'kotlin-library', '--dsl', scriptDsl.id, '--incubating')
+        run ('init', '--type', 'kotlin-library', '--dsl', scriptDsl.id, '--incubating', '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/kotlin").assertHasDescendants(SAMPLE_LIBRARY_CLASS)
@@ -83,12 +97,17 @@ class KotlinLibraryInitIntegrationTest extends AbstractJvmLibraryInitIntegration
         scriptDsl << ScriptDslFixture.SCRIPT_DSLS
     }
 
+    @Requires(value = UnitTestPreconditions.KotlinSupportedJdk.class)
     def "creates with gradle.properties when using #scriptDsl build scripts with --incubating"() {
         when:
-        run ('init', '--type', 'kotlin-library', '--dsl', scriptDsl.id, '--incubating')
+        run ('init', '--type', 'kotlin-library', '--dsl', scriptDsl.id, '--incubating', '--java-version', JavaVersion.current().majorVersion)
 
         then:
-        gradlePropertiesGenerated()
+        gradlePropertiesGenerated {
+            assertCachingEnabled()
+            assertParallelEnabled()
+            assertConfigurationCacheEnabled()
+        }
 
         when:
         succeeds('test')
@@ -100,9 +119,10 @@ class KotlinLibraryInitIntegrationTest extends AbstractJvmLibraryInitIntegration
         scriptDsl << ScriptDslFixture.SCRIPT_DSLS
     }
 
+    @Requires(value = UnitTestPreconditions.KotlinSupportedJdk.class)
     def "creates sample source with package and #scriptDsl build scripts"() {
         when:
-        run('init', '--type', 'kotlin-library', '--package', 'my.lib', '--dsl', scriptDsl.id)
+        run('init', '--type', 'kotlin-library', '--package', 'my.lib', '--dsl', scriptDsl.id, '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/kotlin").assertHasDescendants("my/lib/Library.kt")
@@ -121,6 +141,7 @@ class KotlinLibraryInitIntegrationTest extends AbstractJvmLibraryInitIntegration
         scriptDsl << ScriptDslFixture.SCRIPT_DSLS
     }
 
+    @Requires(value = UnitTestPreconditions.KotlinSupportedJdk.class)
     def "source generation is skipped when kotlin sources detected with #scriptDsl build scripts"() {
         setup:
         subprojectDir.file("src/main/kotlin/org/acme/SampleMain.kt") << """
@@ -139,7 +160,7 @@ class KotlinLibraryInitIntegrationTest extends AbstractJvmLibraryInitIntegration
                     }
             """
         when:
-        run('init', '--type', 'kotlin-library', '--dsl', scriptDsl.id, '--overwrite')
+        run('init', '--type', 'kotlin-library', '--dsl', scriptDsl.id, '--overwrite', '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/kotlin").assertHasDescendants("org/acme/SampleMain.kt")
@@ -156,15 +177,42 @@ class KotlinLibraryInitIntegrationTest extends AbstractJvmLibraryInitIntegration
         scriptDsl << ScriptDslFixture.SCRIPT_DSLS
     }
 
+    @Requires(value = UnitTestPreconditions.KotlinSupportedJdk.class)
     def "initializes Kotlin library with JUnit Jupiter test framework"() {
         when:
-        run('init', '--type', 'kotlin-library', '--test-framework', 'junit-jupiter')
+        run('init', '--type', 'kotlin-library', '--test-framework', 'junit-jupiter', '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("build.gradle.kts").assertExists()
 
         and:
         subprojectDir.file("build.gradle.kts").assertContents(containsString("junit.jupiter"))
+
+        when:
+        run("build")
+
+        then:
+        assertTestPassed("org.example.LibraryTest", "someLibraryMethodReturnsTrue")
+    }
+
+    @Requires(value = UnitTestPreconditions.KotlinSupportedJdk.class)
+    @Issue("https://github.com/gradle/gradle/issues/17137")
+    def "does not contain junit specific kotlin test dependencies"() {
+        when:
+        run ('init', '--type', 'kotlin-library', '--java-version', JavaVersion.current().majorVersion)
+
+        then:
+        def dslFixture = dslFixtureFor(KOTLIN)
+        dslFixture.assertGradleFilesGenerated()
+
+        dslFixture.buildFile.assertContents(
+            allOf(
+                not(dslFixture.containsConfigurationDependencyNotation('testImplementation', '"org.jetbrains.kotlin:kotlin-test-junit5"')),
+                not(dslFixture.containsConfigurationDependencyNotation('testImplementation', '"org.jetbrains.kotlin:kotlin-test-junit"')),
+                dslFixture.containsConfigurationDependencyNotation('testImplementation', '"org.jetbrains.kotlin:kotlin-test"')
+            )
+        )
+
 
         when:
         run("build")

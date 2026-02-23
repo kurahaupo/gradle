@@ -419,6 +419,7 @@ class RuleSourceAppliedByRuleMethodIntegrationTest extends AbstractIntegrationSp
             }
 
             apply plugin: MyPlugin
+            apply plugin: 'model-reporting-tasks'
         '''
 
         expect:
@@ -453,6 +454,7 @@ class RuleSourceAppliedByRuleMethodIntegrationTest extends AbstractIntegrationSp
             }
 
             apply plugin: MyPlugin
+            apply plugin: 'model-reporting-tasks'
         '''
 
         expect:
@@ -486,6 +488,7 @@ class RuleSourceAppliedByRuleMethodIntegrationTest extends AbstractIntegrationSp
             }
 
             apply plugin: MyPlugin
+            apply plugin: 'model-reporting-tasks'
         '''
 
         expect:
@@ -510,7 +513,6 @@ class RuleSourceAppliedByRuleMethodIntegrationTest extends AbstractIntegrationSp
         '''
 
         expect:
-        succeeds("tasks")
         fails("model")
     }
 
@@ -547,6 +549,7 @@ class RuleSourceAppliedByRuleMethodIntegrationTest extends AbstractIntegrationSp
             }
 
             apply plugin: MyPlugin
+            apply plugin: 'model-reporting-tasks'
         '''
 
         expect:
@@ -558,7 +561,7 @@ class RuleSourceAppliedByRuleMethodIntegrationTest extends AbstractIntegrationSp
     }
 
     def "reports unbound parameters for rules on applied RuleSource"() {
-        buildScript '''
+        buildFile '''
             class UnboundRuleSource extends RuleSource {
                 @Mutate
                 void unboundRule(String string, Integer integer, @Path("some.inner.path") String withPath) {
@@ -575,6 +578,7 @@ class RuleSourceAppliedByRuleMethodIntegrationTest extends AbstractIntegrationSp
             }
 
             apply type: MyPlugin
+            apply plugin: 'model-reporting-tasks'
         '''
 
         expect:

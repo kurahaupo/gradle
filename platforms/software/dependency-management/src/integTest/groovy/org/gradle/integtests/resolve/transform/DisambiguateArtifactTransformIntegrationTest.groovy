@@ -70,7 +70,7 @@ def artifactType = Attribute.of('artifactType', String)
 
 allprojects {
     repositories {
-        maven { url "${mavenRepo.uri}" }
+        maven { url = "${mavenRepo.uri}" }
     }
 }
 project(':lib') {
@@ -135,7 +135,7 @@ ${artifactTransform("FileSizer")}
         output.count("Transforming test-1.3.jar.txt to test-1.3.jar.txt.txt") == 1
     }
 
-    def "disambiguates A -> C and B -> C by selecting the latter iff attributes match"() {
+    def "can not disambiguate A -> C and B -> C as both are valid chains"() {
         def m1 = mavenRepo.module("test", "test", "1.3").publish()
         m1.artifactFile.text = "1234"
 
@@ -163,7 +163,7 @@ def extraAttribute = Attribute.of('extra', String)
 
 allprojects {
     repositories {
-        maven { url "${mavenRepo.uri}" }
+        maven { url = "${mavenRepo.uri}" }
     }
 }
 project(':lib') {
@@ -229,18 +229,13 @@ ${artifactTransform("TestTransform")}
 """
 
         when:
-        run "resolve"
+        fails "resolve"
 
         then:
-        output.count("Transforming") == 2
-        output.count("Transforming lib.jar to lib.jar.txt")
-        output.count("Transforming test-1.3.jar to test-1.3.jar.txt") == 1
-
-        when:
-        fails 'resolve', '-PextraAttribute'
-
-        then:
-        failureCauseContains('Found multiple transforms')
+        failure.assertHasDescription("Could not determine the dependencies of task ':app:resolve'.")
+        failure.assertHasCause("Could not resolve all dependencies for configuration ':app:compileClasspath'.")
+        failure.assertHasErrorOutput("""Found multiple transformation chains that produce a variant of 'project :lib' with requested attributes:""")
+        failure.assertHasResolution("Remove one or more registered transforms, or add additional attributes to them to ensure only a single valid transformation chain exists.")
     }
 
     def "transform with two attributes will not confuse"() {
@@ -366,7 +361,7 @@ apply plugin: 'java'
 
 allprojects {
     repositories {
-        maven { url "${mavenRepo.uri}" }
+        maven { url = "${mavenRepo.uri}" }
     }
 }
 
@@ -427,7 +422,7 @@ apply plugin: 'java-library'
 
 allprojects {
     repositories {
-        maven { url "${mavenRepo.uri}" }
+        maven { url = "${mavenRepo.uri}" }
     }
 }
 

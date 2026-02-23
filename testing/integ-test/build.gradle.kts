@@ -5,59 +5,62 @@ plugins {
 description = "Integration tests which don't fit anywhere else - should probably be split up"
 
 dependencies {
-    integTestImplementation(project(":base-services"))
-    integTestImplementation(project(":build-option"))
-    integTestImplementation(project(":enterprise-operations"))
-    integTestImplementation(project(":native"))
-    integTestImplementation(project(":logging"))
-    integTestImplementation(project(":process-services"))
-    integTestImplementation(project(":core-api"))
-    integTestImplementation(project(":resources"))
-    integTestImplementation(project(":persistent-cache"))
-    integTestImplementation(project(":dependency-management"))
-    integTestImplementation(project(":gradle-cli-main"))
-    integTestImplementation(project(":launcher"))
-    integTestImplementation(project(":ide-plugins"))
-    integTestImplementation(libs.groovy)
-    integTestImplementation(libs.slf4jApi)
-    integTestImplementation(libs.guava)
+    integTestImplementation(projects.baseServices)
+    integTestImplementation(projects.buildOption)
+    integTestImplementation(projects.coreApi)
+    integTestImplementation(projects.dependencyManagement)
+    integTestImplementation(projects.enterpriseOperations)
+    integTestImplementation(projects.gradleCliMain)
+    integTestImplementation(projects.idePlugins)
+    integTestImplementation(projects.launcher)
+    integTestImplementation(projects.logging)
+    integTestImplementation(projects.native)
+    integTestImplementation(projects.persistentCache)
+    integTestImplementation(projects.processServices)
+    integTestImplementation(projects.resources)
     integTestImplementation(libs.ant)
-    integTestImplementation(libs.jsoup)
-
-    integTestImplementation(libs.samplesCheck) {
-        exclude(group = "org.codehaus.groovy", module = "groovy-all")
-        exclude(module = "slf4j-simple")
-    }
-    integTestImplementation(testFixtures(project(":model-core")))
-
-    crossVersionTestImplementation(project(":base-services"))
-    crossVersionTestImplementation(project(":core"))
-    crossVersionTestImplementation(project(":plugins-application"))
-    crossVersionTestImplementation(project(":platform-jvm"))
-    crossVersionTestImplementation(project(":language-jvm"))
-    crossVersionTestImplementation(project(":language-java"))
-    crossVersionTestImplementation(project(":language-groovy"))
-    crossVersionTestImplementation(project(":logging"))
-    crossVersionTestImplementation(project(":scala"))
-    crossVersionTestImplementation(project(":ear"))
-    crossVersionTestImplementation(project(":war"))
-    crossVersionTestImplementation(project(":testing-jvm"))
-    crossVersionTestImplementation(project(":ide"))
-    crossVersionTestImplementation(project(":ide-plugins"))
-    crossVersionTestImplementation(project(":code-quality"))
-    crossVersionTestImplementation(project(":signing"))
-    crossVersionTestImplementation(project(":functional"))
-
-    integTestImplementation(testFixtures(project(":core")))
-    integTestImplementation(testFixtures(project(":diagnostics")))
-    integTestImplementation(testFixtures(project(":platform-native")))
+    integTestImplementation(libs.groovy)
+    integTestImplementation(libs.guava)
     integTestImplementation(libs.jgit)
-    integTestImplementation(libs.javaParser) {
-        because("The Groovy compiler inspects the dependencies at compile time")
+    integTestImplementation(libs.jsoup)
+    integTestImplementation(libs.slf4jApi)
+    integTestImplementation(testLibs.samplesCheck) {
+        exclude(group = "org.codehaus.groovy", module = "groovy-all")
     }
+    integTestImplementation(testFixtures(projects.core))
+    integTestImplementation(testFixtures(projects.modelReflect))
+    integTestImplementation(testFixtures(projects.platformNative))
+    integTestImplementation(testFixtures(projects.scala))
 
-    integTestDistributionRuntimeOnly(project(":distributions-full"))
-    crossVersionTestDistributionRuntimeOnly(project(":distributions-full"))
+    integTestDistributionRuntimeOnly(projects.distributionsFull)
+
+    crossVersionTestImplementation(projects.baseServices)
+    crossVersionTestImplementation(projects.codeQuality)
+    crossVersionTestImplementation(projects.core)
+    crossVersionTestImplementation(projects.ear)
+    crossVersionTestImplementation(projects.functional)
+    crossVersionTestImplementation(projects.ide)
+    crossVersionTestImplementation(projects.idePlugins)
+    crossVersionTestImplementation(projects.internalIntegTesting)
+    crossVersionTestImplementation(projects.languageGroovy)
+    crossVersionTestImplementation(projects.languageJava)
+    crossVersionTestImplementation(projects.languageJvm)
+    crossVersionTestImplementation(projects.logging)
+    crossVersionTestImplementation(projects.platformJvm)
+    crossVersionTestImplementation(projects.pluginsApplication)
+    crossVersionTestImplementation(projects.scala)
+    crossVersionTestImplementation(projects.signing)
+    crossVersionTestImplementation(projects.testingJvm)
+    crossVersionTestImplementation(projects.war)
+
+    crossVersionTestDistributionRuntimeOnly(projects.distributionsFull)
 }
 
 testFilesCleanup.reportOnly = true
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}
+
+errorprone {
+    nullawayEnabled = true
+}

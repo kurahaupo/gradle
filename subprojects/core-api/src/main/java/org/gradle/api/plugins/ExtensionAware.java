@@ -16,6 +16,7 @@
 package org.gradle.api.plugins;
 
 import org.gradle.api.tasks.Internal;
+import org.gradle.declarative.dsl.model.annotations.HiddenInDefinition;
 
 /**
  * Objects that can be extended at runtime with other objects.
@@ -50,11 +51,11 @@ import org.gradle.api.tasks.Internal;
  * project.custom.extensions.create("nested", MyExtension, "baz")
  * assert project.custom.nested.foo == "baz"
  *
- * // All extension aware objects have a special “ext” extension of type ExtraPropertiesExtension
+ * // All extension aware objects have a special "ext" extension of type ExtraPropertiesExtension
  * assert project.hasProperty("myProperty") == false
  * project.ext.myProperty = "myValue"
  *
- * // Properties added to the “ext” extension are promoted to the owning object
+ * // Properties added to the "ext" extension are promoted to the owning object
  * assert project.myProperty == "myValue"
  * </pre>
  *
@@ -87,6 +88,7 @@ public interface ExtensionAware {
      * The container of extensions.
      */
     @Internal
+    @HiddenInDefinition
     ExtensionContainer getExtensions();
 
 }

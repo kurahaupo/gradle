@@ -66,7 +66,7 @@ class ParallelSourceDependencyIntegrationTest extends AbstractIntegrationSpec {
         repo.createLightWeightTag('1.2')
     }
 
-    @ToBeFixedForConfigurationCache(skip = ToBeFixedForConfigurationCache.Skip.FAILS_TO_CLEANUP)
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/36610")
     def "can populate into same dir in parallel"() {
         given:
         createDirs("A", "B", "C", "D")
@@ -75,8 +75,9 @@ class ParallelSourceDependencyIntegrationTest extends AbstractIntegrationSpec {
         """
         buildFile << """
             subprojects {
+                def projectName = project.name
                 tasks.resolve.doFirst {
-                    ${httpServer.callFromBuildUsingExpression("project.name")}
+                    ${httpServer.callFromBuildUsingExpression("projectName")}
                 }
             }
         """
@@ -101,7 +102,7 @@ class ParallelSourceDependencyIntegrationTest extends AbstractIntegrationSpec {
         succeeds('resolve', '--parallel', '--max-workers=4')
     }
 
-    @ToBeFixedForConfigurationCache(skip = ToBeFixedForConfigurationCache.Skip.FAILS_TO_CLEANUP)
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/36610")
     def "can populate from multiple Gradle invocations in parallel"() {
         given:
         createDirs("A")

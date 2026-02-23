@@ -24,8 +24,8 @@ import org.gradle.internal.build.BuildState;
 import org.gradle.internal.model.ModelContainer;
 import org.gradle.internal.resources.ResourceLock;
 import org.gradle.util.Path;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
 import java.io.File;
 import java.util.Set;
@@ -45,22 +45,29 @@ public interface ProjectState extends ModelContainer<ProjectInternal> {
     BuildState getOwner();
 
     /**
-     * Returns the parent of this project in the project tree. Note that this is not the same as {@link Project#getParent()}, use {@link #getBuildParent()} for that.
+     * Returns the parent of this project, as per {@link Project#getParent()}.
+     * <p>
+     * This will be null for the root project of any build in the build tree.
      */
     @Nullable
     ProjectState getParent();
 
     /**
-     * Returns the parent of this project, as per {@link Project#getParent()}. This will be null for the root project of a build in the tree, even if the project is not
-     * at the root of the project tree.
-     */
-    @Nullable
-    ProjectState getBuildParent();
-
-    /**
      * Returns the direct children of this project, in public iteration order.
      */
     Set<ProjectState> getChildProjects();
+
+    /**
+     * Returns the direct children of this project in no particular order.
+     */
+    Iterable<ProjectState> getUnorderedChildProjects();
+
+    /**
+     * Checks whether this project has child projects.
+     *
+     * @return true when this project has child projects.
+     */
+    boolean hasChildren();
 
     /**
      * Returns the name of this project (which may not necessarily be unique).
@@ -73,6 +80,11 @@ public interface ProjectState extends ModelContainer<ProjectInternal> {
     Path getIdentityPath();
 
     /**
+     * Gets the identity of this project, containing the identity within the build tree and the owning build.
+     */
+    ProjectIdentity getIdentity();
+
+    /**
      * Returns a path for this project within its containing build. These are not unique within a build tree. Use instead {@link #getIdentityPath()} to uniquely this project.
      */
     Path getProjectPath();
@@ -83,8 +95,11 @@ public interface ProjectState extends ModelContainer<ProjectInternal> {
     File getProjectDir();
 
     /**
-     * Returns the nesting level of a project in a multi-project hierarchy. For single project builds this is always
-     * 0. In a multi-project hierarchy 0 is returned for the root project.
+     * Returns the nesting level of a project in a multi-project hierarchy.
+     * <p>
+     * Returns 0 for the root project, 1 for its direct children, etc.
+     * <p>
+     * The depth is computed independently for each build in the build tree.
      */
     int getDepth();
 
@@ -111,6 +126,13 @@ public interface ProjectState extends ModelContainer<ProjectInternal> {
     void ensureConfigured();
 
     /**
+     * Configures the mutable model for this project, if not already.
+     *
+     * @throws IllegalStateException when the parent of this model is not already configured.
+     */
+    void ensureSelfConfigured();
+
+    /**
      * Configure the mutable model for this project and discovers any registered tasks, if not already done.
      */
     void ensureTasksDiscovered();
@@ -119,6 +141,13 @@ public interface ProjectState extends ModelContainer<ProjectInternal> {
      * Returns the mutable model for this project. This should not be used directly. This property is here to help with migration away from direct usage.
      */
     ProjectInternal getMutableModel();
+
+    /**
+     * Returns the mutable model for this project, just as {@link #getMutableModel()}, but works even in the presence of failures, for example when the project failed to configure.
+     *
+     * Should not be used in general, it's specific to obtaining partial TAPI models in the presence of failures.
+     */
+    ProjectInternal getMutableModelEvenAfterFailure();
 
     /**
      * Returns the lock that will be acquired when accessing the mutable state of this project via {@link #applyToMutableState(Consumer)} and {@link #fromMutableState(Function)}.

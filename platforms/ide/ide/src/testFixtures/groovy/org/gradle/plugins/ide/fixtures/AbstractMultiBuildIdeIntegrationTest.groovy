@@ -17,7 +17,6 @@
 package org.gradle.plugins.ide.fixtures
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.test.fixtures.file.TestFile
 import spock.lang.Issue
 
@@ -31,7 +30,6 @@ abstract class AbstractMultiBuildIdeIntegrationTest extends AbstractIntegrationS
     abstract IdeWorkspaceFixture workspace(TestFile workspaceDir, String ideWorkspaceName)
     abstract IdeProjectFixture project(TestFile projectDir, String ideProjectName)
 
-    @ToBeFixedForConfigurationCache(because = "ide plugins")
     @Issue("https://github.com/gradle/gradle/issues/5110")
     def "buildSrc project can apply IDE plugin"() {
         file("buildSrc/build.gradle") << """
@@ -47,7 +45,6 @@ abstract class AbstractMultiBuildIdeIntegrationTest extends AbstractIntegrationS
         } // else, unspecified
     }
 
-    @ToBeFixedForConfigurationCache(because = "ide plugins")
     def "workspace includes projects from included builds"() {
         buildTestFixture.withBuildInSubDir()
         def buildA = singleProjectBuild("buildA") {
@@ -84,7 +81,6 @@ abstract class AbstractMultiBuildIdeIntegrationTest extends AbstractIntegrationS
         workspace.assertContains(project(buildB.file("p2"), "p2"))
     }
 
-    @ToBeFixedForConfigurationCache(because = "ide plugins")
     def "workspace includes projects from nested included builds"() {
         buildTestFixture.withBuildInSubDir()
         def buildA = singleProjectBuild("buildA") {

@@ -26,7 +26,6 @@ import org.gradle.api.artifacts.dsl.RepositoryHandler;
 import org.gradle.api.attributes.Attribute;
 import org.gradle.api.internal.DomainObjectContext;
 import org.gradle.api.internal.GradleInternal;
-import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider;
 import org.gradle.api.internal.artifacts.configurations.RoleBasedConfigurationContainerInternal;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.file.HasScriptServices;
@@ -44,18 +43,20 @@ import org.gradle.internal.metaobject.DynamicObject;
 import org.gradle.internal.model.RuleBasedPluginListener;
 import org.gradle.internal.scan.UsedByScanPlugin;
 import org.gradle.internal.service.ServiceRegistry;
-import org.gradle.internal.service.scopes.ServiceRegistryFactory;
+import org.gradle.internal.service.scopes.Scope;
+import org.gradle.internal.service.scopes.ServiceScope;
 import org.gradle.model.internal.registry.ModelRegistry;
 import org.gradle.model.internal.registry.ModelRegistryScope;
 import org.gradle.normalization.internal.InputNormalizationHandlerInternal;
 import org.gradle.util.Path;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.Map;
 import java.util.Set;
 
 @UsedByScanPlugin("scan, test-retry")
+@ServiceScope(Scope.Project.class)
 public interface ProjectInternal extends Project, ProjectIdentifier, HasScriptServices, DomainObjectContext, ModelRegistryScope, PluginAwareInternal {
 
     // These constants are defined here and not with the rest of their kind in HelpTasksPlugin because they are referenced
@@ -79,6 +80,11 @@ public interface ProjectInternal extends Project, ProjectIdentifier, HasScriptSe
     ProjectInternal getRootProject(ProjectInternal referrer);
 
     Project evaluate();
+
+    /***
+     * This method should be used by internal Gradle code to trigger project evaluation.
+     */
+    ProjectInternal evaluateUnchecked();
 
     ProjectInternal bindAllModelRules();
 
@@ -105,34 +111,7 @@ public interface ProjectInternal extends Project, ProjectIdentifier, HasScriptSe
 
     void subprojects(ProjectInternal referrer, Action<? super Project> configureAction);
 
-    /**
-     * Do not use this method to access the child projects in the Gradle codebase!
-     * The implementations may add checks that enforce correct usage of the public API, such as
-     * cross-project model access checks, which are meant to report warnings on incorrect API usages
-     * from third-party code. The internal usages won't pass these checks and will break.
-     *
-     * @see ProjectInternal#getChildProjectsUnchecked()
-     * @see ProjectHierarchyUtils#getChildProjectsForInternalUse(Project)
-     */
-    @Override
-    Map<String, Project> getChildProjects();
-
-    /**
-     * Returns a mapping of the direct child project names to the child project instances.
-     *
-     * Compared to {@link Project#getChildProjects()}, this method does not add any checks
-     * to the returned projects:
-     *
-     * <ul>
-     *     <li> With project isolation enabled, it does not add checks for cross-project model
-     *     access to the returned project instances. The returned project models can be accessed
-     *     without any limitations.
-     * </ul>
-     *
-     * This method is suitable for internal usages in the Gradle codebase.
-     * @return A map where the keys are the project names and the values are the child projects
-     */
-    Map<String, Project> getChildProjectsUnchecked();
+    Map<String, Project> getChildProjects(ProjectInternal referrer);
 
     Set<? extends ProjectInternal> getAllprojects(ProjectInternal referrer);
 
@@ -157,8 +136,6 @@ public interface ProjectInternal extends Project, ProjectIdentifier, HasScriptSe
     @UsedByScanPlugin("scan, test-retry")
     ServiceRegistry getServices();
 
-    ServiceRegistryFactory getServiceRegistryFactory();
-
     StandardOutputCapture getStandardOutputCapture();
 
     @Override
@@ -182,11 +159,13 @@ public interface ProjectInternal extends Project, ProjectIdentifier, HasScriptSe
 
     void fireDeferredConfiguration();
 
+    @Override
+    @NullMarked
+    ProjectIdentity getProjectIdentity();
+
     /**
      * Returns a unique path for this project within its containing build.
      */
-    @Override
-    @Nonnull
     Path getProjectPath();
 
     /**
@@ -235,8 +214,6 @@ public interface ProjectInternal extends Project, ProjectIdentifier, HasScriptSe
      */
     Property<Object> getInternalStatus();
 
-    DependencyMetaDataProvider getDependencyMetaDataProvider();
-
     /**
      * When we get the {@link ConfigurationContainer} from internal locations, we'll override
      * this getter to promise to return a {@link RoleBasedConfigurationContainerInternal} instance, to avoid
@@ -246,6 +223,32 @@ public interface ProjectInternal extends Project, ProjectIdentifier, HasScriptSe
      */
     @Override
     RoleBasedConfigurationContainerInternal getConfigurations();
+
+    void setLifecycleActionsState(@Nullable Object state);
+
+    /**
+     * The state of the execution of {@link org.gradle.api.invocation.GradleLifecycle} actions of this project.
+     * Its mutation NOT considered a mutable state access.
+     */
+    @Nullable
+    Object getLifecycleActionsState();
+
+    /**
+     * Two {@link ProjectInternal} instances are considered equal if their {@link #getProjectIdentity() identity} is equal.
+     *
+     * @param obj the object to compare with this project
+     * @return true if the given object is a {@link ProjectInternal} with the same identity as this project, false otherwise
+     */
+    @Override
+    boolean equals(Object obj);
+
+    /**
+     * Returns the hash code of this project based on its {@link #getProjectIdentity() identity}.
+     *
+     * @return the hash code of this project
+     */
+    @Override
+    int hashCode();
 
     interface DetachedResolver {
         RepositoryHandler getRepositories();

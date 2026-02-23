@@ -37,9 +37,10 @@ import org.gradle.internal.time.Clock;
  * Adapts various events to build a {@link BuildProfile} model.
  */
 @ListenerService
-public class ProfileEventAdapter implements InternalBuildListener, ProjectEvaluationListener, TaskListenerInternal, DependencyResolutionListener, TransformExecutionListener {
+public class ProfileEventAdapter implements ProfileService, InternalBuildListener, ProjectEvaluationListener, TaskListenerInternal, DependencyResolutionListener, TransformExecutionListener {
     private final BuildStartedTime buildStartedTime;
     private final Clock clock;
+    @SuppressWarnings("ThreadLocalUsage")
     private final ThreadLocal<ContinuousOperation> currentTransform = new ThreadLocal<>();
     private final BuildProfile buildProfile;
 
@@ -96,15 +97,17 @@ public class ProfileEventAdapter implements InternalBuildListener, ProjectEvalua
     @Override
     public void beforeExecute(TaskIdentity<?> taskIdentity) {
         long now = clock.getCurrentTime();
-        ProjectProfile projectProfile = buildProfile.getProjectProfile(taskIdentity.getProjectPath());
-        projectProfile.getTaskProfile(taskIdentity.getTaskPath()).setStart(now);
+        String projectPath = taskIdentity.getProjectIdentity().getProjectPath().asString();
+        ProjectProfile projectProfile = buildProfile.getProjectProfile(projectPath);
+        projectProfile.getTaskProfile(taskIdentity.getPath().asString()).setStart(now);
     }
 
     @Override
     public void afterExecute(TaskIdentity<?> taskIdentity, TaskState state) {
         long now = clock.getCurrentTime();
-        ProjectProfile projectProfile = buildProfile.getProjectProfile(taskIdentity.getProjectPath());
-        TaskExecution taskExecution = projectProfile.getTaskProfile(taskIdentity.getTaskPath());
+        String projectPath = taskIdentity.getProjectIdentity().getProjectPath().asString();
+        ProjectProfile projectProfile = buildProfile.getProjectProfile(projectPath);
+        TaskExecution taskExecution = projectProfile.getTaskProfile(taskIdentity.getPath().asString());
         taskExecution.setFinish(now);
         taskExecution.completed(state);
     }

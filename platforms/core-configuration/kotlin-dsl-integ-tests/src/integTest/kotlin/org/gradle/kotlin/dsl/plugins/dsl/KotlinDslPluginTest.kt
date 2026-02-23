@@ -16,6 +16,10 @@
 
 package org.gradle.kotlin.dsl.plugins.dsl
 
+import org.gradle.api.internal.tasks.testing.report.generic.GenericHtmlTestExecutionResult
+import org.gradle.api.internal.tasks.testing.report.generic.GenericTestExecutionResult
+import org.gradle.api.tasks.testing.TestResult
+import org.gradle.integtests.fixtures.DefaultTestExecutionResult
 import org.gradle.kotlin.dsl.fixtures.AbstractKotlinIntegrationTest
 import org.gradle.kotlin.dsl.fixtures.containsMultiLineString
 import org.gradle.kotlin.dsl.fixtures.normalisedPath
@@ -38,7 +42,7 @@ class KotlinDslPluginTest : AbstractKotlinIntegrationTest() {
         // The test applies the in-development version of the kotlin-dsl
         // which, by convention, it is always ahead of the version expected by
         // the in-development version of Gradle
-        // (see publishedKotlinDslPluginsVersion in kotlin-dsl.gradle.kts)
+        // (see publishedKotlinDslPluginsVersion in the project's build logic)
         withKotlinDslPlugin()
 
         withDefaultSettings().appendText(
@@ -74,7 +78,7 @@ class KotlinDslPluginTest : AbstractKotlinIntegrationTest() {
 
         val result = build("classes")
 
-        result.assertTaskExecuted(":compileKotlin")
+        result.assertTaskScheduled(":compileKotlin")
     }
 
     @Test
@@ -138,10 +142,12 @@ class KotlinDslPluginTest : AbstractKotlinIntegrationTest() {
             """
         )
 
-        assertThat(
-            outputOf("test", "-i"),
-            containsString("Plugin Using Embedded Kotlin ")
-        )
+        build("test")
+
+        val results = GenericHtmlTestExecutionResult(testDirectory, "build/reports/tests/test", GenericTestExecutionResult.TestFramework.JUNIT4)
+        results.testPath("MyTest", "my test").onlyRoot()
+            .assertHasResult(TestResult.ResultType.SUCCESS)
+            .assertStdout(containsString("Plugin Using Embedded Kotlin "))
     }
 
     @Test
@@ -244,10 +250,12 @@ class KotlinDslPluginTest : AbstractKotlinIntegrationTest() {
             """
         )
 
-        assertThat(
-            outputOf("test", "-i"),
-            containsString("Plugin Using Embedded Kotlin ")
-        )
+        build("test")
+
+        val results = GenericHtmlTestExecutionResult(testDirectory, "build/reports/tests/test", GenericTestExecutionResult.TestFramework.JUNIT4)
+        results.testPath("MyTest", "my test").onlyRoot()
+            .assertHasResult(TestResult.ResultType.SUCCESS)
+            .assertStdout(containsString("Plugin Using Embedded Kotlin "))
     }
 
     @Test
@@ -277,7 +285,7 @@ class KotlinDslPluginTest : AbstractKotlinIntegrationTest() {
 
         val result = build("classes")
 
-        result.assertTaskExecuted(":compileKotlin")
+        result.assertTaskScheduled(":compileKotlin")
     }
 
     @Test
@@ -331,7 +339,7 @@ class KotlinDslPluginTest : AbstractKotlinIntegrationTest() {
 
         val result = build("classes")
 
-        result.assertTaskExecuted(":compileKotlin")
+        result.assertTaskScheduled(":compileKotlin")
     }
 
     private
@@ -362,19 +370,19 @@ class KotlinDslPluginTest : AbstractKotlinIntegrationTest() {
             fun <T : Any> applyActionTo(value: T, action: org.gradle.api.Action<T>) = action.execute(value)
 
             // NamedDomainObjectFactory<T> is a regular SAM
-            fun <T> create(name: String, factory: org.gradle.api.NamedDomainObjectFactory<T>): T = factory.create(name)
+            fun <T : Any> create(name: String, factory: org.gradle.api.NamedDomainObjectFactory<T>): T = factory.create(name)
 
             fun <T : Any> createK(type: kotlin.reflect.KClass<T>, factory: org.gradle.api.NamedDomainObjectFactory<T>): T = factory.create(type.simpleName!!)
 
             fun test() {
 
                 // Implicit SAM conversion in regular source
-                println(createK(String::class) { it.toUpperCase() })
-                println(create("FOO") { it.toLowerCase() })
+                println(createK(String::class) { it.uppercase() })
+                println(create("FOO") { it.lowercase() })
 
                 // Implicit SAM with receiver conversion in regular source
                 applyActionTo("BAR") {
-                    println(toLowerCase())
+                    println(lowercase())
                 }
             }
             """
@@ -390,10 +398,6 @@ class KotlinDslPluginTest : AbstractKotlinIntegrationTest() {
             """
         )
     }
-
-    private
-    fun outputOf(vararg arguments: String) =
-        build(*arguments).output
 }
 
 

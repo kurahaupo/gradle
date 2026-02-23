@@ -29,10 +29,7 @@ import static org.gradle.nativeplatform.fixtures.ToolChainRequirement.GCC_COMPAT
 import static org.gradle.nativeplatform.fixtures.ToolChainRequirement.SUPPORTS_32_AND_64
 import static org.gradle.nativeplatform.fixtures.ToolChainRequirement.VISUALCPP
 
-@Requires([
-    UnitTestPreconditions.CanInstallExecutable,
-    UnitTestPreconditions.NotMacOs
-])
+@Requires(UnitTestPreconditions.CanInstallExecutable)
 class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
     @Rule final TestNameTestDirectoryProvider testDirProvider = new TestNameTestDirectoryProvider(getClass())
     @Rule public final Sample assembler = sample(testDirProvider, 'assembler')
@@ -51,7 +48,6 @@ class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainInt
     }
 
     @RequiresInstalledToolChain(SUPPORTS_32_AND_64)
-    @ToBeFixedForConfigurationCache
     def "assembler"() {
         given:
         sample assembler
@@ -66,7 +62,6 @@ class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainInt
         installation(assembler.dir.file("build/install/main")).exec().out == "5 + 7 = 12\n"
     }
 
-    @ToBeFixedForConfigurationCache
     def "c"() {
         given:
         sample c
@@ -82,7 +77,6 @@ class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainInt
         installation(c.dir.file("build/install/main")).exec().out == "Hello world!"
     }
 
-    @ToBeFixedForConfigurationCache
     def "cpp"() {
         given:
         sample cpp
@@ -100,7 +94,6 @@ class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainInt
 
     @RequiresInstalledToolChain(GCC_COMPATIBLE)
     @Requires(UnitTestPreconditions.NotWindows)
-    @ToBeFixedForConfigurationCache
     def "objectiveC"() {
         given:
         sample objectiveC
@@ -117,7 +110,6 @@ class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainInt
 
     @RequiresInstalledToolChain(GCC_COMPATIBLE)
     @Requires(UnitTestPreconditions.NotWindows)
-    @ToBeFixedForConfigurationCache
     def "objectiveCpp"() {
         given:
         sample objectiveCpp
@@ -136,6 +128,7 @@ class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainInt
     @ToBeFixedForConfigurationCache
     def "win rc"() {
         given:
+        System.err.println(windowsResources.dir.absolutePath)
         sample windowsResources
 
         when:
@@ -150,17 +143,13 @@ class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainInt
         installation(windowsResources.dir.file("build/install/main")).exec().out == "Hello world!\n"
 
         when:
-        // To get rid of the deprecation, the sample under test could be split into two or otherwise refactored to use a single build file
-        // Since this one uses Software Model + Windows, for now letting it stay with the deprecation
-        executer.expectDocumentedDeprecationWarning("Specifying custom build file location has been deprecated. This is scheduled to be removed in Gradle 9.0. Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_7.html#configuring_custom_build_layout");
-        executer.usingBuildScript(windowsResources.dir.file('build-resource-only-dll.gradle'))
+        inDirectory(windowsResources.dir.file('only-dll'))
         run "helloResSharedLibrary"
 
         then:
-        file(windowsResources.dir.file("build/libs/helloRes/shared/helloRes.dll")).assertExists()
+        file(windowsResources.dir.file("only-dll/build/libs/helloRes/shared/helloRes.dll")).assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "custom layout"() {
         given:
         sample customLayout
@@ -176,7 +165,6 @@ class NativeLanguageSamplesIntegrationTest extends AbstractInstalledToolChainInt
         installation(customLayout.dir.file("build/install/main")).exec().out == "Hello world!"
     }
 
-    @ToBeFixedForConfigurationCache
     def "idl"() {
         given:
         sample idl

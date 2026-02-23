@@ -5,36 +5,49 @@ plugins {
 description = "Kotlin DSL Provider Plugins"
 
 dependencies {
-    implementation(project(":kotlin-dsl"))
+    api(projects.classloaders)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.kotlinDsl)
+    api(projects.logging)
+    api(projects.serviceProvider)
+    api(projects.stdlibJavaExtensions)
+    api(projects.persistentCache)
+    api(projects.declarativeDslToolingModels)
+    api(projects.projectFeatures)
 
-    implementation(project(":base-services"))
-    implementation(project(":core"))
-    implementation(project(":core-api"))
-    implementation(project(":functional"))
-    implementation(project(":file-collections"))
-    implementation(project(":language-jvm"))
-    implementation(project(":logging"))
-    implementation(project(":plugin-development"))
-    implementation(project(":plugins-java-base"))
-    implementation(project(":platform-jvm"))
-    implementation(project(":resources"))
-    implementation(project(":snapshots"))
-    implementation(project(":tooling-api"))
-    implementation(project(":toolchains-jvm"))
+    api(libs.inject)
+    api(libs.kotlinStdlib)
 
-    implementation(libs.futureKotlin("scripting-compiler-impl-embeddable")) {
-        isTransitive = false
-    }
+    implementation(projects.baseServices)
+    implementation(projects.buildDiscovery)
+    implementation(projects.concurrent)
+    implementation(projects.functional)
+    implementation(projects.fileCollections)
+    implementation(projects.hashing)
+    implementation(projects.loggingApi)
+    implementation(projects.pluginDevelopment)
+    implementation(projects.platformJvm)
+    implementation(projects.projectFeaturesApi)
+    implementation(projects.resources)
+    implementation(projects.serviceLookup)
+    implementation(projects.toolingApi)
+    implementation(projects.declarativeDslEvaluator)
+    implementation(projects.declarativeDslProvider)
+    implementation(projects.declarativeDslCore)
+
     implementation(libs.kotlinCompilerEmbeddable)
 
-    implementation(libs.groovy)
-    implementation(libs.slf4jApi)
-    implementation(libs.inject)
+    compileOnly(libs.kotlinReflect)
 
-    testImplementation(testFixtures(project(":kotlin-dsl")))
-    testImplementation(libs.mockitoKotlin2)
+    testImplementation(testFixtures(projects.kotlinDsl))
+    testImplementation(testLibs.mockitoKotlin)
 }
 
 packageCycles {
     excludePatterns.add("org/gradle/kotlin/dsl/provider/plugins/precompiled/tasks/**")
 }
+
+// Kotlin DSL provider plugins should not be part of the public API
+// TODO Find a way to not register this and the task instead
+configurations.remove(configurations.apiStubElements.get())

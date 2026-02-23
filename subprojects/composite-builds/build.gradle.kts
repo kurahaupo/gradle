@@ -4,54 +4,54 @@ plugins {
 
 description = "Included build controller and composite build infrastructure"
 
-errorprone {
-    disabledChecks.addAll(
-        "FutureReturnValueIgnored", // 1 occurrences
-        "SameNameButDifferent", // 11 occurrences
-        "ThreadLocalUsage", // 1 occurrences
-        "UnusedMethod", // 4 occurrences
-    )
-}
-
 dependencies {
+    api(projects.baseServices)
+    api(projects.buildOperations)
+    api(projects.buildState)
+    api(projects.classloaders)
     api(projects.concurrent)
-    api(projects.javaLanguageExtensions)
-    api(projects.serialization)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.dependencyManagement)
+    api(projects.messaging)
+    api(projects.modelCore)
+    api(projects.pluginUse)
     api(projects.serviceProvider)
-    api(project(":build-operations"))
-    api(project(":base-services"))
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":dependency-management"))
-    api(project(":messaging"))
-    api(project(":model-core"))
-    api(project(":plugin-use"))
-    api(project(":build-state"))
+    api(projects.stdlibJavaExtensions)
 
     api(libs.inject)
-    api(libs.jsr305)
+    api(libs.jspecify)
 
+    implementation(projects.buildDiscoveryImpl)
+    implementation(projects.collections)
+    implementation(projects.daemonServices)
+    implementation(projects.enterpriseLogging)
+    implementation(projects.enterpriseOperations)
+    implementation(projects.problemsApi)
+    implementation(projects.serviceLookup)
     implementation(projects.time)
-    implementation(project(":enterprise-logging"))
-    implementation(project(":enterprise-operations"))
-    implementation(project(":daemon-services"))
-    implementation(project(":logging"))
 
     implementation(libs.slf4jApi)
     implementation(libs.guava)
 
-    testImplementation(project(":file-watching"))
-    testImplementation(project(":build-option"))
-    testImplementation(testFixtures(project(":build-operations")))
-    testImplementation(testFixtures(project(":dependency-management")))
-    testImplementation(testFixtures(project(":core")))
+    testImplementation(projects.fileWatching)
+    testImplementation(projects.buildOption)
+    testImplementation(testFixtures(projects.buildOperations))
+    testImplementation(testFixtures(projects.dependencyManagement))
+    testImplementation(testFixtures(projects.core))
 
-    integTestImplementation(project(":build-option"))
-    integTestImplementation(project(":launcher"))
+    integTestImplementation(projects.buildOption)
+    integTestImplementation(projects.launcher)
 
-    integTestDistributionRuntimeOnly(project(":distributions-jvm")) {
-        because("Requires test-kit: 'java-gradle-plugin' is used in some integration tests which always adds the test-kit dependency.  The 'java-platform' plugin from the JVM platform is used in some tests.")
+    integTestDistributionRuntimeOnly(projects.distributionsFull) {
+        because("""
+          1. Requires test-kit: 'java-gradle-plugin' is used in some integration tests which always adds the test-kit dependency. The 'java-platform' plugin from the JVM platform is used in some tests.
+          2. Has tests with the enterprise plugin
+        """)
     }
 }
 
 testFilesCleanup.reportOnly = true
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}

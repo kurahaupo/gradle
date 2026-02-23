@@ -16,21 +16,13 @@
 
 package org.gradle.internal.declarativedsl.settings
 
-import org.gradle.internal.declarativedsl.analysis.OperationGenerationId
-import org.gradle.internal.declarativedsl.analysis.tracingCodeResolver
-import org.gradle.internal.declarativedsl.checks.DocumentCheckFailure
-import org.gradle.internal.declarativedsl.checks.DocumentCheckFailureReason
-import org.gradle.internal.declarativedsl.dom.resolvedDocument
-import org.gradle.internal.declarativedsl.dom.toDocument
-import org.gradle.internal.declarativedsl.evaluationSchema.EvaluationSchema
+import org.gradle.internal.declarative.dsl.checks.runChecks
+import org.gradle.internal.declarativedsl.common.UnsupportedSyntaxFeatureCheck
+import org.gradle.internal.declarativedsl.common.gradleDslGeneralSchema
+import org.gradle.internal.declarativedsl.evaluationSchema.EvaluationSchemaBuilder
 import org.gradle.internal.declarativedsl.evaluationSchema.buildEvaluationSchema
-import org.gradle.internal.declarativedsl.evaluationSchema.plus
-import org.gradle.internal.declarativedsl.language.SourceIdentifier
-import org.gradle.internal.declarativedsl.parsing.DefaultLanguageTreeBuilder
-import org.gradle.internal.declarativedsl.parsing.parse
+import org.gradle.internal.declarativedsl.evaluator.checks.DocumentCheckFailureReason
 import org.gradle.internal.declarativedsl.plugins.PluginsTopLevelReceiver
-import org.gradle.internal.declarativedsl.plugins.isTopLevelPluginsBlock
-import org.gradle.internal.declarativedsl.project.gradleDslGeneralSchemaComponent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -45,11 +37,12 @@ class SettingsBlockCheckTest {
             plugins { }
             rootProject.name = "foo"
             plugins { }
-            """.trimIndent()
+            """.trimIndent(),
+            documentChecks
         )
 
         assertEquals(2, result.size)
-        assertEquals(listOf(2, 4), result.map { it.location.sourceData.lineRange.start })
+        assertEquals(listOf(2, 4), result.map { it.location.sourceData.lineRange.first })
         assertTrue(result.all { it.reason == DocumentCheckFailureReason.DuplicatePluginsBlock })
     }
 
@@ -61,11 +54,12 @@ class SettingsBlockCheckTest {
             pluginManagement { }
             rootProject.name = "foo"
             pluginManagement { }
-            """.trimIndent()
+            """.trimIndent(),
+            documentChecks
         )
 
         assertEquals(2, result.size)
-        assertEquals(listOf(2, 4), result.map { it.location.sourceData.lineRange.start })
+        assertEquals(listOf(2, 4), result.map { it.location.sourceData.lineRange.first })
         assertTrue(result.all { it.reason == DocumentCheckFailureReason.DuplicatePluginManagementBlock })
     }
 
@@ -76,7 +70,8 @@ class SettingsBlockCheckTest {
             pluginManagement { }
             pluginManagement { }
             plugins { }
-            """.trimIndent()
+            """.trimIndent(),
+            documentChecks
         )
 
         assertTrue(result.isEmpty())
@@ -94,7 +89,8 @@ class SettingsBlockCheckTest {
                 id("foo")
             }
             baq()
-            """.trimIndent()
+            """.trimIndent(),
+            documentChecks
         )
 
         assertEquals(listOf("foo()", "bar()", "baz()"), result.map { it.location.sourceData.text() })
@@ -110,7 +106,8 @@ class SettingsBlockCheckTest {
             plugins { id("x") }
             pluginManagement { }
             baq()
-            """.trimIndent()
+            """.trimIndent(),
+            documentChecks
         )
 
         assertEquals(listOf("foo()", "bar()", "plugins { id(\"x\") }"), result.map { it.location.sourceData.text() })
@@ -118,18 +115,15 @@ class SettingsBlockCheckTest {
     }
 
     private
-    fun EvaluationSchema.runChecks(code: String): List<DocumentCheckFailure> {
-        val languageModel = DefaultLanguageTreeBuilder().build(parse(code), SourceIdentifier("test"))
-        val trace = tracingCodeResolver(OperationGenerationId.PROPERTY_ASSIGNMENT, analysisStatementFilter)
-            .apply { resolve(analysisSchema, languageModel.imports, languageModel.topLevelBlock) }
-            .trace
-        val document = resolvedDocument(analysisSchema, trace, languageModel.toDocument())
-        return documentChecks.flatMap { it.detectFailures(document) }
-    }
+    val documentChecks = listOf(SettingsBlocksCheck, UnsupportedSyntaxFeatureCheck)
 
     private
     val pluginManagementSchema = pluginManagementEvaluationSchema()
 
     private
-    val pluginsSchema = buildEvaluationSchema(PluginsTopLevelReceiver::class, gradleDslGeneralSchemaComponent() + SettingsBlocksCheck, isTopLevelPluginsBlock)
+    val pluginsSchema = buildEvaluationSchema(
+        PluginsTopLevelReceiver::class,
+        isTopLevelPluginsBlock,
+        schemaComponents = EvaluationSchemaBuilder::gradleDslGeneralSchema
+    )
 }

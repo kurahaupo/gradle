@@ -17,18 +17,19 @@
 package org.gradle.internal.component.external.model.ivy;
 
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
-import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.api.internal.attributes.immutable.ImmutableAttributesSchema;
 import org.gradle.internal.component.external.model.ExternalModuleDependencyMetadata;
 import org.gradle.internal.component.external.model.ModuleDependencyMetadata;
 import org.gradle.internal.component.model.ComponentGraphResolveState;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.ExcludeMetadata;
-import org.gradle.internal.component.model.GraphVariantSelectionResult;
 import org.gradle.internal.component.model.GraphVariantSelector;
 import org.gradle.internal.component.model.IvyArtifactName;
+import org.gradle.internal.component.model.VariantGraphResolveState;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -63,13 +64,23 @@ public class IvyDependencyMetadata extends ExternalModuleDependencyMetadata {
     }
 
     @Override
-    protected GraphVariantSelectionResult selectLegacyConfigurations(
+    public List<? extends VariantGraphResolveState> selectLegacyVariants(
         GraphVariantSelector variantSelector,
         ImmutableAttributes consumerAttributes,
         ComponentGraphResolveState targetComponentState,
-        AttributesSchemaInternal consumerSchema
+        ImmutableAttributesSchema consumerSchema
     ) {
-        return getDependencyDescriptor().selectLegacyConfigurations(configuration, targetComponentState, variantSelector.getFailureHandler());
+        // We only want to use ivy's configuration selection mechanism when an ivy component is selecting
+        // configurations from another ivy component.
+        if (targetComponentState instanceof IvyComponentGraphResolveState) {
+            IvyComponentGraphResolveState ivyComponent = (IvyComponentGraphResolveState) targetComponentState;
+            return getDependencyDescriptor().selectLegacyConfigurations(configuration, ivyComponent, variantSelector.getFailureHandler());
+        }
+
+        // We have already verified that the target component does not support attribute matching,
+        // so if it is not an ivy component, use the standard legacy selection mechanism.
+        VariantGraphResolveState selected = variantSelector.selectLegacyVariant(consumerAttributes, targetComponentState, consumerSchema, variantSelector.getFailureHandler());
+        return Collections.singletonList(selected);
     }
 
     @Override
@@ -94,9 +105,14 @@ public class IvyDependencyMetadata extends ExternalModuleDependencyMetadata {
     }
 
     @Override
-    protected ModuleDependencyMetadata withRequestedAndArtifacts(ModuleComponentSelector newSelector, List<IvyArtifactName> artifacts) {
+    protected ModuleDependencyMetadata withArtifacts(List<IvyArtifactName> newArtifacts) {
+        return new IvyDependencyMetadata(configuration, dependencyDescriptor, getReason(), isEndorsingStrictVersions(), newArtifacts);
+    }
+
+    @Override
+    protected ModuleDependencyMetadata withRequestedAndArtifacts(ModuleComponentSelector newSelector, List<IvyArtifactName> newArtifacts) {
         IvyDependencyDescriptor newDelegate = dependencyDescriptor.withRequested(newSelector);
-        return new IvyDependencyMetadata(configuration, newDelegate, getReason(), isEndorsingStrictVersions(), artifacts);
+        return new IvyDependencyMetadata(configuration, newDelegate, getReason(), isEndorsingStrictVersions(), newArtifacts);
     }
 
     public ModuleDependencyMetadata withDescriptor(IvyDependencyDescriptor descriptor) {

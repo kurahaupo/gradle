@@ -16,15 +16,17 @@
 
 package org.gradle.integtests.tooling
 
+import groovy.transform.stc.ClosureParams
+import groovy.transform.stc.SimpleType
 import org.gradle.initialization.BuildCancellationToken
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.OtherGradleVersionFixture
 import org.gradle.integtests.fixtures.executer.GradleDistribution
 import org.gradle.integtests.fixtures.executer.UnderDevelopmentGradleDistribution
-import org.gradle.integtests.fixtures.versions.ReleasedVersionDistributions
 import org.gradle.integtests.tooling.fixture.ConfigurableOperation
 import org.gradle.integtests.tooling.fixture.ToolingApi
+import org.gradle.integtests.tooling.fixture.ToolingApiConnector
 import org.gradle.internal.classpath.ClassPath
-import org.gradle.internal.jvm.Jvm
 import org.gradle.internal.logging.progress.ProgressLoggerFactory
 import org.gradle.test.fixtures.ConcurrentTestUtil
 import org.gradle.test.precondition.Requires
@@ -35,7 +37,6 @@ import org.gradle.tooling.internal.consumer.Distribution
 import org.gradle.tooling.internal.protocol.InternalBuildProgressListener
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.idea.IdeaProject
-import org.junit.Assume
 import org.junit.Rule
 import spock.lang.Issue
 import spock.lang.Retry
@@ -48,7 +49,7 @@ import static spock.lang.Retry.Mode.SETUP_FEATURE_CLEANUP
 @Issue("GRADLE-1933")
 @Retry(condition = { onWindowsSocketDisappearance(instance, failure) }, mode = SETUP_FEATURE_CLEANUP, count = 2)
 @Requires(value = IntegTestPreconditions.NotEmbeddedExecutor, reason = "concurrent tooling api is only supported for forked mode")
-class ConcurrentToolingApiIntegrationSpec extends AbstractIntegrationSpec {
+class ConcurrentToolingApiIntegrationSpec extends AbstractIntegrationSpec implements OtherGradleVersionFixture {
 
     @Rule
     final ConcurrentTestUtil concurrent = new ConcurrentTestUtil()
@@ -76,12 +77,7 @@ class ConcurrentToolingApiIntegrationSpec extends AbstractIntegrationSpec {
 
     def "handles different target gradle versions concurrently"() {
         given:
-        def last = new ReleasedVersionDistributions().getMostRecentRelease()
-        // When adding support for a new JDK version, the previous release might not work with it yet.
-        Assume.assumeTrue(last.worksWith(Jvm.current()))
-        assert dist != last
-        println "Combination of versions used: current - $dist, last - $last"
-        def oldDistApi = new ToolingApi(last, temporaryFolder)
+        def oldDistApi = new ToolingApi(otherVersion, temporaryFolder)
 
         buildFile << "apply plugin: 'java'"
 
@@ -373,8 +369,8 @@ logger.lifecycle 'this is lifecycle: $idx'
         concurrent.finished()
     }
 
-    def withConnectionInDir(String dir, Closure cl) {
-        def connector = toolingApi.connector(file(dir))
+    <T> T withConnectionInDir(String dir, @DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
+        ToolingApiConnector connector = toolingApi.connector(file(dir))
         toolingApi.withConnection(connector, cl)
     }
 }

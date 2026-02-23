@@ -17,7 +17,7 @@ package org.gradle.api.internal.catalog;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.VersionCatalog;
 import org.gradle.api.artifacts.VersionCatalogsExtension;
@@ -30,26 +30,33 @@ import org.gradle.api.internal.SettingsInternal;
 import org.gradle.api.internal.artifacts.DefaultProjectDependencyFactory;
 import org.gradle.api.internal.artifacts.dsl.CapabilityNotationParser;
 import org.gradle.api.internal.artifacts.dsl.dependencies.ProjectFinder;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.initialization.ClassLoaderScope;
 import org.gradle.api.internal.project.ProjectInternal;
-import org.gradle.api.internal.project.ProjectRegistry;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.plugins.ExtensionContainer;
 import org.gradle.api.problems.Problems;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.ProviderFactory;
-import org.gradle.initialization.DefaultProjectDescriptor;
 import org.gradle.initialization.DependenciesAccessors;
+import org.gradle.initialization.ProjectDescriptorInternal;
+import org.gradle.initialization.ProjectDescriptorRegistry;
 import org.gradle.internal.Cast;
 import org.gradle.internal.buildoption.FeatureFlags;
 import org.gradle.internal.classpath.ClassPath;
 import org.gradle.internal.classpath.DefaultClassPath;
+import org.gradle.internal.execution.ExecutionContext;
 import org.gradle.internal.execution.ExecutionEngine;
+import org.gradle.internal.execution.Identity;
 import org.gradle.internal.execution.ImmutableUnitOfWork;
 import org.gradle.internal.execution.InputFingerprinter;
+import org.gradle.internal.execution.InputVisitor;
+import org.gradle.internal.execution.OutputVisitor;
 import org.gradle.internal.execution.UnitOfWork;
+import org.gradle.internal.execution.WorkOutput;
+import org.gradle.internal.execution.caching.CachingDisabledReason;
+import org.gradle.internal.execution.history.OverlappingOutputs;
 import org.gradle.internal.execution.model.InputNormalizer;
 import org.gradle.internal.execution.workspace.ImmutableWorkspaceProvider;
 import org.gradle.internal.file.TreeType;
@@ -65,10 +72,10 @@ import org.gradle.internal.properties.InputBehavior;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.snapshot.ValueSnapshot;
 import org.gradle.util.internal.IncubationLogger;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.io.StringWriter;
@@ -100,8 +107,9 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
     private final ExecutionEngine engine;
     private final FileCollectionFactory fileCollectionFactory;
     private final InputFingerprinter inputFingerprinter;
-    private final ImmutableAttributesFactory attributesFactory;
+    private final AttributesFactory attributesFactory;
     private final CapabilityNotationParser capabilityNotationParser;
+    private final Problems problemsService;
     private final List<DefaultVersionCatalog> models = new ArrayList<>();
     private final Map<String, Class<? extends ExternalModuleDependencyFactory>> factories = new HashMap<>();
 
@@ -119,8 +127,9 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         ExecutionEngine engine,
         FileCollectionFactory fileCollectionFactory,
         InputFingerprinter inputFingerprinter,
-        ImmutableAttributesFactory attributesFactory,
-        CapabilityNotationParser capabilityNotationParser
+        AttributesFactory attributesFactory,
+        CapabilityNotationParser capabilityNotationParser,
+        Problems problemsService
     ) {
         this.classPath = registry.getClassPath("DEPENDENCIES-EXTENSION-COMPILER");
         this.workspace = workspace;
@@ -131,11 +140,7 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         this.inputFingerprinter = inputFingerprinter;
         this.attributesFactory = attributesFactory;
         this.capabilityNotationParser = capabilityNotationParser;
-    }
-
-    @Inject
-    protected Problems getProblemsService() {
-        throw new UnsupportedOperationException("not implemented");
+        this.problemsService = problemsService;
     }
 
     @Override
@@ -167,7 +172,7 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         executeWork(new DependencyAccessorUnitOfWork(model));
     }
 
-    private void writeProjectAccessors(ProjectRegistry<? extends ProjectDescriptor> projectRegistry) {
+    private void writeProjectAccessors(ProjectDescriptorRegistry projectRegistry) {
         if (!assertCanGenerateAccessors(projectRegistry)) {
             return;
         }
@@ -175,12 +180,8 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         executeWork(new ProjectAccessorUnitOfWork(projectRegistry));
     }
 
-    private static void warnIfRootProjectNameNotSetExplicitly(@Nullable ProjectDescriptor project) {
-        if (!(project instanceof DefaultProjectDescriptor)) {
-            return;
-        }
-        DefaultProjectDescriptor descriptor = (DefaultProjectDescriptor) project;
-        if (!descriptor.isExplicitName()) {
+    private static void warnIfRootProjectNameNotSetExplicitly(@Nullable ProjectDescriptorInternal project) {
+        if (!project.isExplicitName()) {
             LOGGER.warn("Project accessors enabled, but root project name not explicitly set for '" + project.getName() +
                 "'. Checking out the project in different folders will impact the generated code and implicitly the buildscript classpath, breaking caching.");
         }
@@ -195,7 +196,7 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         classLoaderScope.export(generatedClasses);
     }
 
-    private static boolean assertCanGenerateAccessors(ProjectRegistry<? extends ProjectDescriptor> projectRegistry) {
+    private static boolean assertCanGenerateAccessors(ProjectDescriptorRegistry projectRegistry) {
         List<String> errors = new ArrayList<>();
         projectRegistry.getAllProjects()
             .stream()
@@ -339,12 +340,11 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         private static final String OUT_CLASSES = "classes";
 
         @Override
-        public Identity identify(Map<String, ValueSnapshot> identityInputs, Map<String, CurrentFileCollectionFingerprint> identityFileInputs) {
-            return () -> {
-                Hasher hasher = Hashing.sha1().newHasher();
-                identityInputs.values().forEach(s -> s.appendToHasher(hasher));
-                return hasher.hash().toString();
-            };
+        public Identity identify(Map<String, ValueSnapshot> scalarInputs, Map<String, CurrentFileCollectionFingerprint> fileInputs) {
+            Hasher hasher = Hashing.sha1().newHasher();
+            scalarInputs.values().forEach(s -> s.appendToHasher(hasher));
+            String identity = hasher.hash().toString();
+            return () -> identity;
         }
 
         @Override
@@ -360,8 +360,8 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         protected abstract List<ClassSource> getClassSources();
 
         @Override
-        public WorkOutput execute(ExecutionRequest executionRequest) {
-            File workspace = executionRequest.getWorkspace();
+        public WorkOutput execute(ExecutionContext executionContext) {
+            File workspace = executionContext.getWorkspace();
             File srcDir = new File(workspace, OUT_SOURCES);
             File dstDir = new File(workspace, OUT_CLASSES);
             List<ClassSource> sources = getClassSources();
@@ -394,7 +394,7 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
 
         private void visitOutputDir(OutputVisitor visitor, File workspace, String propertyName) {
             File dir = new File(workspace, propertyName);
-            visitor.visitOutputProperty(propertyName, TreeType.DIRECTORY, OutputFileValueSupplier.fromStatic(dir, fileCollectionFactory.fixed(dir)));
+            visitor.visitOutputProperty(propertyName, TreeType.DIRECTORY, OutputVisitor.OutputFileValueSupplier.fromStatic(dir, fileCollectionFactory.fixed(dir)));
         }
     }
 
@@ -413,22 +413,28 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         }
 
         @Override
+        public Optional<CachingDisabledReason> shouldDisableCaching(@Nullable OverlappingOutputs detectedOverlappingOutputs) {
+            // This was a behaviour before 8.9, where we unified ExecutionEngine in https://github.com/gradle/gradle/pull/29534
+            return Optional.of(NOT_WORTH_CACHING);
+        }
+
+        @Override
         protected List<ClassSource> getClassSources() {
             return Arrays.asList(
-                new DependenciesAccessorClassSource(model.getName(), model, getProblemsService()),
-                new PluginsBlockDependenciesAccessorClassSource(model.getName(), model, getProblemsService())
+                new DependenciesAccessorClassSource(model.getName(), model, problemsService),
+                new PluginsBlockDependenciesAccessorClassSource(model.getName(), model, problemsService)
             );
         }
 
         @Override
-        public void visitIdentityInputs(InputVisitor visitor) {
+        public void visitImmutableInputs(InputVisitor visitor) {
             visitor.visitInputProperty(IN_LIBRARIES, model::getLibraryAliases);
             visitor.visitInputProperty(IN_BUNDLES, model::getBundleAliases);
             visitor.visitInputProperty(IN_VERSIONS, model::getVersionAliases);
             visitor.visitInputProperty(IN_PLUGINS, model::getPluginAliases);
             visitor.visitInputProperty(IN_MODEL_NAME, model::getName);
             visitor.visitInputFileProperty(IN_CLASSPATH, InputBehavior.NON_INCREMENTAL,
-                new InputFileValueSupplier(
+                new InputVisitor.InputFileValueSupplier(
                     classPath,
                     InputNormalizer.RUNTIME_CLASSPATH,
                     DirectorySensitivity.IGNORE_DIRECTORIES,
@@ -444,10 +450,16 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
 
     private class ProjectAccessorUnitOfWork extends AbstractAccessorUnitOfWork {
         private final static String IN_PROJECTS = "projects";
-        private final ProjectRegistry<? extends ProjectDescriptor> projectRegistry;
+        private final ProjectDescriptorRegistry projectRegistry;
 
-        public ProjectAccessorUnitOfWork(ProjectRegistry<? extends ProjectDescriptor> projectRegistry) {
+        public ProjectAccessorUnitOfWork(ProjectDescriptorRegistry projectRegistry) {
             this.projectRegistry = projectRegistry;
+        }
+
+        @Override
+        public Optional<CachingDisabledReason> shouldDisableCaching(@Nullable OverlappingOutputs detectedOverlappingOutputs) {
+            // This was a behaviour before 8.9, where we unified ExecutionEngine in https://github.com/gradle/gradle/pull/29534
+            return Optional.of(NOT_WORTH_CACHING);
         }
 
         @Override
@@ -461,7 +473,7 @@ public class DefaultDependenciesAccessors implements DependenciesAccessors {
         }
 
         @Override
-        public void visitIdentityInputs(InputVisitor visitor) {
+        public void visitImmutableInputs(InputVisitor visitor) {
             visitor.visitInputProperty(IN_PROJECTS, this::buildProjectTree);
         }
 

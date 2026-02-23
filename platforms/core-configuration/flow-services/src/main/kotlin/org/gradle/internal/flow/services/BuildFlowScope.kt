@@ -25,7 +25,7 @@ import org.gradle.api.flow.FlowActionSpec
 import org.gradle.api.flow.FlowParameters
 import org.gradle.api.flow.FlowProviders
 import org.gradle.api.flow.FlowScope
-import org.gradle.configurationcache.extensions.uncheckedCast
+import org.gradle.internal.extensions.stdlib.uncheckedCast
 import org.gradle.internal.instantiation.InstantiatorFactory
 import org.gradle.internal.isolated.IsolationScheme
 import org.gradle.internal.service.scopes.Scope
@@ -57,9 +57,9 @@ open class BuildFlowScope @Inject internal constructor(
         }
 
         protected
-        fun illegalState(): Nothing = throw IllegalStateException("This operation is not supported while in the ${javaClass.simpleName} state.")
+        fun illegalState(): Nothing = error("This operation is not supported while in the ${javaClass.simpleName} state.")
 
-        class Initial() : State() {
+        class Initial : State() {
 
             private
             val actions = mutableListOf<RegisteredFlowAction>()
@@ -113,6 +113,7 @@ open class BuildFlowScope @Inject internal constructor(
         state = state.load(memento)
     }
 
+    @Deprecated("Deprecated in Java")
     override fun buildFinished(result: BuildResult) {
         setBuildWorkResult(result.failure)
         schedulePendingActions()
@@ -153,7 +154,7 @@ open class BuildFlowScope @Inject internal constructor(
 
     private
     fun <P : FlowParameters, T : FlowAction<P>> parametersTypeOf(action: Class<T>): Class<P>? =
-        isolationScheme.parameterTypeFor(action)
+        isolationScheme.parameterTypeForOrNull(action)
 }
 
 

@@ -29,10 +29,12 @@ import org.gradle.api.internal.GradleInternal
 import org.gradle.api.internal.TaskInternal
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.api.internal.project.BuildOperationCrossProjectConfigurator
+import org.gradle.api.internal.project.CrossProjectModelAccess
+import org.gradle.api.internal.project.ProjectIdentity
 import org.gradle.api.internal.project.ProjectInternal
-import org.gradle.api.internal.project.ProjectRegistry
 import org.gradle.api.internal.project.ProjectState
 import org.gradle.api.internal.project.taskfactory.ITaskFactory
+import org.gradle.internal.build.BuildState
 import org.gradle.api.internal.project.taskfactory.TaskFactory
 import org.gradle.api.internal.project.taskfactory.TaskIdentity
 import org.gradle.api.internal.project.taskfactory.TaskInstantiator
@@ -40,6 +42,7 @@ import org.gradle.api.internal.project.taskfactory.TestTaskIdentities
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskDependency
+import org.gradle.internal.instantiation.InstantiatorFactory
 import org.gradle.internal.reflect.DirectInstantiator
 import org.gradle.internal.service.ServiceRegistry
 import org.gradle.util.Path
@@ -51,6 +54,13 @@ class DefaultTaskContainerTest extends AbstractPolymorphicDomainObjectContainerS
 
     private taskIdentityFactory = TestTaskIdentities.factory()
     private taskFactory = Mock(ITaskFactory)
+    private instantiatorFactory = Mock(InstantiatorFactory)
+    private serviceRegistry = Mock(ServiceRegistry) {
+        get(InstantiatorFactory) >> instantiatorFactory
+    }
+    private buildState = Stub(BuildState) {
+        getIdentityPath() >> Path.ROOT
+    }
     private project = Mock(ProjectInternal, name: "<project>") {
         identityPath(_) >> { String name ->
             Path.path(":project").child(name)
@@ -64,12 +74,17 @@ class DefaultTaskContainerTest extends AbstractPolymorphicDomainObjectContainerS
         getOwner() >> Mock(ProjectState) {
             getDepth() >> 0
             getProjectPath() >> Path.path(":project")
+            getOwner() >> buildState
         }
-        getServices() >> Mock(ServiceRegistry)
+        getServices() >> serviceRegistry
         getTaskDependencyFactory() >> TestFiles.taskDependencyFactory()
         getObjects() >> Stub(ObjectFactory)
+        getProjectIdentity() >> ProjectIdentity.forRootProject(
+            Path.ROOT,
+            "project"
+        )
     } as ProjectInternal
-    private final projectRegistry = Mock(ProjectRegistry)
+    private final crossProjectModelAccess = Mock(CrossProjectModelAccess)
     private container = new DefaultTaskContainerFactory(
         DirectInstantiator.INSTANCE,
         taskIdentityFactory,
@@ -79,7 +94,7 @@ class DefaultTaskContainerTest extends AbstractPolymorphicDomainObjectContainerS
         buildOperationRunner,
         new BuildOperationCrossProjectConfigurator(buildOperationRunner),
         callbackActionDecorator,
-        projectRegistry
+        crossProjectModelAccess
     ).create()
 
     boolean supportsBuildOperations = true
@@ -470,19 +485,27 @@ class DefaultTaskContainerTest extends AbstractPolymorphicDomainObjectContainerS
     void "finds task by relative path"() {
         when:
         Task task = task("task")
-        expectTaskLookupInOtherProject("sub", "task", task)
+        expectTaskLookupInOtherProject(":sub", "task", task)
 
         then:
         container.findByPath("sub:task") == task
     }
 
-    void "finds tasks by absolute path"() {
+    void "finds tasks by absolute path in current project"() {
         when:
-        Task task = task("task")
-        expectTaskLookupInOtherProject(":", "task", task)
+        Task task = addTask("task")
 
         then:
         container.findByPath(":task") == task
+    }
+
+    void "finds tasks by absolute path in different project"() {
+        when:
+        Task task = task("task")
+        expectTaskLookupInOtherProject(":other", "task", task)
+
+        then:
+        container.findByPath(":other:task") == task
     }
 
     void "does not find tasks from unknown projects"() {
@@ -524,16 +547,15 @@ class DefaultTaskContainerTest extends AbstractPolymorphicDomainObjectContainerS
         Task task = addTask("1")
 
         then:
-        container.resolveTask("1") == task
+        container.getByPath("1") == task
     }
 
     void "resolve locates by path"() {
         when:
         Task task = addTask("task")
-        expectTaskLookupInOtherProject(":", "task", task)
 
         then:
-        container.resolveTask(":task") == task
+        container.getByPath(":task") == task
     }
 
     void "realizes task graph"() {
@@ -1611,9 +1633,10 @@ class DefaultTaskContainerTest extends AbstractPolymorphicDomainObjectContainerS
         def otherTaskContainer = Mock(TaskContainerInternal)
         def otherProjectState = Mock(ProjectState)
 
-        projectRegistry.getProject(_) >> otherProject
+        crossProjectModelAccess.findProject(_, Path.path(projectPath)) >> otherProject
 
         otherProject.owner >> otherProjectState
+        otherProjectState.owner >> buildState
         1 * otherProjectState.ensureTasksDiscovered()
         otherProject.tasks >> otherTaskContainer
 

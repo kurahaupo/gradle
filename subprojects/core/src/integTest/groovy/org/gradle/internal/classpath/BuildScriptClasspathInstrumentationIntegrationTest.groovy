@@ -21,13 +21,14 @@ import org.gradle.api.internal.artifacts.ivyservice.CacheLayout
 import org.gradle.api.internal.cache.StringInterner
 import org.gradle.api.internal.initialization.transform.utils.DefaultInstrumentationAnalysisSerializer
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.BuildOperationsFixture
+import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.integtests.fixtures.cache.FileAccessTimeJournalFixture
+import org.gradle.operations.execution.ExecuteWorkBuildOperationType
 import org.gradle.test.fixtures.HttpRepository
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.server.http.MavenHttpRepository
 import org.gradle.test.fixtures.server.http.RepositoryHttpServer
-import org.gradle.test.precondition.Requires
-import org.gradle.test.preconditions.IntegTestPreconditions
 import org.gradle.util.internal.GFileUtils
 import org.junit.Rule
 import spock.lang.Issue
@@ -47,6 +48,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
 
     @Rule
     public final RepositoryHttpServer server = new RepositoryHttpServer(temporaryFolder)
+    def buildOperations = new BuildOperationsFixture(executer, testDirectoryProvider)
 
     def serializer = new DefaultInstrumentationAnalysisSerializer(new StringInterner())
 
@@ -89,7 +91,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         """
 
         when:
-        run("tasks", "--info")
+        run("tasks")
 
         then:
         allTransformsFor("buildSrc.jar") == ["ProjectDependencyInstrumentingArtifactTransform"]
@@ -108,11 +110,10 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         """
 
         when:
-        run("tasks", "--info")
+        run("tasks")
 
         then:
-        // InstrumentationAnalysisTransform is duplicated since InstrumentationAnalysisTransform result is also an input to MergeInstrumentationAnalysisTransform
-        allTransformsFor("commons-lang3-3.8.1.jar") ==~ ["InstrumentationAnalysisTransform", "InstrumentationAnalysisTransform", "MergeInstrumentationAnalysisTransform", "ExternalDependencyInstrumentingArtifactTransform"]
+        allTransformsFor("commons-lang3-3.8.1.jar") ==~ ["InstrumentationAnalysisTransform", "MergeInstrumentationAnalysisTransform", "ExternalDependencyInstrumentingArtifactTransform"]
         gradleUserHomeOutputs("original/commons-lang3-3.8.1.jar").isEmpty()
         gradleUserHomeOutput("instrumented/instrumented-commons-lang3-3.8.1.jar").exists()
     }
@@ -121,6 +122,10 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         given:
         withIncludedBuild("first")
         withIncludedBuild("second")
+        // We need to create different classes,
+        // since jar with the same content will be instrumented only once
+        file("first/src/main/java/First.java").text = "class First { }"
+        file("second/src/main/java/Second.java").text = "class Second { }"
         buildFile << """
             buildscript {
                 dependencies {
@@ -133,18 +138,15 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         when:
         executer.inDirectory(file("first")).withTasks("classes").run()
         executer.inDirectory(file("second")).withTasks("classes").run()
-        run("tasks", "--info")
+        run("tasks")
 
         then:
-        allTransformsFor("main") ==~ [
-            // Only the folder name is reported, so we cannot distinguish first and second
-            // InstrumentationAnalysisTransform is duplicated since InstrumentationAnalysisTransform
-            // result is also an input to MergeInstrumentationAnalysisTransform
-            "InstrumentationAnalysisTransform",
+        allTransformsFor("first/build/classes/java/main") ==~ [
             "InstrumentationAnalysisTransform",
             "MergeInstrumentationAnalysisTransform",
-            "ExternalDependencyInstrumentingArtifactTransform",
-            "InstrumentationAnalysisTransform",
+            "ExternalDependencyInstrumentingArtifactTransform"
+        ]
+        allTransformsFor("second/build/classes/java/main") ==~ [
             "InstrumentationAnalysisTransform",
             "MergeInstrumentationAnalysisTransform",
             "ExternalDependencyInstrumentingArtifactTransform"
@@ -160,7 +162,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
 
             buildscript {
                 repositories {
-                    maven { url "${mavenRepo.uri}" }
+                    maven { url = "${mavenRepo.uri}" }
                 }
                 dependencies {
                     classpath "${first[0]}"
@@ -206,7 +208,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         settingsFile << """
             pluginManagement {
                 repositories {
-                    maven { url "${mavenRepo.uri}" }
+                    maven { url = "${mavenRepo.uri}" }
                 }
             }
 
@@ -271,7 +273,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         buildFile << """
             buildscript {
                  repositories {
-                    maven { url "$mavenRepo.uri" }
+                    maven { url = "$mavenRepo.uri" }
                 }
                 dependencies {
                     classpath(files("./subproject/animals/build/libs/animals-1.0.jar"))
@@ -280,11 +282,10 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         """
 
         when:
-        run("tasks", "--info")
+        run("tasks")
 
         then:
-        // InstrumentationAnalysisTransform is duplicated since InstrumentationAnalysisTransform result is also an input to MergeInstrumentationAnalysisTransform
-        allTransformsFor("animals-1.0.jar") ==~ ["InstrumentationAnalysisTransform", "InstrumentationAnalysisTransform", "MergeInstrumentationAnalysisTransform", "ExternalDependencyInstrumentingArtifactTransform"]
+        allTransformsFor("animals-1.0.jar") ==~ ["InstrumentationAnalysisTransform", "MergeInstrumentationAnalysisTransform", "ExternalDependencyInstrumentingArtifactTransform"]
         def typeHierarchyAnalysis = typeHierarchyAnalysisOutput("animals-1.0.jar")
         typeHierarchyAnalysis.exists()
         serializer.readTypeHierarchyAnalysis(typeHierarchyAnalysis) == [
@@ -343,10 +344,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         ]
     }
 
-    @Requires(
-        value = IntegTestPreconditions.NotConfigCached,
-        reason = "Cc doesn't get invalidated when file dependency changes"
-    )
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/33875")
     def "should re-instrument jar if classpath changes and class starts extending a Gradle core class transitively"() {
         given:
         multiProjectJavaBuild("subproject") {
@@ -382,10 +380,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         gradleUserHomeOutputs("instrumented/instrumented-impl-1.0.jar").size() == 2
     }
 
-    @Requires(
-        value = IntegTestPreconditions.NotConfigCached,
-        reason = "Cc doesn't get invalidated when file dependency changes"
-    )
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/33875")
     def "should not re-instrument jar if classpath changes but class doesn't extend Gradle core class"() {
         given:
         multiProjectJavaBuild("subproject") {
@@ -432,7 +427,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         when:
         buildFile.text = """
             buildscript {
-                repositories { maven { url "${mavenRemote.uri}" } }
+                repositories { maven { url = "${mavenRemote.uri}" } }
                 dependencies { classpath "$artifactCoordinates" }
             }
         """
@@ -443,7 +438,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
         when:
         buildFile.text = """
             buildscript {
-                repositories { maven { url "${normaliseFileSeparators(mavenRepo.uri.toString())}" } }
+                repositories { maven { url = "${normaliseFileSeparators(mavenRepo.uri.toString())}" } }
                 dependencies { classpath "$artifactCoordinates" }
             }
         """
@@ -639,7 +634,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
             publishing {
                 repositories {
                     maven {
-                        url '${mavenRepo.uri}'
+                        url = "${mavenRepo.uri}"
                     }
                 }
             }
@@ -669,11 +664,18 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
 
     List<String> allTransformsFor(String fileName) {
         List<String> transforms = []
-        def pattern = Pattern.compile("Transforming " + fileName + ".* with (.*)")
-        for (def line : output.readLines()) {
-            def matcher = pattern.matcher(line)
-            if (matcher.matches()) {
-                transforms.add(matcher.group(1))
+        def transformExecutions = buildOperations.all(ExecuteWorkBuildOperationType).findAll {
+            it.details.workType == "TRANSFORM"
+        }
+        def pattern = Pattern.compile("Executing ([\$_a-zA-Z0-9]*):.*" + fileName)
+        for (execution in transformExecutions) {
+            buildOperations.search(execution) {
+                def matcher = pattern.matcher(normaliseFileSeparators(it.displayName))
+                if (matcher.matches()) {
+                    transforms.add(matcher.group(1))
+                    return true
+                }
+                return false
             }
         }
         return transforms
@@ -742,7 +744,7 @@ class BuildScriptClasspathInstrumentationIntegrationTest extends AbstractIntegra
     }
 
     Set<TestFile> findOutputs(String outputEndsWith, File cacheDir) {
-        return Files.find(cacheDir.toPath(), 4, (path, attributes) -> normaliseFileSeparators(path.toString()).endsWith(outputEndsWith))
+        return Files.find(cacheDir.toPath(), 5, (path, attributes) -> normaliseFileSeparators(path.toString()).endsWith(outputEndsWith))
             .map { new TestFile(it.toFile()) }
             .collect(Collectors.toSet())
     }

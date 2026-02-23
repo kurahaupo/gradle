@@ -18,13 +18,13 @@ package org.gradle.internal.logging.console.taskgrouping
 
 import org.fusesource.jansi.Ansi
 import org.gradle.api.logging.LogLevel
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.integtests.fixtures.console.AbstractConsoleGroupedTaskFunctionalTest
 import org.gradle.integtests.fixtures.executer.LogContent
+import org.gradle.integtests.fixtures.flow.FlowActionsFixture
 
 import static org.hamcrest.CoreMatchers.containsString
 
-abstract class AbstractConsoleBuildResultFunctionalTest extends AbstractConsoleGroupedTaskFunctionalTest {
+abstract class AbstractConsoleBuildResultFunctionalTest extends AbstractConsoleGroupedTaskFunctionalTest implements FlowActionsFixture {
     protected final StyledOutput buildFailed = styled(Ansi.Color.RED, Ansi.Attribute.INTENSITY_BOLD).text('BUILD FAILED').off()
     protected final StyledOutput buildSuccessful = styled(Ansi.Color.GREEN, Ansi.Attribute.INTENSITY_BOLD).text('BUILD SUCCESSFUL').off()
 
@@ -78,23 +78,18 @@ BUILD SUCCESSFUL in [ \\dms]+
         result.assertNotOutput("actionable task")
     }
 
-    @ToBeFixedForConfigurationCache(because = "Gradle.buildFinished")
     def "outcome for successful build is logged after user logic has completed"() {
         given:
-        buildFile << """
+        buildFile """
             task success { doLast { } }
-            gradle.buildFinished {
-                println "build finished"
-            }
+            ${buildFinishedFlowAction """ println "build finished" """ }
         """
 
         when:
-        succeeds('success')
+        succeeds 'success'
 
         then:
-        result.plainTextOutput.matches """(?s).*build finished
-
-BUILD SUCCESSFUL in [ \\dms]+
+        result.plainTextOutput.matches """(?s).*build finished.*BUILD SUCCESSFUL in [ \\dms]+
 1 actionable task: 1 executed
 .*"""
     }

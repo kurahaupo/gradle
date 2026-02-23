@@ -15,8 +15,8 @@
  */
 package org.gradle.api.internal.artifacts.dependencies;
 
-import com.google.common.base.Objects;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
 import org.gradle.api.Action;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.ExternalModuleDependency;
@@ -24,45 +24,42 @@ import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.MutableVersionConstraint;
 import org.gradle.api.artifacts.VersionConstraint;
+import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.artifacts.DefaultModuleIdentifier;
 import org.gradle.api.internal.artifacts.ModuleVersionSelectorStrictSpec;
+import org.gradle.api.internal.artifacts.capability.DefaultSpecificCapabilitySelector;
+import org.gradle.api.internal.artifacts.capability.FeatureCapabilitySelector;
+import org.gradle.api.internal.artifacts.capability.SpecificCapabilitySelector;
+import org.gradle.internal.component.external.model.DefaultImmutableCapability;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
+import java.util.List;
 
 public abstract class AbstractExternalModuleDependency extends AbstractModuleDependency implements ExternalModuleDependency {
+
     private final ModuleIdentifier moduleIdentifier;
     private boolean changing;
-    private final DefaultMutableVersionConstraint versionConstraint;
+    private final MutableVersionConstraint versionConstraint;
 
     public AbstractExternalModuleDependency(ModuleIdentifier module, String version, @Nullable String configuration) {
-        super(configuration);
-        if (module == null) {
-            throw new InvalidUserDataException("Module must not be null!");
-        }
         this.moduleIdentifier = module;
         this.versionConstraint = new DefaultMutableVersionConstraint(version);
+        if (configuration != null) {
+            setTargetConfiguration(configuration);
+        }
     }
 
     public AbstractExternalModuleDependency(ModuleIdentifier module, MutableVersionConstraint version, @Nullable String configuration) {
-        super(configuration);
-        if (module == null) {
-            throw new InvalidUserDataException("Module must not be null!");
-        }
         this.moduleIdentifier = module;
-        this.versionConstraint = (DefaultMutableVersionConstraint) version;
+        this.versionConstraint = version;
+        if (configuration != null) {
+            setTargetConfiguration(configuration);
+        }
     }
 
     protected void copyTo(AbstractExternalModuleDependency target) {
         super.copyTo(target);
         target.setChanging(isChanging());
-    }
-
-    protected boolean isContentEqualsFor(ExternalModuleDependency dependencyRhs) {
-        if (!isCommonContentEquals(dependencyRhs)) {
-            return false;
-        }
-        return changing == dependencyRhs.isChanging() &&
-                Objects.equal(getVersionConstraint(), dependencyRhs.getVersionConstraint());
     }
 
     @Override
@@ -71,7 +68,7 @@ public abstract class AbstractExternalModuleDependency extends AbstractModuleDep
     }
 
     @Override
-    public String getGroup() {
+    public @Nullable String getGroup() {
         return moduleIdentifier.getGroup();
     }
 
@@ -81,8 +78,10 @@ public abstract class AbstractExternalModuleDependency extends AbstractModuleDep
     }
 
     @Override
-    public String getVersion() {
-        return Strings.emptyToNull(versionConstraint.getVersion());
+    public @Nullable String getVersion() {
+        String requiredVersion = versionConstraint.getRequiredVersion();
+        String version = requiredVersion.isEmpty() ? versionConstraint.getPreferredVersion() : requiredVersion;
+        return Strings.emptyToNull(version);
     }
 
     @Override
@@ -126,6 +125,31 @@ public abstract class AbstractExternalModuleDependency extends AbstractModuleDep
     }
 
     @Override
+    @SuppressWarnings("deprecation")
+    public List<Capability> getRequestedCapabilities() {
+        return getCapabilitySelectors().stream()
+            .map(c -> {
+                if (c instanceof SpecificCapabilitySelector) {
+                    return ((DefaultSpecificCapabilitySelector) c).getBackingCapability();
+                } else if (c instanceof FeatureCapabilitySelector) {
+                    return new DefaultImmutableCapability(
+                        getGroup(),
+                        getName() + "-" + ((FeatureCapabilitySelector) c).getFeatureName(),
+                        getVersion()
+                    );
+                } else {
+                    throw new UnsupportedOperationException("Unsupported capability selector type: " + c.getClass().getName());
+                }
+            })
+            .collect(ImmutableList.toImmutableList());
+    }
+
+    @Override
+    public String toString() {
+        return getGroup() + ":" + getName() + ":" + getVersionConstraint().getDisplayName();
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (this == o) {
             return true;
@@ -135,7 +159,11 @@ public abstract class AbstractExternalModuleDependency extends AbstractModuleDep
         }
 
         AbstractExternalModuleDependency that = (AbstractExternalModuleDependency) o;
-        return isContentEqualsFor(that);
+
+        return moduleIdentifier.equals(that.moduleIdentifier) &&
+            versionConstraint.equals(that.versionConstraint) &&
+            changing == that.changing &&
+            isCommonContentEquals(that);
     }
 
     @Override

@@ -34,8 +34,8 @@ import org.gradle.launcher.configuration.InitialProperties;
 import org.gradle.launcher.daemon.configuration.DaemonBuildOptions;
 import org.gradle.launcher.daemon.configuration.DaemonParameters;
 import org.gradle.launcher.daemon.toolchain.ToolchainBuildOptions;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
@@ -64,7 +64,7 @@ public class BuildEnvironmentConfigurationConverter {
         this.startParameterConverter = startParameterConverter;
         this.daemonParametersConverter = daemonParametersConverter;
         this.fileCollectionFactory = fileCollectionFactory;
-        this.toolchainConfigurationBuildOptionBackedConverter = new BuildOptionBackedConverter<>(new ToolchainBuildOptions());
+        this.toolchainConfigurationBuildOptionBackedConverter = new BuildOptionBackedConverter<>(ToolchainBuildOptions.forToolChainConfiguration());
     }
 
     public BuildEnvironmentConfigurationConverter(BuildLayoutFactory buildLayoutFactory, FileCollectionFactory fileCollectionFactory) {
@@ -84,16 +84,16 @@ public class BuildEnvironmentConfigurationConverter {
         StartParameterInternal startParameter = new StartParameterInternal();
         startParameterConverter.convert(args, buildLayout, properties, startParameter);
 
-        DaemonParameters daemonParameters = new DaemonParameters(buildLayout, fileCollectionFactory, properties.getRequestedSystemProperties());
+        DaemonParameters daemonParameters = new DaemonParameters(buildLayout.getGradleUserHomeDir(), fileCollectionFactory, properties.getRequestedSystemProperties());
         daemonParametersConverter.convert(args, properties.getProperties(), daemonParameters);
 
         // This is a workaround to maintain existing behavior that allowed
         // toolchain-specific properties to be specified with -P instead of -D
         Map<String, String> gradlePropertiesAsSeenByToolchains = new HashMap<>();
         gradlePropertiesAsSeenByToolchains.putAll(properties.getProperties());
-        gradlePropertiesAsSeenByToolchains.putAll(startParameter.getProjectProperties());
+        gradlePropertiesAsSeenByToolchains.putAll(startParameter.getProjectPropertiesUntracked());
         toolchainConfigurationBuildOptionBackedConverter.convert(args, gradlePropertiesAsSeenByToolchains, daemonParameters.getToolchainConfiguration());
-        daemonParameters.setRequestedJvmCriteria(properties.getDaemonJvmProperties());
+        daemonParameters.setRequestedJvmCriteriaFromMap(properties.getDaemonJvmProperties());
 
         return new Parameters(startParameter, daemonParameters, properties);
     }

@@ -22,13 +22,16 @@ import org.gradle.api.internal.SettingsInternal
 import org.gradle.api.internal.artifacts.DefaultBuildIdentifier
 import org.gradle.api.internal.artifacts.DefaultProjectComponentIdentifier
 import org.gradle.api.internal.initialization.ClassLoaderScope
+import org.gradle.api.problems.ProblemReporter
 import org.gradle.initialization.DefaultProjectDescriptor
 import org.gradle.initialization.DefaultProjectDescriptorRegistry
 import org.gradle.internal.build.BuildState
-import org.gradle.internal.concurrent.DefaultWorkerLimits
+import org.gradle.internal.operations.BuildOperationsParameters
 import org.gradle.internal.resources.DefaultResourceLockCoordinationService
 import org.gradle.internal.service.DefaultServiceRegistry
 import org.gradle.internal.work.DefaultWorkerLeaseService
+import org.gradle.internal.work.DefaultWorkerLimits
+import org.gradle.internal.work.ResourceLockStatistics
 import org.gradle.test.fixtures.concurrent.ConcurrentSpec
 import org.gradle.util.Path
 import org.gradle.util.TestUtil
@@ -36,7 +39,7 @@ import org.gradle.util.TestUtil
 import static org.junit.Assert.assertTrue
 
 class DefaultProjectStateRegistryTest extends ConcurrentSpec {
-    def workerLeaseService = new DefaultWorkerLeaseService(new DefaultResourceLockCoordinationService(), new DefaultWorkerLimits(4))
+    def workerLeaseService = new DefaultWorkerLeaseService(new DefaultResourceLockCoordinationService(), new DefaultWorkerLimits(4), ResourceLockStatistics.NO_OP)
     def registry = new DefaultProjectStateRegistry(workerLeaseService)
     def projectFactory = Mock(IProjectFactory)
 
@@ -711,8 +714,11 @@ class DefaultProjectStateRegistryTest extends ConcurrentSpec {
     }
 
     ProjectComponentIdentifier projectId(String name) {
-        def path = name == ':' ? Path.ROOT : Path.ROOT.child(name)
-        return new DefaultProjectComponentIdentifier(DefaultBuildIdentifier.ROOT, path, path, name)
+        def id = name == ':'
+            ? ProjectIdentity.forRootProject(Path.ROOT, "root")
+            : ProjectIdentity.forSubproject(Path.ROOT, Path.ROOT.child(name))
+
+        return new DefaultProjectComponentIdentifier(id)
     }
 
     ProjectInternal project(String name) {
@@ -723,10 +729,11 @@ class DefaultProjectStateRegistryTest extends ConcurrentSpec {
     }
 
     BuildState build(String... projects) {
+        def problemsReporter = Stub(ProblemReporter)
         def descriptors = new DefaultProjectDescriptorRegistry()
-        def root = new DefaultProjectDescriptor(null, "root", null, descriptors, null)
+        def root = new DefaultProjectDescriptor(null, "root", null, descriptors, null, problemsReporter)
         projects.each {
-            new DefaultProjectDescriptor(root, it, null, descriptors, null)
+            new DefaultProjectDescriptor(root, it, null, descriptors, null, problemsReporter)
         }
 
         def settings = Stub(SettingsInternal)
@@ -736,10 +743,9 @@ class DefaultProjectStateRegistryTest extends ConcurrentSpec {
         build.loadedSettings >> settings
         build.buildIdentifier >> DefaultBuildIdentifier.ROOT
         build.identityPath >> Path.ROOT
-        build.calculateIdentityPathForProject(_) >> { Path path -> path }
         def services = new DefaultServiceRegistry()
         services.add(projectFactory)
-        services.add(TestUtil.stateTransitionControllerFactory())
+        services.add(TestUtil.stateTransitionControllerFactory(Mock(BuildOperationsParameters)))
         build.mutableModel >> Stub(GradleInternal) {
             getServices() >> services
         }

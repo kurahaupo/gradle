@@ -17,9 +17,11 @@
 package org.gradle.plugin.devel.variants
 
 import org.gradle.api.JavaVersion
+import org.gradle.api.artifacts.Dependency
 import org.gradle.api.plugins.UnknownPluginException
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.internal.component.resolution.failure.exception.VariantSelectionException
+import org.gradle.integtests.fixtures.executer.NoDaemonGradleExecuter
+import org.gradle.internal.component.resolution.failure.exception.VariantSelectionByAttributesException
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.UnitTestPreconditions
 import org.gradle.util.GradleVersion
@@ -28,7 +30,7 @@ import spock.lang.Issue
 class GradlePluginWithVariantsPublicationIntegrationTest extends AbstractIntegrationSpec {
     def currentGradle = GradleVersion.current().version
 
-    @Requires(UnitTestPreconditions.Jdk15OrEarlier) // older Gradle version 6.7.1 is used in test
+    @Requires(value = UnitTestPreconditions.Jdk15OrEarlier, reason = "older Gradle version 6.7.1 is used in test")
     def "can publish and use Gradle plugin with multiple variants"() {
         given:
         def producer = file('producer')
@@ -130,7 +132,8 @@ class GradlePluginWithVariantsPublicationIntegrationTest extends AbstractIntegra
         outputContains("Hello from Gradle 7.0+")
 
         and:
-        def gradle6Executer = buildContext.distribution("6.7.1").executer(temporaryFolder, buildContext)
+        def distribution = buildContext.distribution("6.7.1")
+        def gradle6Executer = new NoDaemonGradleExecuter(distribution, temporaryFolder, buildContext)
         def gradle6Result = gradle6Executer.usingProjectDirectory(consumer).withTasks('greet').run()
 
         then:
@@ -156,7 +159,7 @@ class GradlePluginWithVariantsPublicationIntegrationTest extends AbstractIntegra
             version = "1.0"
 
             configurations.configureEach {
-                if (canBeConsumed)  {
+                if (canBeConsumed && name != '${Dependency.ARCHIVES_CONFIGURATION}')  {
                     attributes {
                         attribute(GradlePluginApiVersion.GRADLE_PLUGIN_API_VERSION_ATTRIBUTE, objects.named(GradlePluginApiVersion, '1000.0'))
                     }
@@ -204,12 +207,12 @@ class GradlePluginWithVariantsPublicationIntegrationTest extends AbstractIntegra
         fails 'greet', "--stacktrace"
 
         then:
-        failure.assertHasErrorOutput("""> Could not resolve all artifacts for configuration ':classpath'.
+        failure.assertHasErrorOutput("""> Could not resolve all artifacts for configuration 'classpath'.
    > Could not resolve com.example:producer:1.0.
      Required by:
-         project : > com.example.greeting:com.example.greeting.gradle.plugin:1.0
+         buildscript of root project 'consumer' > com.example.greeting:com.example.greeting.gradle.plugin:1.0
       > Plugin com.example:producer:1.0 requires at least Gradle 1000.0. This build uses Gradle $currentGradle.""")
-        failure.assertHasErrorOutput("Caused by: " + VariantSelectionException.class.getName())
+        failure.assertHasErrorOutput("Caused by: " + VariantSelectionByAttributesException.class.getName())
         failure.assertHasResolution("Upgrade to at least Gradle 1000.0. See the instructions at https://docs.gradle.org/$currentGradle/userguide/upgrading_version_8.html#sub:updating-gradle.")
         failure.assertHasResolution("Downgrade plugin com.example:producer:1.0 to an older version compatible with Gradle $currentGradle.")
     }
@@ -333,13 +336,15 @@ class GradlePluginWithVariantsPublicationIntegrationTest extends AbstractIntegra
 
             def color = Attribute.of("color", String)
             configurations.configureEach {
-                if (canBeConsumed && name.startsWith(alternate.name))  {
-                    attributes {
-                        attribute(color, 'green')
-                    }
-                } else if (canBeConsumed && !name.startsWith(alternate.name))  {
-                    attributes {
-                        attribute(color, 'blue')
+                if (name != '${Dependency.ARCHIVES_CONFIGURATION}') {
+                    if (canBeConsumed && name.startsWith(alternate.name))  {
+                        attributes {
+                            attribute(color, 'green')
+                        }
+                    } else if (canBeConsumed && !name.startsWith(alternate.name))  {
+                        attributes {
+                            attribute(color, 'blue')
+                        }
                     }
                 }
             }
@@ -409,10 +414,11 @@ class GradlePluginWithVariantsPublicationIntegrationTest extends AbstractIntegra
         fails 'greet', "--stacktrace"
 
         then:
-        failure.assertHasErrorOutput("""      > The consumer was configured to find a library for use during runtime, compatible with Java ${JavaVersion.current().majorVersion}, packaged as a jar, and its dependencies declared externally, as well as attribute 'org.gradle.plugin.api-version' with value '${GradleVersion.current().version}'. However we cannot choose between the following variants of com.example:producer:1.0:
-          - alternateRuntimeElements
-          - runtimeElements""")
-        failure.assertHasErrorOutput("Caused by: " + VariantSelectionException.class.name)
+        failure.assertHasErrorOutput("""      > The consumer was configured to find a library for use during runtime, compatible with Java ${JavaVersion.current().majorVersion}, packaged as a jar, and its dependencies declared externally, as well as attribute 'org.gradle.plugin.api-version' with value '${GradleVersion.current().version}'. There are several available matching variants of com.example:producer:1.0
+        The only attribute distinguishing these variants is 'color'. Add this attribute to the consumer's configuration to resolve the ambiguity:
+          - Value: 'green' selects variant: 'alternateRuntimeElements'
+          - Value: 'blue' selects variant: 'runtimeElements'""")
+        failure.assertHasErrorOutput("Caused by: " + VariantSelectionByAttributesException.class.name)
     }
 
 

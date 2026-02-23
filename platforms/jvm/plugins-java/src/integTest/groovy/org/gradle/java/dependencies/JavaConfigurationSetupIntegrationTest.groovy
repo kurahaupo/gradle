@@ -17,6 +17,7 @@
 package org.gradle.java.dependencies
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForIsolatedProjects
 
 class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
 
@@ -50,9 +51,6 @@ class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
         """
 
         when:
-        if (deprecated(alternatives)) {
-            executer.expectDeprecationWarning()
-        }
         if (forbidden(alternatives) || doesNotExist(alternatives)) {
             fails 'help'
         } else {
@@ -60,7 +58,7 @@ class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
         }
 
         then:
-        !deprecated(alternatives)   || output.contains("The $configuration configuration has been deprecated for dependency declaration. This will fail with an error in Gradle 8.0. Please use the $alternatives configuration instead.")
+        !deprecated(alternatives)
         !valid(alternatives)        || !output.contains("> Configure project :")
         !doesNotExist(alternatives) || errorOutput.contains("Could not find method $configuration() for arguments [some:module:1.0] on object of type org.gradle.api.internal.artifacts.dsl.dependencies.DefaultDependencyHandler")
         !forbidden(alternatives)    || failure.hasErrorOutput("Dependencies can not be declared against the `$configuration` configuration.")
@@ -91,6 +89,7 @@ class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
         'java-library' | 'compileOnlyApi'               | VALID
     }
 
+    @ToBeFixedForIsolatedProjects(because = "Configure projects from root")
     def "the #configuration configuration is setup correctly for consumption in the #plugin plugin"() {
         when:
         createDirs("sub")
@@ -107,9 +106,8 @@ class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
                 }
             }
         """
-        if (deprecated(alternatives)) {
-            executer.expectDeprecationWarning()
-        }
+
+        executer.withArgument("--no-problems-report")
         if (forbidden(alternatives) || doesNotExist(alternatives)) {
             fails 'resolve'
         } else {
@@ -117,39 +115,39 @@ class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
         }
 
         then:
-        !deprecated(alternatives)   || output.contains("The $configuration configuration has been deprecated for consumption. This will fail with an error in Gradle 8.0. Please use attributes to consume the ${alternatives} configuration instead.")
+        !deprecated(alternatives)
         !valid(alternatives)        || output.contains("> Task :resolve\n\n")
-        !forbidden(alternatives)    || errorOutput.contains("Selected configuration '$configuration' on 'project :sub' but it can't be used as a project dependency because it isn't intended for consumption by other components.")
-        !doesNotExist(alternatives) || errorOutput.contains("A dependency was declared on configuration '$configuration' which is not declared in the descriptor for project :sub.")
+        !doesNotExist(alternatives) || errorOutput.contains("A dependency was declared on configuration '$configuration' of 'project :sub' but no variant with that configuration name exists.")
 
         where:
         plugin         | configuration                  | alternatives
 
-        'java'         | 'compileOnly'                  | FORBIDDEN
-        'java'         | 'runtimeOnly'                  | FORBIDDEN
-        'java'         | 'implementation'               | FORBIDDEN
+        'java'         | 'compileOnly'                  | DOES_NOT_EXIST
+        'java'         | 'runtimeOnly'                  | DOES_NOT_EXIST
+        'java'         | 'implementation'               | DOES_NOT_EXIST
         'java'         | 'runtimeElements'              | VALID
         'java'         | 'apiElements'                  | VALID
-        'java'         | 'compileClasspath'             | FORBIDDEN
-        'java'         | 'runtimeClasspath'             | FORBIDDEN
-        'java'         | 'annotationProcessor'          | FORBIDDEN
+        'java'         | 'compileClasspath'             | DOES_NOT_EXIST
+        'java'         | 'runtimeClasspath'             | DOES_NOT_EXIST
+        'java'         | 'annotationProcessor'          | DOES_NOT_EXIST
         'java'         | 'api'                          | DOES_NOT_EXIST
         'java'         | 'compileOnlyApi'               | DOES_NOT_EXIST
 
-        'java-library' | 'compileOnly'                  | FORBIDDEN
-        'java-library' | 'runtimeOnly'                  | FORBIDDEN
-        'java-library' | 'implementation'               | FORBIDDEN
+        'java-library' | 'compileOnly'                  | DOES_NOT_EXIST
+        'java-library' | 'runtimeOnly'                  | DOES_NOT_EXIST
+        'java-library' | 'implementation'               | DOES_NOT_EXIST
         'java-library' | 'runtimeElements'              | VALID
         'java-library' | 'apiElements'                  | VALID
-        'java-library' | 'compileClasspath'             | FORBIDDEN
-        'java-library' | 'runtimeClasspath'             | FORBIDDEN
-        'java-library' | 'annotationProcessor'          | FORBIDDEN
-        'java-library' | 'api'                          | FORBIDDEN
-        'java-library' | 'compileOnlyApi'               | FORBIDDEN
+        'java-library' | 'compileClasspath'             | DOES_NOT_EXIST
+        'java-library' | 'runtimeClasspath'             | DOES_NOT_EXIST
+        'java-library' | 'annotationProcessor'          | DOES_NOT_EXIST
+        'java-library' | 'api'                          | DOES_NOT_EXIST
+        'java-library' | 'compileOnlyApi'               | DOES_NOT_EXIST
     }
 
     def "the #configuration configuration is setup correctly for resolution in the #plugin plugin"() {
         given:
+        settingsFile << "rootProject.name = 'test'"
         buildFile << """
             plugins { id '$plugin' }
             task resolve {
@@ -162,9 +160,8 @@ class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
 
         when:
         executer.withStacktraceEnabled()
-        if (deprecated(alternatives)) {
-            executer.expectDeprecationWarning()
-        }
+
+        executer.withArgument("--no-problems-report")
         if (forbidden(alternatives) || doesNotExist(alternatives)) {
             fails 'resolve'
         } else {
@@ -172,10 +169,10 @@ class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
         }
 
         then:
-        !deprecated(alternatives)   || output.contains("The $configuration configuration has been deprecated for resolution. This will fail with an error in Gradle 8.0. Please resolve the ${alternatives} configuration instead.")
+        !deprecated(alternatives)
         !valid(alternatives)        || output.contains("> Task :resolve\n\n")
         !forbidden(alternatives)    || errorOutput.contains("Resolving dependency configuration '$configuration' is not allowed as it is defined as 'canBeResolved=false'.\nInstead, a resolvable ('canBeResolved=true') dependency configuration that extends '$configuration' should be resolved.")
-        !doesNotExist(alternatives) || errorOutput.contains("Could not get unknown property '$configuration' for configuration container of type org.gradle.api.internal.artifacts.configurations.DefaultConfigurationContainer.")
+        !doesNotExist(alternatives) || errorOutput.contains("Could not get unknown property '$configuration' for configuration container for root project 'test' of type org.gradle.api.internal.artifacts.configurations.DefaultConfigurationContainer.")
 
         where:
         plugin         | configuration                  | alternatives
@@ -212,7 +209,7 @@ class JavaConfigurationSetupIntegrationTest extends AbstractIntegrationSpec {
                id('java-library')
             }
             repositories {
-                maven { url '$mavenRepo.uri' }
+                maven { url = '$mavenRepo.uri' }
             }
             dependencies {
                compileOnlyApi 'org:a:1.0'

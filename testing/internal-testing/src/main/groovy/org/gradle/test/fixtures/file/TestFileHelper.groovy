@@ -17,7 +17,7 @@ package org.gradle.test.fixtures.file
 
 import com.google.common.io.ByteStreams
 import org.apache.commons.io.FileUtils
-import org.apache.commons.lang.StringUtils
+import org.apache.commons.lang3.StringUtils
 import org.apache.tools.ant.Project
 import org.apache.tools.ant.taskdefs.Expand
 import org.apache.tools.ant.taskdefs.Tar
@@ -161,13 +161,7 @@ class TestFileHelper {
     }
 
     String readLink() {
-        def process = ["readlink", file.absolutePath].execute()
-        def error = process.errorStream.text
-        def retval = process.waitFor()
-        if (retval != 0) {
-            throw new RuntimeException("Could not read link '$file': $error")
-        }
-        return process.inputStream.text.trim()
+        Files.readSymbolicLink(file.toPath()).toFile().absolutePath
     }
 
     ExecOutput exec(List args) {

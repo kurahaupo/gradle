@@ -16,6 +16,9 @@
 
 package gradlebuild.cleanup.services;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.regex.Pattern.quote;
+
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -25,9 +28,11 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
@@ -35,8 +40,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static java.util.regex.Pattern.quote;
 
 /**
  * NOTICE: this class is invoked via java command line, so we must NOT DEPEND ON ANY 3RD-PARTY LIBRARIES except JDK 11.
@@ -70,6 +73,8 @@ public class KillLeakingJavaProcesses {
     private static final String JAVA_EXECUTABLE_PATTERN_STR = "java(?:\\.exe)?";
     private static final String GRADLE_MAIN_CLASS_PATTERN_STR = "(org\\.gradle\\.[a-zA-Z]+)";
     private static final String PLAY_SERVER_PATTERN_STR = "(play\\.core\\.server\\.NettyServer)";
+    // https://github.com/gradle/gradle-private/issues/4255
+    private static final String CHROME_PATTERN_STR = "(/usr/bin/google-chrome-for-testing)";
     private static final String JAVA_PROCESS_STACK_TRACES_MONITOR_PATTERN_STR = "(JavaProcessStackTracesMonitor\\.java)";
     private static ExecutionMode executionMode;
 
@@ -87,12 +92,14 @@ public class KillLeakingJavaProcesses {
         String perfTestClasspathPattern = "(?:-cp.+\\\\build\\\\tmp\\\\performance-test-files.+?" + GRADLE_MAIN_CLASS_PATTERN_STR + ")";
         String buildDirClasspathPattern = "(?:-(classpath|cp) \"?" + quotedRootProjectDir + ".+?" + GRADLE_MAIN_CLASS_PATTERN_STR + ")";
         String playServerPattern = "(?:-classpath.+" + quotedRootProjectDir + ".+?" + PLAY_SERVER_PATTERN_STR + ")";
-        return "(?i)[/\\\\]" + "(" + JAVA_EXECUTABLE_PATTERN_STR + ".+?" + "(?:"
+        String javaPattern = "(?i)[/\\\\]" + "(" + JAVA_EXECUTABLE_PATTERN_STR + ".+?" + "(?:"
             + perfTestClasspathPattern + "|"
             + buildDirClasspathPattern + "|"
             + playServerPattern + "|"
             + kotlinCompilerDaemonPattern + "|"
             + JAVA_PROCESS_STACK_TRACES_MONITOR_PATTERN_STR + ").+)";
+
+        return javaPattern + "|" + CHROME_PATTERN_STR;
     }
 
     public static void main(String[] args) {
@@ -133,7 +140,7 @@ public class KillLeakingJavaProcesses {
     }
 
     private static void writePsOutputToFile(File rootProjectDir, List<String> psOutput) {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
+        String timestamp = LocalDateTime.now(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"));
         File psOutFile = new File(rootProjectDir, timestamp + ".psoutput");
 
         try {
@@ -185,20 +192,26 @@ public class KillLeakingJavaProcesses {
 
     private static String[] determinePsCommand() {
         if (isWindows()) {
-            return new String[]{"wmic", "process", "get", "processid,commandline"};
+            return new String[]{"powershell", "-Command", "\"Get-CimInstance Win32_Process | ForEach-Object { \\\"$($_.CommandLine) $($_.ProcessId)\\\" }\""};
         } else if (isMacOS()) {
             return new String[]{"ps", "x", "-o", "pid,command"};
+        } else if (isAlpine()) {
+            return new String[]{"ps", "x", "-o", "pid,args"};
         } else {
             return new String[]{"ps", "x", "-o", "pid,cmd"};
         }
     }
 
     private static boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase().contains("windows");
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("windows");
     }
 
     private static boolean isMacOS() {
-        return System.getProperty("os.name").toLowerCase().contains("mac");
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("mac");
+    }
+
+    private static boolean isAlpine() {
+        return System.getProperty("java.vm.vendor").toLowerCase(Locale.ROOT).contains("alpine");
     }
 
     private static class ExecResult {
@@ -236,7 +249,7 @@ public class KillLeakingJavaProcesses {
 
             process.waitFor(1, TimeUnit.MINUTES);
             latch.await(1, TimeUnit.MINUTES);
-            return new ExecResult(args, process.exitValue(), stdout.toString(), stderr.toString());
+            return new ExecResult(args, process.exitValue(), stdout.toString(UTF_8), stderr.toString(UTF_8));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -247,7 +260,7 @@ public class KillLeakingJavaProcesses {
         PrintStream ps = new PrintStream(os, true);
         new Thread(() -> {
             try {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(forkedProcessOutput));
+                BufferedReader reader = new BufferedReader(new InputStreamReader(forkedProcessOutput, UTF_8));
                 String line;
                 while ((line = reader.readLine()) != null) {
                     ps.println(line);

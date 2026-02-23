@@ -5,8 +5,12 @@ plugins {
 description = "Configuration input discovery code"
 
 dependencies {
-    api(libs.jsr305)
+    api(libs.jspecify)
     api(libs.guava)
 
-    implementation(projects.javaLanguageExtensions)
+    integTestDistributionRuntimeOnly(projects.distributionsCore)
+}
+
+errorprone {
+    nullawayEnabled = true
 }

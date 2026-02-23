@@ -17,16 +17,19 @@ package org.gradle.api.internal.artifacts.ivyservice.projectmodule
 
 import org.gradle.api.InvalidUserDataException
 import org.gradle.api.artifacts.ModuleVersionIdentifier
+import org.gradle.api.artifacts.component.BuildIdentifier
 import org.gradle.api.component.ComponentWithVariants
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier
 import org.gradle.api.internal.component.SoftwareComponentInternal
 import org.gradle.api.internal.component.UsageContext
+import org.gradle.api.internal.project.ProjectIdentity
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.api.internal.project.ProjectState
 import org.gradle.api.internal.project.ProjectStateRegistry
 import org.gradle.api.internal.provider.Providers
 import org.gradle.execution.ProjectConfigurer
 import org.gradle.internal.Describables
+import org.gradle.test.fixtures.ExpectDeprecation
 import org.gradle.util.Path
 import org.gradle.util.internal.TextUtil
 import spock.lang.Specification
@@ -54,6 +57,7 @@ class DefaultProjectDependencyPublicationResolverTest extends Specification {
 
     def "resolving component configures project"() {
         when:
+        registry.register(project.identityPath,  pub("mock", "pub-group", "pub-name", "pub-version"))
         resolver.resolveComponent(ModuleVersionIdentifier, project.identityPath)
 
         then:
@@ -62,12 +66,14 @@ class DefaultProjectDependencyPublicationResolverTest extends Specification {
 
     def "resolving variant configures project"() {
         when:
+        registry.register(project.identityPath,  pub("mock", "pub-group", "pub-name", "pub-version"))
         resolver.resolveVariant(ModuleVersionIdentifier, project.identityPath, "variant-name")
 
         then:
         1 * projectConfigurer.configureFully(project.owner)
     }
 
+    @ExpectDeprecation("Declaring a dependency on an unpublished project has been deprecated.")
     def "uses project coordinates when dependent project has no publications"() {
         when:
         project.group >> "dep-group"
@@ -397,18 +403,18 @@ Found the following publications in <project>:
         }
 
         @Override
-        <T extends ProjectPublication> Collection<ProjectComponentPublication> getPublications(Class<T> type, Path projectIdentityPath) {
+        <T extends ProjectPublication> Collection<ProjectComponentPublication> getPublicationsForProject(Class<T> type, Path projectIdentityPath) {
             assert type == ProjectComponentPublication
             return map.getOrDefault(projectIdentityPath, [])
         }
 
         @Override
-        void registerPublication(ProjectInternal project, ProjectPublication publication) {
+        void registerPublication(ProjectIdentity projectId, ProjectPublication publication) {
             throw new UnsupportedOperationException()
         }
 
         @Override
-        <T extends ProjectPublication> Collection<Reference<T>> getPublications(Class<T> type) {
+        <T extends ProjectPublication> Collection<PublicationForProject<T>> getPublicationsForBuild(Class<T> type, BuildIdentifier buildIdentity) {
             throw new UnsupportedOperationException()
         }
     }

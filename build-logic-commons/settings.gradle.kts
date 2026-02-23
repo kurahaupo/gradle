@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+pluginManagement {
+    includeBuild("../build-logic-settings")
+}
+
 dependencyResolutionManagement {
     repositories {
         gradlePluginPortal()
@@ -21,7 +25,8 @@ dependencyResolutionManagement {
 }
 
 plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version("0.8.0")
+    id("gradlebuild.version-catalogs")
+    id("gradlebuild.default-settings-plugins")
 }
 
 includeBuild("../build-logic-settings")
@@ -40,5 +45,8 @@ include("code-quality-rules")
 
 // Plugins to build :build-logic plugins
 include("gradle-plugin")
+
+// Plugins to publish gradle projects
+include("publishing")
 
 rootProject.name = "build-logic-commons"

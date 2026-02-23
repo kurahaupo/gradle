@@ -16,7 +16,6 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
@@ -24,25 +23,26 @@ import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
-import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.configurations.ConflictResolution;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.Version;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionParser;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphEdge;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.CandidateModule;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.selectors.SelectorStateResolver;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
 import org.gradle.api.internal.attributes.AttributeMergingException;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.internal.component.model.ComponentGraphSpecificResolveState;
 import org.gradle.internal.component.model.ComponentIdGenerator;
 import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.ForcingDependencyMetadata;
+import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.resolve.resolver.ComponentMetaDataResolver;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -57,40 +57,39 @@ import java.util.Set;
 /**
  * Resolution state for a given module.
  */
-class ModuleResolveState implements CandidateModule {
+public class ModuleResolveState implements CandidateModule {
     private static final Logger LOGGER = LoggerFactory.getLogger(ModuleResolveState.class);
     private static final int MAX_SELECTION_CHANGE = 1000;
 
     private final ComponentMetaDataResolver metaDataResolver;
     private final ComponentIdGenerator idGenerator;
     private final ModuleIdentifier id;
-    private final List<EdgeState> unattachedDependencies = new LinkedList<>();
+    private final List<EdgeState> unattachedEdges = new LinkedList<>();
     private final Map<ModuleVersionIdentifier, ComponentState> versions = new LinkedHashMap<>();
     private final ModuleSelectors<SelectorState> selectors;
     private final ConflictResolution conflictResolution;
-    private final ImmutableAttributesFactory attributesFactory;
+    private final AttributesFactory attributesFactory;
     private final Comparator<Version> versionComparator;
     private final VersionParser versionParser;
     final ResolveOptimizations resolveOptimizations;
     private final boolean rootModule;
     private SelectorStateResolver<ComponentState> selectorStateResolver;
     private final PendingDependencies pendingDependencies;
-    private ComponentState selected;
+    private @Nullable ComponentState selected;
     private ImmutableAttributes mergedConstraintAttributes = ImmutableAttributes.EMPTY;
 
-    private AttributeMergingException attributeMergingError;
+    private @Nullable AttributeMergingException attributeMergingError;
     private VirtualPlatformState platformState;
     private boolean overriddenSelection;
     private Set<VirtualPlatformState> platformOwners;
     private boolean replaced = false;
-    private boolean changingSelection;
     private int selectionChangedCounter;
 
     ModuleResolveState(
         ComponentIdGenerator idGenerator,
         ModuleIdentifier id,
         ComponentMetaDataResolver metaDataResolver,
-        ImmutableAttributesFactory attributesFactory,
+        AttributesFactory attributesFactory,
         Comparator<Version> versionComparator,
         VersionParser versionParser,
         SelectorStateResolver<ComponentState> selectorStateResolver,
@@ -138,6 +137,7 @@ class ModuleResolveState implements CandidateModule {
     }
 
     @Override
+    @SuppressWarnings("MixedMutabilityReturnType")
     public Collection<ComponentState> getVersions() {
         if (this.versions.isEmpty()) {
             return Collections.emptyList();
@@ -146,7 +146,7 @@ class ModuleResolveState implements CandidateModule {
         if (areAllCandidatesForSelection(values)) {
             return values;
         }
-        List<ComponentState> versions = Lists.newArrayListWithCapacity(values.size());
+        List<ComponentState> versions = new ArrayList<>(values.size());
         for (ComponentState componentState : values) {
             if (componentState.isCandidateForConflictResolution()) {
                 versions.add(componentState);
@@ -155,6 +155,10 @@ class ModuleResolveState implements CandidateModule {
         return versions;
     }
 
+    /**
+     * Get all versions of this module that have been seen during graph resolution,
+     * even those which are no longer candidates for selection.
+     */
     public Collection<ComponentState> getAllVersions() {
         return this.versions.values();
     }
@@ -194,31 +198,6 @@ class ModuleResolveState implements CandidateModule {
         selected.select();
     }
 
-    public boolean isChangingSelection() {
-        return changingSelection;
-    }
-
-    /**
-     * Changes the selected target component for this module.
-     */
-    private void changeSelection(ComponentState newSelection) {
-        assert this.selected != null;
-        assert newSelection != null;
-        assert this.selected != newSelection;
-        assert newSelection.getModule() == this;
-
-        changingSelection = true;
-
-        // Remove any outgoing edges for the current selection
-        selected.removeOutgoingEdges();
-
-        this.selected = newSelection;
-        this.replaced = false;
-
-        doRestart(newSelection);
-        changingSelection = false;
-    }
-
     /**
      * Clears the current selection for the module, to prepare for conflict resolution.
      * - For the current selection, disconnect and remove any outgoing dependencies.
@@ -226,7 +205,9 @@ class ModuleResolveState implements CandidateModule {
      */
     public void clearSelection() {
         if (selected != null) {
-            selected.removeOutgoingEdges();
+            for (NodeState node : selected.getNodes()) {
+                node.deselect();
+            }
         }
         for (ComponentState version : versions.values()) {
             if (version.isSelected()) {
@@ -238,75 +219,74 @@ class ModuleResolveState implements CandidateModule {
         replaced = false;
     }
 
-    /**
-     * Overrides the component selection for this module, when this module has been replaced by another.
-     */
     @Override
-    public void replaceWith(ComponentState selected) {
-        if (this.selected != null) {
-            clearSelection();
-        }
+    public void changeSelection(ComponentState newSelection) {
+        this.selected = newSelection;
+        this.replaced = !newSelection.getModule().getId().equals(getId());
 
-        assert this.selected == null;
-        assert selected != null;
-
-        if (!selected.getId().getModule().equals(getId())) {
+        if (replaced) {
             this.overriddenSelection = true;
+            newSelection.getModule().getPendingDependencies().retarget(pendingDependencies);
         }
-        this.selected = selected;
-        this.replaced = computeReplaced(selected);
 
-        doRestart(selected);
-    }
-
-    private boolean computeReplaced(ComponentState selected) {
-        // This module might be resolved to a different module, through replacedBy
-        return !selected.getId().getModule().equals(getId());
-    }
-
-    private void doRestart(ComponentState selected) {
-        selectComponentAndEvictOthers(selected);
+        selectComponentAndEvictOthers(newSelection);
         for (ComponentState version : versions.values()) {
-            version.restartIncomingEdges(selected);
+            for (NodeState node : version.getNodes()) {
+                node.restart(newSelection);
+            }
         }
         for (SelectorState selector : selectors) {
-            selector.overrideSelection(selected);
+            selector.overrideSelection(newSelection);
         }
-        if (!unattachedDependencies.isEmpty()) {
-            restartUnattachedDependencies();
+        if (!unattachedEdges.isEmpty()) {
+            restartUnattachedEdges();
         }
     }
 
-    private void restartUnattachedDependencies() {
-        if (unattachedDependencies.size() == 1) {
-            EdgeState singleDependency = unattachedDependencies.get(0);
-            singleDependency.restart();
+    private void restartUnattachedEdges() {
+        if (unattachedEdges.size() == 1) {
+            EdgeState singleEdge = unattachedEdges.get(0);
+            singleEdge.retarget();
         } else {
-            for (EdgeState dependency : new ArrayList<>(unattachedDependencies)) {
-                dependency.restart();
+            for (EdgeState edge : new ArrayList<>(unattachedEdges)) {
+                edge.retarget();
             }
         }
     }
 
-    public void addUnattachedDependency(EdgeState edge) {
-        unattachedDependencies.add(edge);
-        edge.markUnattached();
+    public void addUnattachedEdge(EdgeState edge) {
+        if (!edge.isUnattached()) {
+            unattachedEdges.add(edge);
+            edge.markUnattached();
+        }
     }
 
-    public void removeUnattachedDependency(EdgeState edge) {
-        if (unattachedDependencies.remove(edge)) {
-            edge.markAttached();
+    public void removeUnattachedEdge(EdgeState edge) {
+        if (unattachedEdges.remove(edge)) {
+            edge.markNotUnattached();
         }
     }
 
     public ComponentState getVersion(ModuleVersionIdentifier id, ComponentIdentifier componentIdentifier) {
         assert id.getModule().equals(this.id);
-        ComponentState moduleRevision = versions.get(id);
-        if (moduleRevision == null) {
-            moduleRevision = new ComponentState(idGenerator.nextGraphNodeId(), this, id, componentIdentifier, metaDataResolver);
-            versions.put(id, moduleRevision);
+        ComponentState componentState = versions.computeIfAbsent(id, k ->
+            new ComponentState(idGenerator.nextGraphNodeId(), this, id, componentIdentifier, metaDataResolver)
+        );
+
+        // Starting in Gradle 10, the root component's module identity will no longer
+        // be the module identity of the project performing dependency resolution.
+        // In Gradle 10, attempting to resolve the root component using its old module coordinates will no
+        // longer resolve the project component of the project performing resolution, but will
+        // instead attempt to resolve the component from external repositories.
+        if (componentIdentifier instanceof ModuleComponentIdentifier && componentState.isRoot()) {
+            DeprecationLogger.deprecateAction("Depending on the resolving project's module coordinates")
+                .withAdvice("Use a project dependency instead.")
+                .willBecomeAnErrorInGradle10()
+                .withUpgradeGuideSection(9, "module_identity_for_root_component")
+                .nagUser();
         }
-        return moduleRevision;
+
+        return componentState;
     }
 
     void addSelector(SelectorState selector, boolean deferSelection) {
@@ -318,7 +298,7 @@ class ModuleResolveState implements CandidateModule {
         }
     }
 
-    void removeSelector(SelectorState selector, ResolutionConflictTracker conflictTracker) {
+    void removeSelector(SelectorState selector) {
         selectors.remove(selector);
         boolean alreadyReused = selector.markForReuse();
         mergedConstraintAttributes = ImmutableAttributes.EMPTY;
@@ -326,7 +306,7 @@ class ModuleResolveState implements CandidateModule {
             mergedConstraintAttributes = appendAttributes(mergedConstraintAttributes, selectorState);
         }
         if (!alreadyReused && selectors.size() != 0 && selected != null) {
-            maybeUpdateSelection(conflictTracker);
+            maybeUpdateSelection();
         }
     }
 
@@ -334,19 +314,15 @@ class ModuleResolveState implements CandidateModule {
         return selectors;
     }
 
-    List<EdgeState> getUnattachedDependencies() {
-        return unattachedDependencies;
+    List<EdgeState> getUnattachedEdges() {
+        return unattachedEdges;
     }
 
-    ImmutableAttributes mergedConstraintsAttributes(AttributeContainer append) throws AttributeMergingException {
+    ImmutableAttributes getMergedConstraintAttributes() {
         if (attributeMergingError != null) {
             throw new IllegalStateException(IncompatibleDependencyAttributesMessageBuilder.buildMergeErrorMessage(this, attributeMergingError));
         }
-        ImmutableAttributes attributes = ((AttributeContainerInternal) append).asImmutable();
-        if (mergedConstraintAttributes.isEmpty()) {
-            return attributes;
-        }
-        return attributesFactory.safeConcat(mergedConstraintAttributes.asImmutable(), attributes);
+        return mergedConstraintAttributes;
     }
 
     private ImmutableAttributes appendAttributes(ImmutableAttributes dependencyAttributes, SelectorState selectorState) {
@@ -385,17 +361,51 @@ class ModuleResolveState implements CandidateModule {
         return platformState != null && !platformState.getParticipatingModules().isEmpty();
     }
 
-    void decreaseHardEdgeCount(NodeState removalSource) {
-        pendingDependencies.decreaseHardEdgeCount();
-        if (pendingDependencies.isPending()) {
-            // Back to being a pending dependency
-            // Clear remaining incoming edges, as they must be all from constraints
-            if (selected != null) {
-                for (NodeState node : selected.getNodes()) {
-                    node.clearConstraintEdges(pendingDependencies, removalSource);
+    void disconnectIncomingEdge(NodeState removalSource, EdgeState incomingEdge) {
+        // Remove the unattached edge first, as clearing the selector may trigger re-selection and mutate the unattached edge
+        removeUnattachedEdge(incomingEdge);
+        incomingEdge.clearSelector();
+        if (!incomingEdge.isConstraint()) {
+            pendingDependencies.decreaseHardEdgeCount();
+            if (pendingDependencies.isPending()) {
+                // We are back to pending, since we no longer have any hard edges targeting us.
+                // All incoming constraint edges must now be removed, as we are no longer part of the graph.
+                clearIncomingAttachedConstraints(removalSource);
+                clearIncomingUnattachedConstraints(removalSource);
+            }
+        }
+    }
+
+    private void clearIncomingAttachedConstraints(NodeState removalSource) {
+        if (selected != null) {
+            for (NodeState node : selected.getNodes()) {
+                List<EdgeState> removedEdges = node.removeAllIncomingEdges();
+                for (EdgeState incomingEdge : removedEdges) {
+                    disconnectIncomingConstraint(removalSource, incomingEdge);
                 }
             }
         }
+    }
+
+    private void clearIncomingUnattachedConstraints(NodeState removalSource) {
+        for (EdgeState unattachedEdge : unattachedEdges) {
+            disconnectIncomingConstraint(removalSource, unattachedEdge);
+            unattachedEdge.markNotUnattached();
+        }
+        unattachedEdges.clear();
+    }
+
+    private void disconnectIncomingConstraint(NodeState removalSource, EdgeState incomingEdge) {
+        // Since we are back to pending, any edges targeting this module must be a constraint.
+        assert incomingEdge.getDependencyMetadata().isConstraint();
+
+        NodeState from = incomingEdge.getFrom();
+        if (from != removalSource) {
+            // Only remove edges that come from a different node than the source of the dependency going
+            // back to pending. The source of the removal is already removing outgoing edges from itself.
+            from.removeOutgoingEdge(incomingEdge);
+        }
+        pendingDependencies.registerConstraintProvider(from);
     }
 
     boolean isPending() {
@@ -403,6 +413,9 @@ class ModuleResolveState implements CandidateModule {
     }
 
     PendingDependencies getPendingDependencies() {
+        if (replaced) {
+            return selected.getModule().getPendingDependencies();
+        }
         return pendingDependencies;
     }
 
@@ -414,7 +427,8 @@ class ModuleResolveState implements CandidateModule {
         pendingDependencies.unregisterConstraintProvider(nodeState);
     }
 
-    public void maybeUpdateSelection(ResolutionConflictTracker conflictTracker) {
+    @SuppressWarnings("ReferenceEquality") //TODO: evaluate errorprone suppression (https://github.com/gradle/gradle/issues/35864)
+    public void maybeUpdateSelection() {
         if (replaced) {
             // Never update selection for a replaced module
             return;
@@ -426,14 +440,14 @@ class ModuleResolveState implements CandidateModule {
         ComponentState newSelected = selectorStateResolver.selectBest(getId(), selectors);
         newSelected.setSelectors(selectors);
         if (selected == null) {
-            // In some cases we should ignore this because the selection happens to be a known conflict
-            if (!conflictTracker.hasKnownConflict(newSelected.getId())) {
-                select(newSelected);
-            }
+            select(newSelected);
         } else if (newSelected != selected) {
             if (++selectionChangedCounter > MAX_SELECTION_CHANGE) {
                 // Let's ignore modules that are changing selection way too much, by keeping the highest version
                 if (maybeSkipSelectionChange(newSelected)) {
+                    // TODO: selectBest updates state, but we ignore that. We should do something with newSelected here
+                    // or reset the selectors to before the selectBest call. Alternatively, we should fail here and ask
+                    // the user to add a version constraint.
                     return;
                 }
             }
@@ -486,4 +500,16 @@ class ModuleResolveState implements CandidateModule {
 
         return null;
     }
+
+    /**
+     * Get all edges targeting this module, including those which were not successfully
+     * attached to a node.
+     */
+    public Set<? extends DependencyGraphEdge> getAllIncomingEdges() {
+        Set<EdgeState> allEdges = new LinkedHashSet<>();
+        allEdges.addAll(getIncomingEdges());
+        allEdges.addAll(getUnattachedEdges());
+        return allEdges;
+    }
+
 }

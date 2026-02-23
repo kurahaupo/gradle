@@ -22,7 +22,6 @@ import org.gradle.integtests.tooling.fixture.TargetGradleVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiVersion
 import org.gradle.test.fixtures.Flaky
 import org.gradle.test.fixtures.server.http.MavenHttpModule
-import org.gradle.tooling.ProjectConnection
 import org.gradle.tooling.events.OperationType
 import org.gradle.tooling.events.download.internal.DefaultFileDownloadSuccessResult
 import org.gradle.tooling.events.download.internal.NotFoundFileDownloadSuccessResult
@@ -37,10 +36,9 @@ class DependencyArtifactDownloadProgressEventCrossVersionTest extends AbstractHt
 
         when:
         def events = ProgressEvents.create()
-        withConnection { ProjectConnection connection ->
-            def build = connection.newBuild()
-            collectOutputs(build)
-            build.addProgressListener(events, OperationType.FILE_DOWNLOAD)
+        withConnection { connection ->
+            connection.newBuild()
+                .addProgressListener(events, OperationType.FILE_DOWNLOAD)
                 .run()
         }
 
@@ -74,17 +72,16 @@ class DependencyArtifactDownloadProgressEventCrossVersionTest extends AbstractHt
         [projectFModuleMissing, projectF2]
     }
 
-    @ToolingApiVersion("<8.1 >=7.3")
+    @ToolingApiVersion("<8.1 >=8.0")
     @TargetGradleVersion(">=8.1")
     def "generates"() {
         def (MavenHttpModule projectFModuleMissing, MavenHttpModule projectF2) = prepareTest()
 
         when:
         def events = ProgressEvents.create()
-        withConnection { ProjectConnection connection ->
-            def build = connection.newBuild()
-            collectOutputs(build)
-            build.addProgressListener(events, OperationType.FILE_DOWNLOAD)
+        withConnection { connection ->
+            connection.newBuild()
+                .addProgressListener(events, OperationType.FILE_DOWNLOAD)
                 .run()
         }
 

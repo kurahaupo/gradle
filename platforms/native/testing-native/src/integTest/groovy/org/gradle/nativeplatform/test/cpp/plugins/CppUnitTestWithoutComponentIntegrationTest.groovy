@@ -16,8 +16,6 @@
 
 package org.gradle.nativeplatform.test.cpp.plugins
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
-
 class CppUnitTestWithoutComponentIntegrationTest extends AbstractCppUnitTestIntegrationTest {
     @Override
     protected void makeSingleProject() {
@@ -57,7 +55,6 @@ class CppUnitTestWithoutComponentIntegrationTest extends AbstractCppUnitTestInte
         // Ok
     }
 
-    @ToBeFixedForConfigurationCache
     def "test fails when test executable returns non-zero status"() {
         buildFile << """
             apply plugin: 'cpp-unit-test'
@@ -73,7 +70,7 @@ int main() {
         fails("check")
 
         then:
-        result.assertTasksExecuted(tasksToBuildAndRunUnitTest)
+        result.assertTasksScheduled(tasksToBuildAndRunUnitTest)
         failure.assertHasDescription("Execution failed for task ':runTest'.")
         failure.assertHasCause("There were failing tests. See the results at:")
     }

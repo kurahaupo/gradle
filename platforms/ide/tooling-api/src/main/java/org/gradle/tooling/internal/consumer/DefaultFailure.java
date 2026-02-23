@@ -17,22 +17,29 @@
 package org.gradle.tooling.internal.consumer;
 
 import org.gradle.tooling.Failure;
+import org.gradle.tooling.events.problems.Problem;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Collections;
 import java.util.List;
 
-public final class DefaultFailure implements Failure {
+public class DefaultFailure implements Failure {
 
     private final String message;
     private final String description;
     private final List<? extends Failure> causes;
+    private final List<Problem> problems;
 
     public DefaultFailure(String message, String description, List<? extends Failure> causes) {
+        this(message, description, causes, Collections.<Problem>emptyList());
+    }
+
+    public DefaultFailure(String message, String description, List<? extends Failure> causes, List<Problem> problems) {
         this.message = message;
         this.description = description;
         this.causes = causes;
+        this.problems = problems;
     }
 
     @Override
@@ -50,12 +57,29 @@ public final class DefaultFailure implements Failure {
         return causes;
     }
 
+    @Override
+    public List<Problem> getProblems() {
+        return problems;
+    }
+
     public static DefaultFailure fromThrowable(Throwable t) {
         StringWriter out = new StringWriter();
         PrintWriter wrt = new PrintWriter(out);
         t.printStackTrace(wrt);
         Throwable cause = t.getCause();
-        DefaultFailure causeFailure = cause != null && cause != t ? fromThrowable(cause) : null;
-        return new DefaultFailure(t.getMessage(), out.toString(), Collections.singletonList(causeFailure));
+        List<DefaultFailure> causes = cause != null && cause != t
+            ? Collections.singletonList(fromThrowable(cause))
+            : Collections.emptyList();
+        return new DefaultFailure(t.getMessage(), out.toString(), causes);
+    }
+
+    @Override
+    public String toString() {
+        return "DefaultFailure{" +
+            "message='" + message + '\'' +
+            ", description='" + description + '\'' +
+            ", causes=" + causes +
+            ", problems=" + problems +
+            '}';
     }
 }

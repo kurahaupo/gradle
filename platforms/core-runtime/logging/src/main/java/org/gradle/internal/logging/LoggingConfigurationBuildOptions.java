@@ -16,9 +16,9 @@
 
 package org.gradle.internal.logging;
 
-import com.google.common.collect.ImmutableList;
 import org.gradle.api.logging.LogLevel;
 import org.gradle.api.logging.configuration.ConsoleOutput;
+import org.gradle.api.logging.configuration.ConsoleUnicodeSupport;
 import org.gradle.api.logging.configuration.LoggingConfiguration;
 import org.gradle.api.logging.configuration.ShowStacktrace;
 import org.gradle.api.logging.configuration.WarningMode;
@@ -31,23 +31,24 @@ import org.gradle.internal.buildoption.CommandLineOptionConfiguration;
 import org.gradle.internal.buildoption.Origin;
 import org.gradle.internal.buildoption.StringBuildOption;
 import org.gradle.util.internal.TextUtil;
+import org.jspecify.annotations.NullMarked;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 public class LoggingConfigurationBuildOptions extends BuildOptionSet<LoggingConfiguration> {
-
-    private static List<BuildOption<LoggingConfiguration>> options = ImmutableList.<BuildOption<LoggingConfiguration>>of(
+    // This can be removed once we've moved to compiling for Java 8+
+    @SuppressWarnings("unchecked")
+    private final List<? extends BuildOption<? super LoggingConfiguration>> options = Arrays.asList(
         new LogLevelOption(),
         new StacktraceOption(),
         new ConsoleOption(),
-        new WarningsOption());
-
-    public static List<BuildOption<LoggingConfiguration>> get() {
-        return options;
-    }
+        new ConsoleUnicodeOption(),
+        new WarningsOption()
+    );
 
     @Override
     public List<? extends BuildOption<? super LoggingConfiguration>> getAllOptions() {
@@ -55,7 +56,7 @@ public class LoggingConfigurationBuildOptions extends BuildOptionSet<LoggingConf
     }
 
     public Collection<String> getLongLogLevelOptions() {
-        return ImmutableList.of(
+        return Arrays.asList(
             LogLevelOption.DEBUG_LONG_OPTION,
             LogLevelOption.WARN_LONG_OPTION,
             LogLevelOption.INFO_LONG_OPTION,
@@ -183,15 +184,38 @@ public class LoggingConfigurationBuildOptions extends BuildOptionSet<LoggingConf
         public static final String GRADLE_PROPERTY = "org.gradle.console";
 
         public ConsoleOption() {
-            super(GRADLE_PROPERTY, CommandLineOptionConfiguration.create(LONG_OPTION, "Specifies which type of console output to generate. Values are 'plain', 'auto' (default), 'rich' or 'verbose'."));
+            super(GRADLE_PROPERTY, CommandLineOptionConfiguration.create(LONG_OPTION, "Specifies which type of console output to generate. Values are 'plain', 'colored', 'auto' (default), 'rich' or 'verbose'."));
         }
 
         @Override
         public void applyTo(String value, LoggingConfiguration settings, Origin origin) {
-            String consoleValue = TextUtil.capitalize(TextUtil.toLowerCaseLocaleSafe(value));
+            String normalized = value.toLowerCase(Locale.ROOT);
+            String consoleValue = TextUtil.capitalize(normalized);
             try {
                 ConsoleOutput consoleOutput = ConsoleOutput.valueOf(consoleValue);
                 settings.setConsoleOutput(consoleOutput);
+            } catch (IllegalArgumentException e) {
+                origin.handleInvalidValue(value);
+            }
+        }
+    }
+
+    @NullMarked
+    public static class ConsoleUnicodeOption extends StringBuildOption<LoggingConfiguration> {
+        public static final String LONG_OPTION = "console-unicode";
+        public static final String GRADLE_PROPERTY = "org.gradle.console.unicode";
+
+        public ConsoleUnicodeOption() {
+            super(GRADLE_PROPERTY, CommandLineOptionConfiguration.create(LONG_OPTION, "Specifies which character types are allowed in console output to generate. Values are 'auto' (default), 'disable' or 'enable'."));
+        }
+
+        @Override
+        public void applyTo(String value, LoggingConfiguration settings, Origin origin) {
+            String normalized = value.toLowerCase(Locale.ROOT);
+            String consoleValue = TextUtil.capitalize(normalized);
+            try {
+                ConsoleUnicodeSupport consoleUnicodeSupport = ConsoleUnicodeSupport.valueOf(consoleValue);
+                settings.setConsoleUnicodeSupport(consoleUnicodeSupport);
             } catch (IllegalArgumentException e) {
                 origin.handleInvalidValue(value);
             }
@@ -209,7 +233,7 @@ public class LoggingConfigurationBuildOptions extends BuildOptionSet<LoggingConf
         @Override
         public void applyTo(String value, LoggingConfiguration settings, final Origin origin) {
             try {
-                settings.setWarningMode(WarningMode.valueOf(TextUtil.capitalize(TextUtil.toLowerCaseLocaleSafe(value))));
+                settings.setWarningMode(WarningMode.valueOf(TextUtil.capitalize(value.toLowerCase(Locale.ROOT))));
             } catch (IllegalArgumentException e) {
                 origin.handleInvalidValue(value);
             }

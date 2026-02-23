@@ -16,7 +16,9 @@
 
 package org.gradle.jvm.application.scripts;
 
-import javax.annotation.Nullable;
+import org.gradle.api.Incubating;
+import org.jspecify.annotations.Nullable;
+
 import java.util.List;
 
 /**
@@ -30,6 +32,14 @@ public interface JavaAppStartScriptGenerationDetails {
     String getApplicationName();
 
     /**
+     * The Git revision or tag
+     *
+     * @since 9.4.0
+     */
+    @Incubating
+    String getGitRef();
+
+    /**
      * The environment variable to use to provide additional options to the JVM
      */
     String getOptsEnvironmentVar();
@@ -41,6 +51,11 @@ public interface JavaAppStartScriptGenerationDetails {
 
     String getMainClassName();
 
+    /**
+     * The default JVM options that are always passed to the application.
+     *
+     * @return the default JVM options
+     */
     List<String> getDefaultJvmOpts();
 
     /**

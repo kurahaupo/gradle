@@ -15,12 +15,14 @@
  */
 package org.gradle.api.artifacts;
 
-import javax.annotation.Nullable;
+import org.gradle.declarative.dsl.model.annotations.internal.DeclarativeWithHiddenMembers;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@code Dependency} represents a dependency on the artifacts from a particular source. A source can be an Ivy
  * module, a Maven POM, another Gradle project, a collection of Files, etc... A source can have zero or more artifacts.
  */
+@DeclarativeWithHiddenMembers
 public interface Dependency {
     String DEFAULT_CONFIGURATION = "default";
     String ARCHIVES_CONFIGURATION = "archives";
@@ -48,14 +50,6 @@ public interface Dependency {
      */
     @Nullable
     String getVersion();
-
-    /**
-     * Returns whether two dependencies have identical values for their properties. A dependency is an entity with a
-     * key. Therefore dependencies might be equal and yet have different properties.
-     *
-     * @param dependency The dependency to compare this dependency with
-     */
-    boolean contentEquals(Dependency dependency);
 
     /**
      * Creates and returns a new dependency with the property values of this one.

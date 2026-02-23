@@ -23,14 +23,19 @@ import org.gradle.internal.id.UUIDGenerator
 import spock.lang.Issue
 
 class MavenProfileResolveIntegrationTest extends AbstractHttpDependencyResolutionTest {
-    ResolveTestFixture resolve
+    ResolveTestFixture resolve = new ResolveTestFixture(testDirectory)
 
     def setup() {
-        settingsFile << "rootProject.name = 'test' "
-        resolve = new ResolveTestFixture(buildFile, "compile")
-        resolve.prepare()
-        resolve.expectDefaultConfiguration('runtime')
-        resolve.addDefaultVariantDerivationStrategy()
+        settingsFile << """
+            rootProject.name = 'test'
+        """
+        buildFile << """
+             plugins {
+                 id("jvm-ecosystem")
+             }
+
+            ${resolve.configureProject("compile")}
+        """
     }
 
     def "uses properties from active profile to resolve dependency"() {
@@ -68,7 +73,7 @@ class MavenProfileResolveIntegrationTest extends AbstractHttpDependencyResolutio
 
         and:
         buildFile << """
-repositories { maven { url '${mavenHttpRepo.uri}' } }
+repositories { maven { url = '${mavenHttpRepo.uri}' } }
 configurations { compile }
 dependencies { compile 'groupA:artifactA:1.2' }
 """
@@ -133,7 +138,7 @@ dependencies { compile 'groupA:artifactA:1.2' }
         and:
         buildFile << """
             repositories {
-                maven { url "${mavenHttpRepo.uri}" }
+                maven { url = "${mavenHttpRepo.uri}" }
             }
             configurations { compile }
             dependencies { compile 'groupA:artifactA:1.2' }
@@ -203,7 +208,7 @@ dependencies { compile 'groupA:artifactA:1.2' }
 
         and:
         buildFile << """
-repositories { maven { url '${mavenHttpRepo.uri}' } }
+repositories { maven { url = '${mavenHttpRepo.uri}' } }
 configurations { compile }
 dependencies { compile 'groupA:artifactA:1.2' }
 """
@@ -269,7 +274,7 @@ dependencies { compile 'groupA:artifactA:1.2' }
 
         and:
         buildFile << """
-repositories { maven { url '${mavenHttpRepo.uri}' } }
+repositories { maven { url = '${mavenHttpRepo.uri}' } }
 configurations { compile }
 dependencies { compile 'groupA:artifactA:1.2' }
 """
@@ -331,7 +336,7 @@ dependencies { compile 'groupA:artifactA:1.2' }
 
         and:
         buildFile << """
-repositories { maven { url '${mavenHttpRepo.uri}' } }
+repositories { maven { url = '${mavenHttpRepo.uri}' } }
 configurations { compile }
 dependencies { compile 'groupA:artifactA:1.2' }
 """
@@ -403,7 +408,7 @@ dependencies { compile 'groupA:artifactA:1.2' }
 
         and:
         buildFile << """
-repositories { maven { url '${mavenHttpRepo.uri}' } }
+repositories { maven { url = '${mavenHttpRepo.uri}' } }
 configurations { compile }
 dependencies { compile 'groupA:artifactA:1.2' }
 """
@@ -467,7 +472,7 @@ dependencies { compile 'groupA:artifactA:1.2' }
 
         and:
         buildFile << """
-repositories { maven { url '${mavenHttpRepo.uri}' } }
+repositories { maven { url = '${mavenHttpRepo.uri}' } }
 configurations { compile }
 dependencies { compile 'groupA:artifactA:1.2' }
 """
@@ -536,7 +541,7 @@ dependencies { compile 'groupA:artifactA:1.2' }
 
         and:
         buildFile << """
-repositories { maven { url '${mavenHttpRepo.uri}' } }
+repositories { maven { url = '${mavenHttpRepo.uri}' } }
 configurations { compile }
 dependencies { compile 'groupA:artifactA:1.2' }
 """

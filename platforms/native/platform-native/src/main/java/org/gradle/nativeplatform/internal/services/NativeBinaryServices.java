@@ -18,9 +18,15 @@ package org.gradle.nativeplatform.internal.services;
 
 import net.rubygrapefruit.platform.SystemInfo;
 import net.rubygrapefruit.platform.WindowsRegistry;
+import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.reporting.components.internal.AbstractBinaryRenderer;
 import org.gradle.internal.file.RelativeFilePathResolver;
+import org.gradle.internal.instantiation.InstantiatorFactory;
 import org.gradle.internal.os.OperatingSystem;
+import org.gradle.internal.service.Provides;
 import org.gradle.internal.service.ServiceRegistration;
+import org.gradle.internal.service.ServiceRegistrationProvider;
+import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.service.scopes.AbstractGradleModuleServices;
 import org.gradle.nativeplatform.internal.CompilerOutputFileNamingSchemeFactory;
 import org.gradle.nativeplatform.internal.DefaultTargetMachineFactory;
@@ -31,6 +37,8 @@ import org.gradle.nativeplatform.internal.SharedLibraryBinaryRenderer;
 import org.gradle.nativeplatform.internal.StaticLibraryBinaryRenderer;
 import org.gradle.nativeplatform.internal.resolve.NativeDependencyResolverServices;
 import org.gradle.nativeplatform.platform.internal.NativePlatforms;
+import org.gradle.nativeplatform.toolchain.NativeToolChainRegistry;
+import org.gradle.nativeplatform.toolchain.internal.DefaultNativeToolChainRegistry;
 import org.gradle.nativeplatform.toolchain.internal.gcc.metadata.SystemLibraryDiscovery;
 import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetaDataProviderFactory;
 import org.gradle.nativeplatform.toolchain.internal.msvcpp.DefaultUcrtLocator;
@@ -55,10 +63,10 @@ import org.gradle.process.internal.ExecActionFactory;
 public class NativeBinaryServices extends AbstractGradleModuleServices {
     @Override
     public void registerGlobalServices(ServiceRegistration registration) {
-        registration.add(NativeBinaryRenderer.class);
-        registration.add(SharedLibraryBinaryRenderer.class);
-        registration.add(StaticLibraryBinaryRenderer.class);
-        registration.add(NativeExecutableBinaryRenderer.class);
+        registration.add(AbstractBinaryRenderer.class, NativeBinaryRenderer.class);
+        registration.add(AbstractBinaryRenderer.class, SharedLibraryBinaryRenderer.class);
+        registration.add(AbstractBinaryRenderer.class, StaticLibraryBinaryRenderer.class);
+        registration.add(AbstractBinaryRenderer.class, NativeExecutableBinaryRenderer.class);
         registration.add(NativePlatforms.class);
         registration.add(NativePlatformResolver.class);
         registration.add(DefaultTargetMachineFactory.class);
@@ -85,43 +93,59 @@ public class NativeBinaryServices extends AbstractGradleModuleServices {
         registration.addProvider(new ProjectCompilerServices());
     }
 
-    private static final class BuildSessionScopeServices {
+    private static final class BuildSessionScopeServices implements ServiceRegistrationProvider {
+        @Provides
         WindowsSdkLocator createWindowsSdkLocator(OperatingSystem os, WindowsRegistry windowsRegistry, SystemInfo systemInfo) {
             return new DefaultWindowsSdkLocator(os, windowsRegistry, systemInfo);
         }
 
+        @Provides
         VisualCppMetadataProvider createVisualCppMetadataProvider(WindowsRegistry windowsRegistry) {
             return new DefaultVisualCppMetadataProvider(windowsRegistry);
         }
 
+        @Provides
         WindowsRegistryVersionLocator createWindowsRegistryVersionLocator(WindowsRegistry windowsRegistry) {
             return new WindowsRegistryVersionLocator(windowsRegistry);
         }
 
+        @Provides
         CommandLineToolVersionLocator createCommandLineVersionLocator(ExecActionFactory execActionFactory, VisualCppMetadataProvider visualCppMetadataProvider, VswhereVersionLocator vswhereLocator) {
             return new CommandLineToolVersionLocator(execActionFactory, visualCppMetadataProvider, vswhereLocator);
         }
 
+        @Provides
         VswhereVersionLocator createVswhereVersionLocator(WindowsRegistry windowsRegistry, OperatingSystem os) {
             return new DefaultVswhereVersionLocator(windowsRegistry, os);
         }
 
+        @Provides
         SystemPathVersionLocator createSystemPathVersionLocator(OperatingSystem os, VisualStudioMetaDataProvider versionDeterminer) {
             return new SystemPathVersionLocator(os, versionDeterminer);
         }
 
+        @Provides
         VisualStudioMetaDataProvider createVisualStudioMetadataProvider(CommandLineToolVersionLocator commandLineToolVersionLocator, WindowsRegistryVersionLocator windowsRegistryVersionLocator, VisualCppMetadataProvider visualCppMetadataProvider) {
             return new VisualStudioVersionDeterminer(commandLineToolVersionLocator, windowsRegistryVersionLocator, visualCppMetadataProvider);
         }
 
+        @Provides
         VisualStudioLocator createVisualStudioLocator(CommandLineToolVersionLocator commandLineLocator, WindowsRegistryVersionLocator windowsRegistryLocator, SystemPathVersionLocator systemPathLocator, VisualStudioMetaDataProvider versionDeterminer, SystemInfo systemInfo) {
             return new DefaultVisualStudioLocator(commandLineLocator, windowsRegistryLocator, systemPathLocator, versionDeterminer, systemInfo);
         }
     }
 
-    private static final class ProjectCompilerServices {
+    private static final class ProjectCompilerServices implements ServiceRegistrationProvider {
+        @Provides
         CompilerOutputFileNamingSchemeFactory createCompilerOutputFileNamingSchemeFactory(RelativeFilePathResolver fileResolver) {
             return new CompilerOutputFileNamingSchemeFactory(fileResolver);
+        }
+
+        @Provides
+        NativeToolChainRegistry createNativeToolChainRegistry(ObjectFactory objectFactory,
+                                                              InstantiatorFactory instantiatorFactory,
+                                                              ServiceRegistry projectScopeServiceRegistry) {
+            return objectFactory.newInstance(DefaultNativeToolChainRegistry.class, instantiatorFactory.decorateLenient(projectScopeServiceRegistry));
         }
     }
 

@@ -16,9 +16,13 @@
 
 package org.gradle.api.internal.artifacts.result
 
+
+import com.google.common.collect.ImmutableSet
 import spock.lang.Specification
 
-import static org.gradle.api.internal.artifacts.result.ResolutionResultDataBuilder.*
+import static org.gradle.api.internal.artifacts.result.ResolutionResultDataBuilder.newDependency
+import static org.gradle.api.internal.artifacts.result.ResolutionResultDataBuilder.newModule
+import static org.gradle.api.internal.artifacts.result.ResolutionResultDataBuilder.newUnresolvedDependency
 
 class DefaultResolvedComponentResultTest extends Specification {
 
@@ -27,13 +31,15 @@ class DefaultResolvedComponentResultTest extends Specification {
         def module = newModule("a", "c", "1")
         def dependency  = newDependency("a", "x", "1")
         def dependent   = newDependency("a", "x2", "1")
+        def variant = module.getVariant(1)
 
         when:
-        module.addDependency(dependency)
+        module.setVariantDependencies(variant, ImmutableSet.of(dependency))
         module.addDependent(dependent)
 
         then:
         module.dependencies == [dependency] as Set
+        module.getDependenciesForVariant(variant) == [dependency]
         module.dependents   == [dependent] as Set
 
         when:
@@ -52,13 +58,14 @@ class DefaultResolvedComponentResultTest extends Specification {
         def module = newModule()
         def dependency = newDependency()
         def unresolved = newUnresolvedDependency()
+        def variant = module.getVariant(1)
 
         when:
-        module.addDependency(dependency)
-        module.addDependency(unresolved)
+        module.setVariantDependencies(variant, ImmutableSet.of(dependency, unresolved))
 
         then:
         module.dependencies == [dependency, unresolved] as Set
+        module.getDependenciesForVariant(variant) == [dependency, unresolved]
     }
 
     def "associating the same result to a variant multiple times does not cause duplicate results"() {
@@ -68,12 +75,11 @@ class DefaultResolvedComponentResultTest extends Specification {
         def variant = module.getVariant(1)
 
         when:
-        module.addDependency(dependency)
-
-        module.associateDependencyToVariant(dependency, variant)
-        module.associateDependencyToVariant(dependency, variant)
+        module.setVariantDependencies(variant, ImmutableSet.of(dependency))
+        module.setVariantDependencies(variant, ImmutableSet.of(dependency))
 
         then:
+        module.dependencies == [dependency] as Set
         module.getDependenciesForVariant(variant) == [dependency]
     }
 }

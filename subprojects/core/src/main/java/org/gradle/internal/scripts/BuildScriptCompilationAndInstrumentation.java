@@ -17,26 +17,41 @@
 package org.gradle.internal.scripts;
 
 import org.gradle.api.internal.file.FileCollectionFactory;
+import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.internal.classpath.transforms.ClasspathElementTransform;
 import org.gradle.internal.classpath.transforms.ClasspathElementTransformFactoryForLegacy;
 import org.gradle.internal.classpath.transforms.InstrumentingClassTransform;
+import org.gradle.internal.classpath.types.GradleCoreInstrumentationTypeRegistry;
 import org.gradle.internal.classpath.types.InstrumentationTypeRegistry;
+import org.gradle.internal.execution.ExecutionContext;
+import org.gradle.internal.execution.Identity;
 import org.gradle.internal.execution.ImmutableUnitOfWork;
 import org.gradle.internal.execution.InputFingerprinter;
-import org.gradle.internal.execution.UnitOfWork;
+import org.gradle.internal.execution.InputVisitor;
+import org.gradle.internal.execution.OutputVisitor;
+import org.gradle.internal.execution.WorkOutput;
+import org.gradle.internal.execution.caching.CachingDisabledReason;
+import org.gradle.internal.execution.caching.CachingDisabledReasonCategory;
+import org.gradle.internal.execution.history.OverlappingOutputs;
 import org.gradle.internal.execution.workspace.ImmutableWorkspaceProvider;
 import org.gradle.internal.file.TreeType;
 import org.gradle.internal.fingerprint.CurrentFileCollectionFingerprint;
 import org.gradle.internal.hash.Hasher;
 import org.gradle.internal.hash.Hashing;
+import org.gradle.internal.instrumentation.reporting.PropertyUpgradeReportConfig;
+import org.gradle.internal.instrumentation.reporting.listener.BytecodeUpgradeReportMethodInterceptionListener;
 import org.gradle.internal.snapshot.ValueSnapshot;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.annotation.OverridingMethodsMustInvokeSuper;
 import java.io.File;
 import java.util.Map;
+import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
+import static org.gradle.internal.instrumentation.api.types.BytecodeInterceptorFilter.INSTRUMENTATION_AND_BYTECODE_REPORT;
+import static org.gradle.internal.instrumentation.api.types.BytecodeInterceptorFilter.INSTRUMENTATION_ONLY;
+import static org.gradle.internal.instrumentation.reporting.MethodInterceptionReportCollector.INTERCEPTED_METHODS_REPORT_FILE;
 
 /**
  * A base class that represents a work for compilation for Kotlin and Groovy build scripts.
@@ -44,25 +59,46 @@ import static java.util.Objects.requireNonNull;
  */
 public abstract class BuildScriptCompilationAndInstrumentation implements ImmutableUnitOfWork {
 
+    private static final CachingDisabledReason CACHING_DISABLED_FOR_PROPERTY_REPORT = new CachingDisabledReason(CachingDisabledReasonCategory.NOT_CACHEABLE, "Caching of buildscript compilation disabled due for property upgrade report");
+
+    private final ScriptSource source;
     private final ImmutableWorkspaceProvider workspaceProvider;
     private final InputFingerprinter inputFingerprinter;
     private final ClasspathElementTransformFactoryForLegacy transformFactory;
     protected final FileCollectionFactory fileCollectionFactory;
+    private final GradleCoreInstrumentationTypeRegistry gradleCoreTypeRegistry;
+    private final PropertyUpgradeReportConfig propertyUpgradeReportConfig;
 
     public BuildScriptCompilationAndInstrumentation(
+        ScriptSource source,
         ImmutableWorkspaceProvider workspaceProvider,
         FileCollectionFactory fileCollectionFactory,
         InputFingerprinter inputFingerprinter,
-        ClasspathElementTransformFactoryForLegacy transformFactory
+        ClasspathElementTransformFactoryForLegacy transformFactory,
+        GradleCoreInstrumentationTypeRegistry gradleCoreTypeRegistry,
+        PropertyUpgradeReportConfig propertyUpgradeReportConfig
     ) {
+        this.source = source;
         this.workspaceProvider = workspaceProvider;
         this.fileCollectionFactory = fileCollectionFactory;
         this.inputFingerprinter = inputFingerprinter;
         this.transformFactory = transformFactory;
+        this.gradleCoreTypeRegistry = gradleCoreTypeRegistry;
+        this.propertyUpgradeReportConfig = propertyUpgradeReportConfig;
     }
 
     @Override
-    public abstract void visitIdentityInputs(InputVisitor visitor);
+    public Optional<CachingDisabledReason> shouldDisableCaching(@Nullable OverlappingOutputs detectedOverlappingOutputs) {
+        // Disable caching always for property upgrade report,
+        // since there is not much use to cache report remotely, also report can contain absolute paths
+        return propertyUpgradeReportConfig.isEnabled() ? Optional.of(CACHING_DISABLED_FOR_PROPERTY_REPORT) : Optional.empty();
+    }
+
+    @Override
+    @OverridingMethodsMustInvokeSuper
+    public void visitImmutableInputs(InputVisitor visitor) {
+        visitor.visitInputProperty("isProviderUpgradeReportEnabled", propertyUpgradeReportConfig::isEnabled);
+    }
 
     /**
      * A compile operation. It should return a File where classes are compiled to.
@@ -74,10 +110,14 @@ public abstract class BuildScriptCompilationAndInstrumentation implements Immuta
      */
     protected abstract File instrumentedOutput(File workspace);
 
+    protected File propertyUpgradeReport(File workspace) {
+        return new File(workspace, "reports/" + INTERCEPTED_METHODS_REPORT_FILE);
+    }
+
     @Override
-    public Identity identify(Map<String, ValueSnapshot> identityInputs, Map<String, CurrentFileCollectionFingerprint> identityFileInputs) {
+    public Identity identify(Map<String, ValueSnapshot> scalarInputs, Map<String, CurrentFileCollectionFingerprint> fileInputs) {
         Hasher hasher = Hashing.newHasher();
-        identityInputs.values().forEach(value -> requireNonNull(value).appendToHasher(hasher));
+        scalarInputs.values().forEach(value -> requireNonNull(value).appendToHasher(hasher));
         String identity = hasher.hash().toString();
         return () -> identity;
     }
@@ -86,22 +126,25 @@ public abstract class BuildScriptCompilationAndInstrumentation implements Immuta
     @OverridingMethodsMustInvokeSuper
     public void visitOutputs(File workspace, OutputVisitor visitor) {
         File instrumentedOutput = instrumentedOutput(workspace);
-        OutputFileValueSupplier instrumentedOutputValue = OutputFileValueSupplier.fromStatic(instrumentedOutput, fileCollectionFactory.fixed(instrumentedOutput));
+        OutputVisitor.OutputFileValueSupplier instrumentedOutputValue = OutputVisitor.OutputFileValueSupplier.fromStatic(instrumentedOutput, fileCollectionFactory.fixed(instrumentedOutput));
         visitor.visitOutputProperty("instrumentedOutput", TreeType.DIRECTORY, instrumentedOutputValue);
+
+        File propertyUpgradeReport = propertyUpgradeReport(workspace);
+        OutputVisitor.OutputFileValueSupplier propertyUpgradeReportOutputValue = OutputVisitor.OutputFileValueSupplier.fromStatic(propertyUpgradeReport, fileCollectionFactory.fixed(propertyUpgradeReport));
+        visitor.visitOutputProperty("propertyUpgradeReportOutput", TreeType.FILE, propertyUpgradeReportOutputValue);
     }
 
     @Override
-    public WorkOutput execute(ExecutionRequest executionRequest) {
-        File workspace = executionRequest.getWorkspace();
+    public WorkOutput execute(ExecutionContext executionContext) {
+        File workspace = executionContext.getWorkspace();
         File compileOutput = compile(workspace);
-        instrument(compileOutput, instrumentedOutput(workspace));
-        return new UnitOfWork.WorkOutput() {
+        instrument(compileOutput, instrumentedOutput(workspace), propertyUpgradeReport(workspace));
+        return new WorkOutput() {
             @Override
             public WorkResult getDidWork() {
-                return UnitOfWork.WorkResult.DID_WORK;
+                return WorkOutput.WorkResult.DID_WORK;
             }
 
-            @Nullable
             @Override
             public Object getOutput(File workspace) {
                 return loadAlreadyProducedOutput(workspace);
@@ -109,15 +152,25 @@ public abstract class BuildScriptCompilationAndInstrumentation implements Immuta
         };
     }
 
-    private void instrument(File sourceDir, File destination) {
-        ClasspathElementTransform transform = transformFactory.createTransformer(sourceDir, new InstrumentingClassTransform(), InstrumentationTypeRegistry.EMPTY);
-        transform.transform(destination);
+    private void instrument(File sourceDir, File destination, File propertyUpgradeReport) {
+        if (propertyUpgradeReportConfig.isEnabled()) {
+            File source = this.source.getResource().getFile();
+            try (BytecodeUpgradeReportMethodInterceptionListener methodInterceptionListener = new BytecodeUpgradeReportMethodInterceptionListener(source, propertyUpgradeReport)) {
+                // TODO: Using gradleCoreTypeRegistry means we won't detect user types that extend from Gradle types, fix that
+                InstrumentingClassTransform classTransform = new InstrumentingClassTransform(INSTRUMENTATION_AND_BYTECODE_REPORT, gradleCoreTypeRegistry, methodInterceptionListener);
+                ClasspathElementTransform transform = transformFactory.createTransformer(sourceDir, classTransform);
+                transform.transform(destination);
+            }
+        } else {
+            InstrumentingClassTransform classTransform = new InstrumentingClassTransform(INSTRUMENTATION_ONLY, InstrumentationTypeRegistry.EMPTY);
+            ClasspathElementTransform transform = transformFactory.createTransformer(sourceDir, classTransform);
+            transform.transform(destination);
+        }
     }
 
-    @Nullable
     @Override
     public Object loadAlreadyProducedOutput(File workspace) {
-        return instrumentedOutput(workspace);
+        return new Output(instrumentedOutput(workspace), propertyUpgradeReport(workspace));
     }
 
     @Override
@@ -132,4 +185,22 @@ public abstract class BuildScriptCompilationAndInstrumentation implements Immuta
 
     @Override
     public abstract String getDisplayName();
+
+    public static class Output {
+        private final File instrumentedOutput;
+        private final File propertyUpgradeReport;
+
+        public Output(File instrumentedOutput, File propertyUpgradeReport) {
+            this.instrumentedOutput = instrumentedOutput;
+            this.propertyUpgradeReport = propertyUpgradeReport;
+        }
+
+        public File getInstrumentedOutput() {
+            return instrumentedOutput;
+        }
+
+        public File getPropertyUpgradeReport() {
+            return propertyUpgradeReport;
+        }
+    }
 }

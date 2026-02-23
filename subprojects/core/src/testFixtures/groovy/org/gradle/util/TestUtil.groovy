@@ -28,6 +28,7 @@ import org.gradle.api.internal.collections.DomainObjectCollectionFactory
 import org.gradle.api.internal.file.DefaultFilePropertyFactory
 import org.gradle.api.internal.file.DefaultProjectLayout
 import org.gradle.api.internal.file.FileCollectionFactory
+import org.gradle.api.internal.file.FilePropertyFactory
 import org.gradle.api.internal.file.FileResolver
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.api.internal.model.DefaultObjectFactory
@@ -41,7 +42,19 @@ import org.gradle.api.internal.tasks.DefaultTaskDependencyFactory
 import org.gradle.api.internal.tasks.TaskDependencyFactory
 import org.gradle.api.internal.tasks.properties.annotations.OutputPropertyRoleAnnotationHandler
 import org.gradle.api.model.ObjectFactory
+import org.gradle.api.problems.Problem
+import org.gradle.api.problems.ProblemReporter
+import org.gradle.api.problems.internal.DefaultProblems
+import org.gradle.api.problems.internal.DeprecationData
+import org.gradle.api.problems.internal.ExceptionProblemRegistry
+import org.gradle.api.problems.internal.InternalProblem
+import org.gradle.api.problems.internal.InternalProblemBuilder
+import org.gradle.api.problems.internal.InternalProblemReporter
+import org.gradle.api.problems.internal.InternalProblems
+import org.gradle.api.problems.internal.ProblemSummarizer
+import org.gradle.api.problems.internal.ProblemsInfrastructure
 import org.gradle.api.provider.ProviderFactory
+import org.gradle.api.reflect.ObjectInstantiationException
 import org.gradle.api.tasks.util.internal.PatternSets
 import org.gradle.cache.internal.TestCrossBuildInMemoryCacheFactory
 import org.gradle.internal.hash.ChecksumService
@@ -50,18 +63,33 @@ import org.gradle.internal.hash.Hashing
 import org.gradle.internal.instantiation.InjectAnnotationHandler
 import org.gradle.internal.instantiation.InstantiatorFactory
 import org.gradle.internal.instantiation.generator.DefaultInstantiatorFactory
+import org.gradle.internal.instantiation.managed.DefaultManagedObjectRegistry
+import org.gradle.internal.instantiation.managed.ManagedObjectRegistry
 import org.gradle.internal.model.CalculatedValueContainerFactory
+import org.gradle.internal.model.InMemoryCacheFactory
 import org.gradle.internal.model.StateTransitionControllerFactory
+import org.gradle.internal.operations.BuildOperationsParameters
+import org.gradle.internal.operations.CurrentBuildOperationRef
+import org.gradle.internal.operations.OperationIdentifier
+import org.gradle.internal.operations.TestBuildOperationRunner
+import org.gradle.internal.reflect.Instantiator
 import org.gradle.internal.service.DefaultServiceRegistry
+import org.gradle.internal.service.Provides
 import org.gradle.internal.service.ServiceRegistration
+import org.gradle.internal.service.ServiceRegistrationProvider
 import org.gradle.internal.service.ServiceRegistry
 import org.gradle.internal.state.ManagedFactoryRegistry
+import org.gradle.internal.work.DefaultWorkerLimits
 import org.gradle.test.fixtures.file.TestDirectoryProvider
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.work.TestWorkerLeaseService
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testfixtures.internal.NativeServicesTestFixture
 import org.gradle.testfixtures.internal.ProjectBuilderImpl
+import org.spockframework.lang.Wildcard
+
+import javax.annotation.Nullable
+import java.util.function.Supplier
 
 class TestUtil {
     public static final Closure TEST_CLOSURE = {}
@@ -84,11 +112,14 @@ class TestUtil {
 
     static InstantiatorFactory instantiatorFactory() {
         if (instantiatorFactory == null) {
-            NativeServicesTestFixture.initialize()
-            def annotationHandlers = ProjectBuilderImpl.getGlobalServices().getAll(InjectAnnotationHandler.class)
-            instantiatorFactory = new DefaultInstantiatorFactory(new TestCrossBuildInMemoryCacheFactory(), annotationHandlers, new OutputPropertyRoleAnnotationHandler([]))
+            instantiatorFactory = createInstantiatorFactory({ [] })
         }
         return instantiatorFactory
+    }
+
+    static InstantiatorFactory createInstantiatorFactory(Supplier<List<InjectAnnotationHandler>> injectHandlers) {
+        NativeServicesTestFixture.initialize()
+        return new DefaultInstantiatorFactory(new TestCrossBuildInMemoryCacheFactory(), injectHandlers.get(), new OutputPropertyRoleAnnotationHandler([]))
     }
 
     static ManagedFactoryRegistry managedFactoryRegistry() {
@@ -123,50 +154,79 @@ class TestUtil {
         return services().get(ObjectFactory)
     }
 
+    static TestProblems problemsService() {
+        return services().get(TestProblems)
+    }
+
     static ObjectFactory objectFactory(TestFile baseDir) {
-        def fileResolver = TestFiles.resolver(baseDir)
-        def fileCollectionFactory = TestFiles.fileCollectionFactory(baseDir)
-        return createServices(fileResolver, fileCollectionFactory).get(ObjectFactory)
+        ServiceRegistry services = services(baseDir)
+        return services.get(ObjectFactory)
     }
 
     static CalculatedValueContainerFactory calculatedValueContainerFactory() {
         return new CalculatedValueContainerFactory(new TestWorkerLeaseService(), services())
     }
 
-    static StateTransitionControllerFactory stateTransitionControllerFactory() {
-        return new StateTransitionControllerFactory(new TestWorkerLeaseService())
+    static InMemoryCacheFactory inMemoryCacheFactory() {
+        return new InMemoryCacheFactory(new DefaultWorkerLimits(Runtime.getRuntime().availableProcessors()), calculatedValueContainerFactory())
+    }
+
+    static StateTransitionControllerFactory stateTransitionControllerFactory(BuildOperationsParameters buildOperationsParameters) {
+        return new StateTransitionControllerFactory(new TestWorkerLeaseService(), buildOperationsParameters, new TestBuildOperationRunner())
     }
 
     private static ServiceRegistry createServices(FileResolver fileResolver, FileCollectionFactory fileCollectionFactory, Action<ServiceRegistration> registrations = {}) {
         def services = new DefaultServiceRegistry()
         services.register {
             registrations.execute(it)
+            it.add(InstantiatorFactory, instantiatorFactory())
             it.add(ProviderFactory, new TestProviderFactory())
             it.add(TestCrossBuildInMemoryCacheFactory)
             it.add(NamedObjectInstantiator)
             it.add(CollectionCallbackActionDecorator, CollectionCallbackActionDecorator.NOOP)
             it.add(MutationGuard, MutationGuards.identity())
-            it.add(DefaultDomainObjectCollectionFactory)
+            it.add(DomainObjectCollectionFactory, DefaultDomainObjectCollectionFactory)
             it.add(PropertyHost, PropertyHost.NO_OP)
             it.add(TaskDependencyFactory, DefaultTaskDependencyFactory.withNoAssociatedProject())
             it.add(DocumentationRegistry, new DocumentationRegistry())
             it.add(FileCollectionFactory, fileCollectionFactory)
-            it.add(DefaultPropertyFactory)
-            it.addProvider(new Object() {
-                InstantiatorFactory createInstantiatorFactory() {
-                    TestUtil.instantiatorFactory()
+            it.add(PropertyFactory, DefaultPropertyFactory)
+            it.addProvider(new ServiceRegistrationProvider() {
+                @Provides
+                ManagedObjectRegistry createManagedObjectRegistry() {
+                    new DefaultManagedObjectRegistry()
                 }
 
-                ObjectFactory createObjectFactory(InstantiatorFactory instantiatorFactory, NamedObjectInstantiator namedObjectInstantiator, DomainObjectCollectionFactory domainObjectCollectionFactory, TaskDependencyFactory taskDependencyFactory, PropertyFactory propertyFactory) {
-                    def filePropertyFactory = new DefaultFilePropertyFactory(PropertyHost.NO_OP, fileResolver, fileCollectionFactory)
+                @Provides
+                FilePropertyFactory createFilePropertyFactory() {
+                    new DefaultFilePropertyFactory(PropertyHost.NO_OP, fileResolver, fileCollectionFactory)
+                }
+
+                @Provides
+                ObjectFactory createObjectFactory(InstantiatorFactory instantiatorFactory, NamedObjectInstantiator namedObjectInstantiator, DomainObjectCollectionFactory domainObjectCollectionFactory, TaskDependencyFactory taskDependencyFactory, PropertyFactory propertyFactory, FilePropertyFactory filePropertyFactory) {
                     return new DefaultObjectFactory(instantiatorFactory.decorate(services), namedObjectInstantiator, TestFiles.directoryFileTreeFactory(), TestFiles.patternSetFactory, propertyFactory, filePropertyFactory, taskDependencyFactory, fileCollectionFactory, domainObjectCollectionFactory)
                 }
 
-                ProjectLayout createProjectLayout() {
-                    def filePropertyFactory = new DefaultFilePropertyFactory(PropertyHost.NO_OP, fileResolver, fileCollectionFactory)
-                    return new DefaultProjectLayout(fileResolver.resolve("."), fileResolver, DefaultTaskDependencyFactory.withNoAssociatedProject(), PatternSets.getNonCachingPatternSetFactory(), PropertyHost.NO_OP, fileCollectionFactory, filePropertyFactory, filePropertyFactory)
+                @Provides
+                ProjectLayout createProjectLayout(FilePropertyFactory filePropertyFactory) {
+                    return new DefaultProjectLayout(
+                        fileResolver.resolve("."),
+                        fileResolver.resolve("."),
+                        fileResolver,
+                        DefaultTaskDependencyFactory.withNoAssociatedProject(),
+                        PatternSets.getNonCachingPatternSetFactory(),
+                        PropertyHost.NO_OP,
+                        fileCollectionFactory,
+                        filePropertyFactory,
+                        filePropertyFactory)
                 }
 
+                @Provides
+                TestProblems createProblemsService() {
+                    new TestProblems()
+                }
+
+                @Provides
                 ChecksumService createChecksumService() {
                     new ChecksumService() {
                         @Override
@@ -206,6 +266,12 @@ class TestUtil {
             services = createTestServices()
         }
         return services
+    }
+
+    static ServiceRegistry services(TestFile baseDir) {
+        def fileResolver = TestFiles.resolver(baseDir)
+        def fileCollectionFactory = TestFiles.fileCollectionFactory(baseDir)
+        createServices(fileResolver, fileCollectionFactory)
     }
 
     static ServiceRegistry createTestServices(Action<ServiceRegistration> registrations = {}) {
@@ -327,4 +393,115 @@ class TestUtil {
 
 interface TestClosure {
     Object call(Object param);
+}
+
+class MockInstantiator implements Instantiator {
+
+    @Override
+    def <T> T newInstance(Class<? extends T> type, Object... parameters) throws ObjectInstantiationException {
+        return null
+    }
+}
+
+class TestProblems implements InternalProblems {
+    private final TestProblemSummarizer summarizer
+    private final InternalProblems delegate
+
+    TestProblems() {
+        this.summarizer = new TestProblemSummarizer()
+        this.delegate = new DefaultProblems(
+            summarizer,
+            null,
+            new TestCurrentBuildOperationRef(),
+            new ExceptionProblemRegistry(),
+            null,
+            new MockInstantiator(),
+            null,
+            null,
+            null
+        )
+    }
+
+    @Override
+    ProblemReporter getReporter() {
+        delegate.reporter
+    }
+
+    @Override
+    InternalProblemReporter getInternalReporter() {
+        delegate.internalReporter
+    }
+
+    @Override
+    ProblemsInfrastructure getInfrastructure() {
+        return delegate.getInfrastructure()
+    }
+
+    @Override
+    InternalProblemBuilder getProblemBuilder() {
+        delegate.getProblemBuilder()
+    }
+
+    void assertProblemEmittedOnce(Object expectedProblem) {
+        assert summarizer.emitted.size() == 1
+        def actualProblem = summarizer.emitted[0]
+        if (expectedProblem instanceof Closure) {
+            assert expectedProblem.call(actualProblem)
+        } else if (expectedProblem instanceof Problem) {
+            assert expectedProblem == actualProblem
+        } else {
+            assert expectedProblem instanceof Wildcard
+        }
+    }
+
+    void assertHasDeprecation(String expectedMessage) {
+        def deprecationMessages = getDeprecationMessages()
+        assert deprecationMessages.size() > 0
+        assert deprecationMessages.find { it.contains(expectedMessage) } != null
+    }
+
+    List<String> getDeprecationMessages() {
+        summarizer.emitted
+            .findAll { it.additionalData instanceof DeprecationData }
+            .collect { it.contextualLabel.toString() }
+    }
+
+    void recordEmittedProblems() {
+        summarizer.reset()
+    }
+
+    void resetRecordedProblems() {
+        summarizer.reset()
+    }
+}
+
+class TestProblemSummarizer implements ProblemSummarizer {
+    List emitted = []
+
+    @Override
+    void emit(InternalProblem problem, @Nullable OperationIdentifier id) {
+        emitted.add(problem)
+    }
+
+    void reset() {
+        emitted.clear()
+    }
+
+    @Override
+    String getId() {
+        //no op
+        return ""
+    }
+
+    @Override
+    void report(File reportDir, ProblemConsumer validationFailures) {
+        //no op
+    }
+}
+
+class TestCurrentBuildOperationRef extends CurrentBuildOperationRef {
+    @Override
+    OperationIdentifier getId() {
+        new OperationIdentifier(42)
+    }
 }

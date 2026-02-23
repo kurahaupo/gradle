@@ -15,11 +15,15 @@
  */
 package org.gradle.internal.component.local.model
 
-import org.gradle.api.artifacts.component.BuildIdentifier
+import com.google.common.collect.ImmutableSet
 import org.gradle.api.artifacts.component.ProjectComponentSelector
 import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.DefaultProjectComponentIdentifier
+import org.gradle.api.internal.artifacts.capability.DefaultFeatureCapabilitySelector
+import org.gradle.api.internal.artifacts.capability.DefaultSpecificCapabilitySelector
 import org.gradle.api.internal.attributes.ImmutableAttributes
+import org.gradle.api.internal.project.ProjectIdentity
+import org.gradle.internal.component.external.model.DefaultImmutableCapability
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
 import org.gradle.util.Path
 import spock.lang.Specification
@@ -31,13 +35,14 @@ class DefaultProjectComponentSelectorTest extends Specification {
 
     def "is instantiated with non-null constructor parameter values"() {
         when:
-        ProjectComponentSelector defaultBuildComponentSelector = new DefaultProjectComponentSelector(Stub(BuildIdentifier), Path.path(":id:path"), Path.path(":project:path"), "projectName", ImmutableAttributes.EMPTY, [])
+        ProjectIdentity id = ProjectIdentity.forSubproject(Path.path(":build"), Path.path(":path"))
+        ProjectComponentSelector defaultBuildComponentSelector = new DefaultProjectComponentSelector(id, ImmutableAttributes.EMPTY, ImmutableSet.of())
 
         then:
-        defaultBuildComponentSelector.projectPath == ":project:path"
-        defaultBuildComponentSelector.projectName == "projectName"
-        defaultBuildComponentSelector.displayName == "project :id:path"
-        defaultBuildComponentSelector.toString() == "project :id:path"
+        defaultBuildComponentSelector.projectPath == ":path"
+        defaultBuildComponentSelector.projectIdentity == id
+        defaultBuildComponentSelector.displayName == "project :build:path"
+        defaultBuildComponentSelector.toString() == "project :build:path"
     }
 
     def "can compare with other instance (#projectPath)"() {
@@ -75,10 +80,49 @@ class DefaultProjectComponentSelectorTest extends Specification {
 
     def "matches id (#buildName #projectPath)"() {
         expect:
-        def selector = new DefaultProjectComponentSelector(Stub(BuildIdentifier), Path.path(":id:path"), Path.path(":project:path"), "projectName", ImmutableAttributes.EMPTY, [])
-        def sameIdPath = new DefaultProjectComponentIdentifier(Stub(BuildIdentifier), Path.path(":id:path"), Path.path(":project:path"), "projectName")
-        def differentIdPath = new DefaultProjectComponentIdentifier(Stub(BuildIdentifier), Path.path(":id:path2"), Path.path(":project:path"), "projectName")
+        ProjectIdentity id1 = ProjectIdentity.forSubproject(Path.ROOT, Path.path(":one"))
+        ProjectIdentity id2 = ProjectIdentity.forSubproject(Path.ROOT, Path.path(":two"))
+
+        def selector = new DefaultProjectComponentSelector(id1, ImmutableAttributes.EMPTY, ImmutableSet.of())
+
+        def sameIdPath = new DefaultProjectComponentIdentifier(id1)
+        def differentIdPath = new DefaultProjectComponentIdentifier(id2)
+
         selector.matchesStrictly(sameIdPath)
         !selector.matchesStrictly(differentIdPath)
+    }
+
+    def "specific capability selectors are exposed as a selector and a requested capability"() {
+        def capabilities = ImmutableSet.of(
+            new DefaultSpecificCapabilitySelector(new DefaultImmutableCapability("org", "blah", "1"))
+        )
+        def identity = ProjectIdentity.forRootProject(Path.ROOT, "foo")
+        ProjectComponentSelector selector = new DefaultProjectComponentSelector(identity, ImmutableAttributes.EMPTY, capabilities)
+
+        expect:
+        selector.capabilitySelectors == capabilities
+
+        selector.requestedCapabilities.size() == 1
+        selector.requestedCapabilities[0] == ((DefaultSpecificCapabilitySelector) capabilities[0]).backingCapability
+    }
+
+    def "feature capability selectors are exposed as selectors but not requested capabilities"() {
+        def capabilities = ImmutableSet.of(
+            new DefaultFeatureCapabilitySelector("foo")
+        )
+        def identity = ProjectIdentity.forRootProject(Path.ROOT, "foo")
+        ProjectComponentSelector selector = new DefaultProjectComponentSelector(identity, ImmutableAttributes.EMPTY, capabilities)
+
+        expect:
+        selector.capabilitySelectors == capabilities
+
+        // A ProjectComponentSelector only has access to the project identity, but does not have
+        // access to the project group, name, and version, which are mutable and are only known
+        // at the time of resolving this selector to a project component.
+        // We try to implement `getRequestedCapabilities` on a best-effort basis, but we cannot
+        // "resolve" a feature capability selector to a concrete capability without knowing the
+        // target project's mutable state.
+        selector.requestedCapabilities.size() == 0
+
     }
 }

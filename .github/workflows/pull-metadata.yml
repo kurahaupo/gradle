@@ -2,7 +2,7 @@ name: Check pulls metadata
 
 on:
   pull_request_target:
-    types: [ closed ]
+    types: [ closed, unlabeled, milestoned, demilestoned ]
 
 permissions: {}
 
@@ -15,6 +15,4 @@ jobs:
     steps:
       # Check that PRs have proper metadata: labels and milestone
       # https://github.com/gradle/issue-management-action/blob/main/src/pull-metadata.ts
-      - uses: gradle/issue-management-action@v1
-        with:
-          script: "pull-metadata"
+      - uses: gradle/issue-management-action/pull-metadata@v2

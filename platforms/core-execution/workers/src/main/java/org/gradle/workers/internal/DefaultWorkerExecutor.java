@@ -52,6 +52,7 @@ import org.gradle.workers.WorkerSpec;
 import javax.annotation.concurrent.NotThreadSafe;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Callable;
 
@@ -145,8 +146,9 @@ public class DefaultWorkerExecutor implements WorkerExecutor {
 
         return instantiator.newInstance(DefaultWorkQueue.class, this, spec, daemonWorkerFactory);
     }
+
     private <T extends WorkParameters> AsyncWorkCompletion submitWork(Class<? extends WorkAction<T>> workActionClass, Action<? super T> parameterAction, WorkerSpec workerSpec, WorkerFactory workerFactory) {
-        Class<T> parameterType = isolationScheme.parameterTypeFor(workActionClass);
+        Class<T> parameterType = isolationScheme.parameterTypeForOrNull(workActionClass);
         T parameters = (parameterType == null) ? null : instantiator.newInstance(parameterType);
         if (parameters != null) {
             parameterAction.execute(parameters);
@@ -157,7 +159,7 @@ public class DefaultWorkerExecutor implements WorkerExecutor {
         IsolatedParametersActionExecutionSpec<?> spec;
         try {
             // Isolate parameters in this thread prior to starting work in a separate thread
-            spec = actionExecutionSpecFactory.newIsolatedSpec(description, workActionClass, parameters, workerRequirement, false);
+            spec = actionExecutionSpecFactory.newIsolatedSpec(description, workActionClass, parameters, workerRequirement, Collections.emptySet());
         } catch (Throwable t) {
             throw new WorkExecutionException(description, t);
         }
@@ -235,14 +237,14 @@ public class DefaultWorkerExecutor implements WorkerExecutor {
             processConfiguration.getForkOptions().copyTo(forkOptions);
             forkOptions.setWorkingDir(workerDirectoryProvider.getWorkingDirectory());
 
-            ClassPath isolatedFromChanges = classpathTransformer.transform(DefaultClassPath.of(processConfiguration.getClasspath()), CachedClasspathTransformer.StandardTransform.None);
+            ClassPath isolatedFromChanges = classpathTransformer.copyingTransform(DefaultClassPath.of(processConfiguration.getClasspath()));
             builder.javaForkOptions(forkOptions)
                 .withClassLoaderStructure(classLoaderStructureProvider.getWorkerProcessClassLoaderStructure(isolatedFromChanges.getAsFiles(), getParamClasses(executionClass, parameters)));
 
             return new ForkedWorkerRequirement(baseDir, projectCacheDir.getDir(), builder.build());
         } else if (configuration instanceof ClassLoaderWorkerSpec) {
             ClassLoaderWorkerSpec classLoaderConfiguration = (ClassLoaderWorkerSpec) configuration;
-            ClassPath isolatedFromChanges = classpathTransformer.transform(DefaultClassPath.of(classLoaderConfiguration.getClasspath()), CachedClasspathTransformer.StandardTransform.None);
+            ClassPath isolatedFromChanges = classpathTransformer.copyingTransform(DefaultClassPath.of(classLoaderConfiguration.getClasspath()));
             return new IsolatedClassLoaderWorkerRequirement(baseDir, projectCacheDir.getDir(), classLoaderStructureProvider.getInProcessClassLoaderStructure(isolatedFromChanges.getAsFiles(), getParamClasses(executionClass, parameters)));
         } else {
             return new FixedClassLoaderWorkerRequirement(baseDir, projectCacheDir.getDir(), Thread.currentThread().getContextClassLoader());

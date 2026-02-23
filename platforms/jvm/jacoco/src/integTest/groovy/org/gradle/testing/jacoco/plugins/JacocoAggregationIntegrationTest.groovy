@@ -17,6 +17,7 @@
 package org.gradle.testing.jacoco.plugins
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.testing.jacoco.plugins.fixtures.JacocoCoverage
 import org.gradle.testing.jacoco.plugins.fixtures.JacocoReportXmlFixture
 import spock.lang.Issue
 
@@ -24,6 +25,8 @@ import static org.hamcrest.CoreMatchers.startsWith
 
 class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
     def setup() {
+        JacocoCoverage.assumeDefaultJacocoWorksOnCurrentJdk()
+
         multiProjectBuild("root", ["application", "direct", "transitive"]) {
             buildFile << """
                 allprojects {
@@ -277,7 +280,6 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
             testing {
                 suites {
                     integTest(JvmTestSuite) {
-                        testType = TestSuiteType.INTEGRATION_TEST
                         useJUnit()
                         dependencies {
                           implementation project()
@@ -292,7 +294,6 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
             testing {
                 suites {
                     integTest(JvmTestSuite) {
-                        testType = TestSuiteType.INTEGRATION_TEST
                         useJUnit()
                         dependencies {
                             implementation project(':transitive') // necessary to access Divisor when compiling test
@@ -385,7 +386,7 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
             reporting {
                 reports {
                     testCodeCoverageReport(JacocoCoverageReport) {
-                        testType = TestSuiteType.UNIT_TEST
+                        testSuiteName = "test"
                     }
                 }
             }
@@ -421,7 +422,7 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
             reporting {
                 reports {
                     testCodeCoverageReport(JacocoCoverageReport) {
-                        testType = TestSuiteType.UNIT_TEST
+                        testSuiteName = "test"
                     }
                 }
             }
@@ -468,7 +469,7 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
             reporting {
                 reports {
                     testCodeCoverageReport(JacocoCoverageReport) {
-                        testType = TestSuiteType.UNIT_TEST
+                        testSuiteName = "test"
                     }
                 }
             }
@@ -515,7 +516,7 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
             reporting {
                 reports {
                     testCodeCoverageReport(JacocoCoverageReport) {
-                        testType = TestSuiteType.UNIT_TEST
+                        testSuiteName = "test"
                     }
                 }
             }
@@ -570,7 +571,7 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
         then:
         failure.assertHasDescription("Execution failed for task ':direct:test'.")
             .assertThatCause(startsWith("There were failing tests"))
-        result.assertTaskNotExecuted(':application:testCodeCoverageReport"')
+        result.assertTasksNotScheduled(':application:testCodeCoverageReport"')
 
         file("application/build/reports/jacoco/testCodeCoverageReport/html/index.html").assertDoesNotExist()
         file("application/build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml").assertDoesNotExist()
@@ -599,10 +600,10 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
         def result = fails(":application:testCodeCoverageReport", "--continue")
 
         then:
-        result.assertTaskExecuted(':direct:test')
-        result.assertTaskExecuted(':transitive:test')
-        result.assertTaskExecuted(':application:test')
-        result.assertTaskExecuted(':application:testCodeCoverageReport')
+        result.assertTaskScheduled(':direct:test')
+        result.assertTaskScheduled(':transitive:test')
+        result.assertTaskScheduled(':application:test')
+        result.assertTaskScheduled(':application:testCodeCoverageReport')
 
         file("direct/build/jacoco/test.exec").assertExists()
         file("transitive/build/jacoco/test.exec").assertExists()
@@ -641,10 +642,10 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
         def result = fails(":application:testCodeCoverageReport", "--continue")
 
         then:
-        result.assertTaskExecuted(':direct:test')
-        result.assertTaskExecuted(':transitive:test')
-        result.assertTaskExecuted(':application:test')
-        result.assertTaskNotExecuted(':application:testCodeCoverageReport')
+        result.assertTaskScheduled(':direct:test')
+        result.assertTaskScheduled(':transitive:test')
+        result.assertTaskScheduled(':application:test')
+        result.assertTasksNotScheduled(':application:testCodeCoverageReport')
 
         file("direct/build/jacoco/test.exec").assertExists()
         file("transitive/build/jacoco/test.exec").assertExists()
@@ -665,7 +666,7 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
                             suites {
                                 test {
                                     useJUnit()
-                                    jvmArgs '-XX:UnknownArgument'
+                                    jvmArgs('-XX:UnknownArgument')
                                 }
                             }
                         }
@@ -681,10 +682,10 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
         def result = fails(":application:testCodeCoverageReport", "--continue")
 
         then:
-        result.assertTaskNotExecuted(':direct:test')
-        result.assertTaskNotExecuted(':transitive:test')
-        result.assertTaskNotExecuted(':application:test')
-        result.assertTaskNotExecuted(':application:testCodeCoverageReport')
+        result.assertTasksNotScheduled(':direct:test')
+        result.assertTasksNotScheduled(':transitive:test')
+        result.assertTasksNotScheduled(':application:test')
+        result.assertTasksNotScheduled(':application:testCodeCoverageReport')
 
         file("direct/build/jacoco/test.exec").assertDoesNotExist()
         file("transitive/build/jacoco/test.exec").assertDoesNotExist()
@@ -693,6 +694,26 @@ class JacocoAggregationIntegrationTest extends AbstractIntegrationSpec {
         // despite --continue flag, :application:testCodeCoverageReport will not execute due to catastrophic failures
         file("application/build/reports/jacoco/testCodeCoverageReport/html/index.html").assertDoesNotExist()
         file("application/build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml").assertDoesNotExist()
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/29916")
+    def "can create jacoco report while report tasks are realized early"() {
+        buildFile << """
+            apply plugin: 'org.gradle.jacoco-report-aggregation'
+
+            tasks.withType(JacocoReport) {
+                // realizes all reports eagerly.
+            }
+
+            reporting {
+                reports {
+                    create("testCodeCoverageReport", JacocoCoverageReport)
+                }
+            }
+        """
+
+        expect:
+        succeeds("help")
     }
 
 }

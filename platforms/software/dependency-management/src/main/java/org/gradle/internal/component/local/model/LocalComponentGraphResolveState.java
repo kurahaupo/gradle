@@ -16,12 +16,11 @@
 
 package org.gradle.internal.component.local.model;
 
-import org.gradle.api.Transformer;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
-import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.internal.component.model.ComponentGraphResolveState;
 import org.gradle.internal.component.model.GraphSelectionCandidates;
 import org.gradle.internal.component.model.VariantGraphResolveState;
+import org.jspecify.annotations.Nullable;
 
 import javax.annotation.concurrent.ThreadSafe;
 import java.util.List;
@@ -33,29 +32,11 @@ import java.util.List;
  */
 @ThreadSafe
 public interface LocalComponentGraphResolveState extends ComponentGraphResolveState {
+
     ModuleVersionIdentifier getModuleVersionId();
 
     @Override
     LocalComponentGraphResolveMetadata getMetadata();
-
-    /**
-     * Copies this state, but with the new component ID and the artifacts transformed by the given transformer.
-     */
-    LocalComponentGraphResolveState copy(ComponentIdentifier newComponentId, Transformer<LocalComponentArtifactMetadata, LocalComponentArtifactMetadata> transformer);
-
-    /**
-     * We currently allow a configuration that has been partially observed for resolution to be modified
-     * in a beforeResolve callback.
-     *
-     * To reduce the number of instances of root component metadata we create, we mark all configurations
-     * as dirty and in need of re-evaluation when we see certain types of modifications to a configuration.
-     *
-     * In the future, we could narrow the number of configurations that need to be re-evaluated, but it would
-     * be better to get rid of the behavior that allows configurations to be modified once they've been observed.
-     *
-     * @see org.gradle.api.internal.artifacts.ivyservice.moduleconverter.DefaultRootComponentMetadataBuilder.MetadataHolder#tryCached(ComponentIdentifier)
-     */
-    void reevaluate();
 
     @Override
     LocalComponentGraphSelectionCandidates getCandidatesForGraphVariantSelection();
@@ -69,7 +50,14 @@ public interface LocalComponentGraphResolveState extends ComponentGraphResolveSt
          *     <li>Variant without attributes: those which can be selected by configuration name</li>
          * </ul>
          */
-        List<VariantGraphResolveState> getAllSelectableVariants();
+        List<LocalVariantGraphResolveState> getAllSelectableVariants();
+
+        /**
+         * Returns the variant that is identified by the given configuration name.
+         */
+        @Nullable
+        VariantGraphResolveState getVariantByConfigurationName(String name);
 
     }
+
 }

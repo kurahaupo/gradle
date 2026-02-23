@@ -16,8 +16,11 @@
 
 package org.gradle.internal.declarativedsl.project
 
-import org.gradle.api.internal.plugins.software.RegistersSoftwareTypes
-import org.gradle.api.internal.plugins.software.SoftwareType
+import org.gradle.features.annotations.BindsProjectType
+import org.gradle.features.annotations.RegistersProjectFeatures
+import org.gradle.features.binding.ProjectTypeBinding
+import org.gradle.features.binding.ProjectTypeBindingBuilder
+import org.gradle.features.registration.TaskRegistrar
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.intellij.lang.annotations.Language
 
@@ -39,89 +42,20 @@ class DeclarativeDslProjectBuildFileIntegrationSpec extends AbstractIntegrationS
         then:
         [
             file(".gradle/declarative-schema/project.dcl.schema"),
-            file("sub/.gradle/declarative-schema/project.dcl.schema")
         ].every { it.isFile() && it.text != "" }
     }
 
     def 'can configure a custom plugin extension in declarative DSL for a plugin written in #language'() {
         given:
-        file("build-logic/build.gradle.kts") << """
-            plugins {
-                `java-gradle-plugin`
-                ${if (language == "kotlin") { "`kotlin-dsl`" } else { "" }}
-            }
-            ${if (language == "kotlin") { "repositories { mavenCentral() }" } else { "" }}
-            gradlePlugin {
-                plugins {
-                    create("restrictedPlugin") {
-                        id = "com.example.restricted"
-                        implementationClass = "com.example.restricted.RestrictedPlugin"
-                    }
-                    create("softwareTypeRegistrator") {
-                        id = "com.example.restricted.ecosystem"
-                        implementationClass = "com.example.restricted.SoftwareTypeRegistrationPlugin"
-                    }
-                }
-            }
-        """
-
-        file(extensionFile) << extensionCode
-
-        file("build-logic/src/main/java/com/example/restricted/SoftwareTypeRegistrationPlugin.java") << defineSettingsPluginRegisteringSoftwareTypeProvidingPlugin()
-        file("build-logic/src/main/java/com/example/restricted/RestrictedPlugin.java") << """
-            package com.example.restricted;
-
-            import org.gradle.api.DefaultTask;
-            import org.gradle.api.Plugin;
-            import org.gradle.api.Project;
-            import org.gradle.api.provider.ListProperty;
-            import org.gradle.api.provider.Property;
-            import ${SoftwareType.class.name};
-
-            public abstract class RestrictedPlugin implements Plugin<Project> {
-                @SoftwareType(name = "restricted", modelPublicType = Extension.class)
-                public abstract Extension getRestricted();
-
-                @Override
-                public void apply(Project target) {
-                    target.getTasks().register("printConfiguration", DefaultTask.class, task -> {
-                        Property<Extension.Point> referencePoint = getRestricted().getReferencePoint();
-                        Extension.Access acc = getRestricted().getPrimaryAccess();
-                        ListProperty<Extension.Access> secondaryAccess = getRestricted().getSecondaryAccess();
-
-                        task.doLast("print restricted extension content", t -> {
-                            System.out.println("id = " + getRestricted().getId().get());
-                            Extension.Point point = referencePoint.getOrElse(getRestricted().point(-1, -1));
-                            System.out.println("referencePoint = (" + point.getX() + ", " + point.getY() + ")");
-                            System.out.println("primaryAccess = { " +
-                                    acc.getName().get() + ", " + acc.getRead().get() + ", " + acc.getWrite().get() + "}"
-                            );
-                            secondaryAccess.get().forEach(it -> {
-                                System.out.println("secondaryAccess { " +
-                                        it.getName().get() + ", " + it.getRead().get() + ", " + it.getWrite().get() +
-                                        "}"
-                                );
-                            });
-                        });
-                    });
-                }
-            }
-        """
-
-        file("settings.gradle.dcl") << """
-            pluginManagement {
-                includeBuild("build-logic")
-            }
-            plugins {
-                id("com.example.restricted.ecosystem")
-            }
-        """
+        simpleDeclarativePlugin(language)
 
         file("build.gradle.dcl") << """
             restricted {
                 id = "test"
 
                 referencePoint = point(1, 2)
+                arguments = listOf("one", "two")
+                flags = listOf()
 
                 primaryAccess {
                     read = false
@@ -148,15 +82,188 @@ class DeclarativeDslProjectBuildFileIntegrationSpec extends AbstractIntegrationS
         then:
         outputContains("""id = test
 referencePoint = (1, 2)
+arguments = [one, two]
+flags = []
+mapProperty = {}
 primaryAccess = { primary, false, false}
 secondaryAccess { two, true, false}
 secondaryAccess { three, true, true}"""
         )
 
         where:
-        language | extensionFile                    | extensionCode
-        "java"   | JAVA_PLUGIN_EXTENSION_FILENAME   | JAVA_PLUGIN_EXTENSION
-        "kotlin" | KOTLIN_PLUGIN_EXTENSION_FILENAME | KOTLIN_PLUGIN_EXTENSION
+        language | _
+        "java"   | _
+        "kotlin" | _
+    }
+
+    def 'can use list augmentation with += from a DCL file'() {
+        given:
+        simpleDeclarativePlugin(language)
+
+        file("settings.gradle.dcl") << """
+
+            defaults {
+                restricted {
+                    arguments = listOf("one")
+                    flags = listOf(1, 2)
+                }
+            }
+        """
+
+        file("build.gradle.dcl") << """
+            restricted {
+                arguments += listOf("two", "three")
+                flags += listOf(3)
+            }
+        """
+
+        when:
+        run(":printConfiguration", "--stacktrace")
+
+        then:
+        outputContains("arguments = [one, two, three]")
+        outputContains("flags = [1, 2, 3]")
+
+        where:
+        language | _
+        "java"   | _
+        "kotlin" | _
+    }
+
+    def 'can set and augment map properties from a DCL file'() {
+        given:
+        simpleDeclarativePlugin(language)
+
+        file("settings.gradle.dcl") << """
+
+            defaults {
+                restricted {
+                    mapProperty = mapOf("one" to 1, "two" to 2)
+                }
+            }
+        """
+
+        file("build.gradle.dcl") << """
+            restricted {
+                mapProperty += mapOf("three" to 3, "four" to 4)
+            }
+        """
+
+        when:
+        run(":printConfiguration")
+
+        then:
+        outputContains("mapProperty = {one=1, two=2, three=3, four=4}")
+
+        where:
+        language | _
+        "java"   | _
+        "kotlin" | _
+    }
+
+
+    def simpleDeclarativePlugin(String language = "kotlin") {
+        file("build-logic/build.gradle.kts") << defineCustomPluginBuild(language)
+        file("build-logic/src/main/java/com/example/restricted/SoftwareTypeRegistrationPlugin.java") << defineSettingsPluginRegisteringSoftwareTypeProvidingPlugin()
+        file("build-logic/src/main/java/com/example/restricted/RestrictedPlugin.java") << defineRestrictedPlugin()
+
+        if (language == "kotlin") {
+            file(KOTLIN_PLUGIN_EXTENSION_FILENAME) << KOTLIN_PLUGIN_EXTENSION
+        } else if (language == "java") {
+            file(JAVA_PLUGIN_EXTENSION_FILENAME) << JAVA_PLUGIN_EXTENSION
+        }
+
+        file("settings.gradle.dcl") << """
+            pluginManagement {
+                includeBuild("build-logic")
+            }
+            plugins {
+                id("com.example.restricted.ecosystem")
+            }
+        """
+
+    }
+
+    private static String defineRestrictedPlugin() {
+        """
+            package com.example.restricted;
+
+            import org.gradle.api.DefaultTask;
+            import org.gradle.api.Plugin;
+            import org.gradle.api.Project;
+            import org.gradle.api.provider.ListProperty;
+            import org.gradle.api.provider.Property;
+            import ${BindsProjectType.class.name};
+            import ${ProjectTypeBinding.class.name};
+            import ${ProjectTypeBindingBuilder.class.name};
+
+            @${BindsProjectType.class.simpleName}(RestrictedPlugin.Binding.class)
+            public abstract class RestrictedPlugin implements Plugin<Project> {
+                static class Binding implements ${ProjectTypeBinding.class.simpleName} {
+                    public void bind(${ProjectTypeBindingBuilder.class.simpleName} builder) {
+                        builder.bindProjectType("restricted",  Extension.class, (context, definition, model) -> {
+                            Services services = context.getObjectFactory().newInstance(Services.class);
+                            services.getTaskRegistrar().register("printConfiguration", DefaultTask.class, task -> {
+                                Property<Extension.Point> referencePoint = definition.getReferencePoint();
+                                Extension.Access acc = definition.getPrimaryAccess();
+                                ListProperty<Extension.Access> secondaryAccess = definition.getSecondaryAccess();
+
+                                task.doLast("print restricted extension content", t -> {
+                                    System.out.println("id = " + definition.getId().get());
+                                    Extension.Point point = referencePoint.getOrElse(definition.point(-1, -1));
+                                    System.out.println("referencePoint = (" + point.getX() + ", " + point.getY() + ")");
+                                    System.out.println("arguments = " + definition.getArguments().get());
+                                    System.out.println("flags = " + definition.getFlags());
+                                    System.out.println("mapProperty = " + definition.getMapProperty().get());
+                                    System.out.println("primaryAccess = { " +
+                                            acc.getName().get() + ", " + acc.getRead().get() + ", " + acc.getWrite().get() + "}"
+                                    );
+                                    secondaryAccess.get().forEach(it -> {
+                                        System.out.println("secondaryAccess { " +
+                                                it.getName().get() + ", " + it.getRead().get() + ", " + it.getWrite().get() +
+                                                "}"
+                                        );
+                                    });
+                                });
+                            });
+                        })
+                        .withUnsafeDefinition();
+                    }
+
+                    interface Services {
+                        @javax.inject.Inject
+                        ${TaskRegistrar.class.name} getTaskRegistrar();
+                    }
+                }
+
+                @Override
+                public void apply(Project target) {
+
+                }
+            }
+        """
+    }
+
+    private static String defineCustomPluginBuild(String language) {
+        """
+            plugins {
+                `java-gradle-plugin`
+                ${if (language == "kotlin") { "`kotlin-dsl`" } else { "" }}
+            }
+            ${if (language == "kotlin") { "repositories { mavenCentral() }" } else { "" }}
+            gradlePlugin {
+                plugins {
+                    create("restrictedPlugin") {
+                        id = "com.example.restricted"
+                        implementationClass = "com.example.restricted.RestrictedPlugin"
+                    }
+                    create("softwareTypeRegistrator") {
+                        id = "com.example.restricted.ecosystem"
+                        implementationClass = "com.example.restricted.SoftwareTypeRegistrationPlugin"
+                    }
+                }
+            }
+        """
     }
 
     private static final JAVA_PLUGIN_EXTENSION_FILENAME = "build-logic/src/main/java/com/example/restricted/Extension.java"
@@ -166,18 +273,21 @@ secondaryAccess { three, true, true}"""
     private static final JAVA_PLUGIN_EXTENSION = """
         package com.example.restricted;
 
+        import java.util.ArrayList;
+        import java.util.List;
         import org.gradle.declarative.dsl.model.annotations.Adding;
-        import org.gradle.declarative.dsl.model.annotations.Configuring;
-        import org.gradle.declarative.dsl.model.annotations.Restricted;
+        import org.gradle.declarative.dsl.model.annotations.HiddenInDefinition;
         import org.gradle.api.Action;
         import org.gradle.api.model.ObjectFactory;
         import org.gradle.api.provider.ListProperty;
+        import org.gradle.api.provider.MapProperty;
         import org.gradle.api.provider.Property;
+        import org.gradle.features.binding.Definition;
+        import org.gradle.features.binding.BuildModel;
 
         import javax.inject.Inject;
 
-        @Restricted
-        public abstract class Extension {
+        public abstract class Extension implements Definition<Extension.Model>{
             private final Access primaryAccess;
             public abstract ListProperty<Access> getSecondaryAccess();
             private final ObjectFactory objects;
@@ -196,15 +306,22 @@ secondaryAccess { three, true, true}"""
                 getReferencePoint().convention(point(-1, -1));
             }
 
-            @Restricted
             public abstract Property<String> getId();
 
-            @Restricted
             public abstract Property<Point> getReferencePoint();
 
-            @Configuring
-            public void primaryAccess(Action<? super Access> configure) {
-                configure.execute(primaryAccess);
+            public abstract ListProperty<String> getArguments();
+
+            public abstract MapProperty<String, Integer> getMapProperty();
+
+            private List<Integer> flags = new ArrayList<>();
+
+            public List<Integer> getFlags() {
+                return flags;
+            }
+
+            public void setFlags(List<Integer> flags) {
+                this.flags = flags;
             }
 
             @Adding
@@ -216,7 +333,6 @@ secondaryAccess { three, true, true}"""
                 return newAccess;
             }
 
-            @Restricted
             public Point point(int x, int y) {
                 return new Point(x, y);
             }
@@ -228,13 +344,10 @@ secondaryAccess { three, true, true}"""
                     getWrite().convention(false);
                 }
 
-                @Restricted
                 public abstract Property<String> getName();
 
-                @Restricted
                 public abstract Property<Boolean> getRead();
 
-                @Restricted
                 public abstract Property<Boolean> getWrite();
             }
 
@@ -255,6 +368,8 @@ secondaryAccess { three, true, true}"""
                     return yCoord;
                 }
             }
+
+            interface Model extends BuildModel { }
         }
     """.stripIndent()
 
@@ -264,16 +379,16 @@ secondaryAccess { three, true, true}"""
 
         import org.gradle.api.model.ObjectFactory
         import org.gradle.api.provider.ListProperty
+        import org.gradle.api.provider.MapProperty
         import org.gradle.api.provider.Property
         import org.gradle.declarative.dsl.model.annotations.Adding
-        import org.gradle.declarative.dsl.model.annotations.Configuring
-        import org.gradle.declarative.dsl.model.annotations.Restricted
         import javax.inject.Inject
+        import org.gradle.features.binding.Definition
+        import org.gradle.features.binding.BuildModel
 
-        @Restricted
-        abstract class Extension @Inject constructor(private val objects: ObjectFactory) {
+        abstract class Extension @Inject constructor(private val objects: ObjectFactory) : Definition<Extension.Model> {
             val primaryAccess: Access
-            abstract val secondaryAccess: ListProperty<Access?>
+            abstract val secondaryAccess: ListProperty<Access>
 
             init {
                 this.primaryAccess = objects.newInstance(Access::class.java)
@@ -283,16 +398,15 @@ secondaryAccess { three, true, true}"""
                 referencePoint.convention(point(-1, -1))
             }
 
-            @get:Restricted
-            abstract val id: Property<String?>
+            abstract val id: Property<String>
 
-            @get:Restricted
-            abstract val referencePoint: Property<Point?>
+            abstract val referencePoint: Property<Point>
 
-            @Configuring
-            fun primaryAccess(configure: Access.() -> Unit) {
-                configure(primaryAccess)
-            }
+            abstract val arguments: ListProperty<String>
+
+            abstract val mapProperty: MapProperty<String, Int>
+
+            var flags: List<Int> = emptyList()
 
             @Adding
             fun secondaryAccess(configure: Access.() -> Unit): Access {
@@ -303,7 +417,6 @@ secondaryAccess { three, true, true}"""
                 return newAccess
             }
 
-            @Restricted
             fun point(x: Int, y: Int): Point {
                 return Point(x, y)
             }
@@ -315,17 +428,16 @@ secondaryAccess { three, true, true}"""
                     write.convention(false)
                 }
 
-                @get:Restricted
-                abstract val name: Property<String?>
+                abstract val name: Property<String>
 
-                @get:Restricted
-                abstract val read: Property<Boolean?>
+                abstract val read: Property<Boolean>
 
-                @get:Restricted
-                abstract val write: Property<Boolean?>
+                abstract val write: Property<Boolean>
             }
 
             class Point(val x: Int, val y: Int)
+
+            interface Model : BuildModel
         }
     """
 
@@ -354,10 +466,9 @@ secondaryAccess { three, true, true}"""
         import org.gradle.api.Plugin;
         import org.gradle.api.initialization.Settings;
         import org.gradle.api.internal.SettingsInternal;
-        import org.gradle.plugin.software.internal.SoftwareTypeRegistry;
-        import ${RegistersSoftwareTypes.class.name};
+        import ${RegistersProjectFeatures.class.name};
 
-        @RegistersSoftwareTypes({ RestrictedPlugin.class })
+        @${RegistersProjectFeatures.class.simpleName}({ RestrictedPlugin.class })
         abstract public class SoftwareTypeRegistrationPlugin implements Plugin<Settings> {
             @Override
             public void apply(Settings target) {

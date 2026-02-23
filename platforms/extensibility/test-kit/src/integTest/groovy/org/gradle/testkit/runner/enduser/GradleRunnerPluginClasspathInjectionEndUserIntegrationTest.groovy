@@ -32,13 +32,15 @@ class GradleRunnerPluginClasspathInjectionEndUserIntegrationTest extends BaseTes
         buildFile << """
             task createClasspathManifest {
                 def outputDir = file("\$buildDir/\$name")
+                def outputFile = file("\$outputDir/plugin-classpath.txt")
 
-                inputs.files sourceSets.main.runtimeClasspath
+                def mainRuntimeClasspath = sourceSets.main.runtimeClasspath
+                inputs.files mainRuntimeClasspath
                 outputs.dir outputDir
 
                 doLast {
                     outputDir.mkdirs()
-                    file("\$outputDir/plugin-classpath.txt").text = sourceSets.main.runtimeClasspath.join("\\n")
+                    outputFile.text = mainRuntimeClasspath.join("\\n")
                 }
             }
 
@@ -98,7 +100,7 @@ class GradleRunnerPluginClasspathInjectionEndUserIntegrationTest extends BaseTes
                     def result = GradleRunner.create()
                         .withProjectDir(testProjectDir)
                         .withArguments('helloWorld')
-                        .withDebug($debug)
+                        .withDebug($embedded)
                         .build()
 
                     then:
@@ -143,7 +145,7 @@ class GradleRunnerPluginClasspathInjectionEndUserIntegrationTest extends BaseTes
                         .withProjectDir(testProjectDir)
                         .withArguments('helloWorld')
                         .withPluginClasspath(pluginClasspath)
-                        .withDebug($debug)
+                        .withDebug($embedded)
                         .build()
 
                     then:

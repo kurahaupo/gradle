@@ -16,11 +16,8 @@
 
 package org.gradle.plugins.ide.eclipse
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
-
 class EclipseLinkedResourceIntegrationTest extends AbstractEclipseIntegrationSpec {
 
-    @ToBeFixedForConfigurationCache
     def "can reference linked resources as source folders"() {
         given:
         multiProjectWithSiblingSourceFolders()
@@ -72,7 +69,7 @@ configure(project(":projectA")){
     def "can use linked resources and generate metadata twice"() {
         given:
         settingsFile.text = 'rootProject.name = "root"'
-        buildScript '''
+        buildFile '''
             plugins {
                 id 'eclipse'
             }

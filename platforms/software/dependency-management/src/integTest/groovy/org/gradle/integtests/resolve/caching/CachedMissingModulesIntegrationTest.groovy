@@ -32,8 +32,8 @@ class CachedMissingModulesIntegrationTest extends AbstractHttpDependencyResoluti
 
         buildFile << """
 repositories {
-    ivy { url "${repo1.uri}"}
-    ivy { url "${repo2.uri}"}
+    ivy { url = "${repo1.uri}"}
+    ivy { url = "${repo2.uri}"}
 }
 configurations { missing }
 dependencies {
@@ -69,8 +69,8 @@ task showMissing {
 
         buildFile << """
 repositories {
-    ivy { url "${repo1.uri}"}
-    ivy { url "${repo2.uri}"}
+    ivy { url = "${repo1.uri}"}
+    ivy { url = "${repo2.uri}"}
 }
 configurations {
     missing
@@ -79,7 +79,9 @@ configurations {
     }
 }
 dependencies {
-    missing group: 'group', name: 'projectA', version: '1.2', changing: true
+    missing("group:projectA:1.2") {
+        changing = true
+    }
 }
 task showMissing {
     def missing = configurations.missing
@@ -113,8 +115,8 @@ task showMissing {
 
         buildFile << """
 repositories {
-    ivy { url "${repo1.uri}"}
-    ivy { url "${repo2.uri}"}
+    ivy { url = "${repo1.uri}"}
+    ivy { url = "${repo2.uri}"}
 }
 configurations { missing }
 dependencies {
@@ -159,12 +161,12 @@ task showMissing {
         buildFile << """
             repositories {
                 maven {
-                    name 'repo1'
-                    url '${repo1.uri}'
+                    name = 'repo1'
+                    url = "${repo1.uri}"
                 }
                 maven {
-                    name 'repo2'
-                    url '${repo2.uri}'
+                    name = 'repo2'
+                    url = "${repo2.uri}"
                     metadataSources {
                         mavenPom()
                         artifact()
@@ -249,12 +251,12 @@ Required by:
         buildFile << """
             repositories {
                 maven {
-                    name 'repo1'
-                    url '${repo1.uri}'
+                    name = 'repo1'
+                    url = "${repo1.uri}"
                 }
                 maven {
-                    name 'repo2'
-                    url '${repo2.uri}'
+                    name = 'repo2'
+                    url = "${repo2.uri}"
                 }
             }
             configurations {
@@ -306,12 +308,12 @@ Required by:
         buildFile << """
             repositories {
                 maven {
-                    name 'repo1'
-                    url '${repo1.uri}'
+                    name = 'repo1'
+                    url = "${repo1.uri}"
                 }
                 maven {
-                    name 'repo2'
-                    url '${repo2.uri}'
+                    name = 'repo2'
+                    url = "${repo2.uri}"
                 }
             }
             configurations {
@@ -383,12 +385,12 @@ Required by:
         buildFile << """
     repositories {
         maven {
-            name 'repo1'
-            url '${repo1.uri}'
+            name = 'repo1'
+            url = "${repo1.uri}"
         }
         maven {
-            name 'repo2'
-            url '${repo2.uri}'
+            name = 'repo2'
+            url = "${repo2.uri}"
         }
     }
     configurations { compile }
@@ -459,12 +461,12 @@ Required by:
         buildFile << """
     repositories {
         maven {
-            name 'repo1'
-            url '${repo1.uri}'
+            name = 'repo1'
+            url = "${repo1.uri}"
         }
         maven {
-            name 'repo2'
-            url '${repo2.uri}'
+            name = 'repo2'
+            url = "${repo2.uri}"
         }
     }
     configurations { conf1; conf2 }
@@ -552,21 +554,22 @@ Required by:
         def repo2 = mavenHttpRepo("repo2")
         def repo2Module = repo2.module("group", "projectA", "1.0")
 
-        createDirs("subproject")
-        settingsFile << "include 'subproject'"
-        buildFile << """
-            allprojects{
+        settingsFile << """
+            include 'subproject'
+            dependencyResolutionManagement {
                 repositories {
                     maven {
-                        name 'repo1'
-                        url '${repo1.uri}'
+                        name = 'repo1'
+                        url = "${repo1.uri}"
                     }
                     maven {
-                        name 'repo2'
-                        url '${repo2.uri}'
+                        name = 'repo2'
+                        url = "${repo2.uri}"
                     }
                 }
             }
+        """
+        buildFile << """
             configurations {
                 config1
             }
@@ -581,23 +584,24 @@ Required by:
                    }
                }
             }
+        """
 
-            project(":subproject"){
-                configurations{
-                    config2
-                }
-                dependencies{
-                    config2 'group:projectA:1.0'
-                }
-                task resolveConfig2 {
-                    doLast {
-                        configurations.config2.incoming.resolutionResult.allDependencies{
-                            assert it instanceof UnresolvedDependencyResult
-                        }
+        file("subproject/build.gradle") << """
+            configurations{
+                config2
+            }
+            dependencies{
+                config2 'group:projectA:1.0'
+            }
+            task resolveConfig2 {
+                doLast {
+                    configurations.config2.incoming.resolutionResult.allDependencies{
+                        assert it instanceof UnresolvedDependencyResult
                     }
                 }
             }
         """
+
         when:
         repo1Module.pom.expectGetMissing()
         repo2Module.pom.expectGetMissing()
@@ -624,12 +628,12 @@ Required by:
         buildFile << """
         repositories {
            maven {
-               name 'repo1'
-               url '${repo1.uri}'
+               name = 'repo1'
+               url = "${repo1.uri}"
            }
            maven {
-               name 'repo2'
-               url '${repo2.uri}'
+               name = 'repo2'
+               url = "${repo2.uri}"
            }
        }
        configurations { compile }

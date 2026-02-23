@@ -18,9 +18,9 @@ package org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact;
 
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
-import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.DownloadArtifactBuildOperationType;
-import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.internal.component.model.VariantIdentifier;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.api.internal.file.FileCollectionInternal;
 import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
 import org.gradle.internal.DisplayName;
@@ -32,8 +32,8 @@ import org.gradle.internal.operations.BuildOperationDescriptor;
 import org.gradle.internal.operations.BuildOperationQueue;
 import org.gradle.internal.operations.RunnableBuildOperation;
 import org.gradle.internal.resolve.resolver.ComponentArtifactResolver;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -41,27 +41,36 @@ import java.util.List;
 import static org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvedArtifactSet.EMPTY;
 
 public class ArtifactBackedResolvedVariant implements ResolvedVariant {
+
     private final VariantResolveMetadata.Identifier identifier;
+    private final VariantIdentifier sourceVariantId;
     private final DisplayName displayName;
-    private final AttributeContainerInternal attributes;
+    private final ImmutableAttributes attributes;
     private final ImmutableCapabilities capabilities;
     private final List<? extends ComponentArtifactMetadata> artifacts;
     private final ComponentArtifactResolver componentArtifactResolver;
 
     public ArtifactBackedResolvedVariant(
-        @Nullable VariantResolveMetadata.Identifier identifier,
+        VariantResolveMetadata.@Nullable Identifier identifier,
+        VariantIdentifier sourceVariantId,
         DisplayName displayName,
-        AttributeContainerInternal attributes,
+        ImmutableAttributes attributes,
         ImmutableCapabilities capabilities,
         List<? extends ComponentArtifactMetadata> artifacts,
         ComponentArtifactResolver componentArtifactResolver
     ) {
         this.identifier = identifier;
+        this.sourceVariantId = sourceVariantId;
         this.displayName = displayName;
         this.attributes = attributes;
         this.capabilities = capabilities;
         this.artifacts = artifacts;
         this.componentArtifactResolver = componentArtifactResolver;
+    }
+
+    @Override
+    public VariantIdentifier getSourceVariantId() {
+        return sourceVariantId;
     }
 
     @Override
@@ -76,12 +85,12 @@ public class ArtifactBackedResolvedVariant implements ResolvedVariant {
             return EMPTY;
         }
         if (resolvedArtifacts.size() == 1) {
-            return new SingleArtifactSet(displayName, attributes, capabilities, resolvedArtifacts.iterator().next());
+            return new SingleArtifactSet(displayName, sourceVariantId, attributes, capabilities, resolvedArtifacts.iterator().next());
         }
 
         List<SingleArtifactSet> artifactSets = new ArrayList<>(resolvedArtifacts.size());
         for (ResolvableArtifact artifact : resolvedArtifacts) {
-            artifactSets.add(new SingleArtifactSet(displayName, attributes, capabilities, artifact));
+            artifactSets.add(new SingleArtifactSet(displayName, sourceVariantId, attributes, capabilities, artifact));
         }
         return CompositeResolvedArtifactSet.of(artifactSets);
     }
@@ -102,7 +111,7 @@ public class ArtifactBackedResolvedVariant implements ResolvedVariant {
     }
 
     @Override
-    public AttributeContainerInternal getAttributes() {
+    public ImmutableAttributes getAttributes() {
         return attributes;
     }
 
@@ -112,13 +121,22 @@ public class ArtifactBackedResolvedVariant implements ResolvedVariant {
     }
 
     private static class SingleArtifactSet implements ResolvedArtifactSet, ResolvedArtifactSet.Artifacts {
-        private final DisplayName variantName;
-        private final AttributeContainer variantAttributes;
+
+        private final DisplayName artifactSetName;
+        private final VariantIdentifier sourceVariantId;
+        private final ImmutableAttributes variantAttributes;
         private final ImmutableCapabilities capabilities;
         private final ResolvableArtifact artifact;
 
-        SingleArtifactSet(DisplayName variantName, AttributeContainer variantAttributes, ImmutableCapabilities capabilities, ResolvableArtifact artifact) {
-            this.variantName = variantName;
+        SingleArtifactSet(
+            DisplayName artifactSetName,
+            VariantIdentifier sourceVariantId,
+            ImmutableAttributes variantAttributes,
+            ImmutableCapabilities capabilities,
+            ResolvableArtifact artifact
+        ) {
+            this.artifactSetName = artifactSetName;
+            this.sourceVariantId = sourceVariantId;
             this.variantAttributes = variantAttributes;
             this.capabilities = capabilities;
             this.artifact = artifact;
@@ -147,7 +165,7 @@ public class ArtifactBackedResolvedVariant implements ResolvedVariant {
             if (visitor.requireArtifactFiles() && !artifact.getFileSource().getValue().isSuccessful()) {
                 visitor.visitFailure(artifact.getFileSource().getValue().getFailure().get());
             } else {
-                visitor.visitArtifact(variantName, variantAttributes, capabilities, artifact);
+                visitor.visitArtifact(artifactSetName, sourceVariantId, variantAttributes, capabilities, artifact);
                 visitor.endVisitCollection(FileCollectionInternal.OTHER);
             }
         }
@@ -175,6 +193,7 @@ public class ArtifactBackedResolvedVariant implements ResolvedVariant {
         public String toString() {
             return artifact.getId().getDisplayName();
         }
+
     }
 
     private static class DownloadArtifactFile implements RunnableBuildOperation {

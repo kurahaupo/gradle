@@ -8,16 +8,17 @@ dependencies {
     implementation("gradlebuild:basics")
     implementation("gradlebuild:module-identity")
 
-    implementation(project(":documentation")) {
+    implementation(projects.documentation) {
         // TODO turn this around: move corresponding code to this project and let docs depend on it
         because("API metadata generation is part of the DSL guide")
     }
-    implementation(project(":jvm"))
-    implementation(project(":kotlin-dsl"))
+    implementation(projects.jvm)
+    implementation(projects.kotlinDsl)
 
-    implementation(kotlin("gradle-plugin"))
+    implementation(buildLibs.kgp)
 
-    implementation("com.google.code.gson:gson")
+    implementation(buildLibs.gson)
+    implementation(libs.asm)
 
-    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation(testLibs.junitJupiter)
 }

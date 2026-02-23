@@ -15,9 +15,10 @@
  */
 package org.gradle.launcher.daemon.server
 
-import org.gradle.api.JavaVersion
+
 import org.gradle.internal.remote.Address
-import org.gradle.launcher.daemon.configuration.DaemonParameters
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.launcher.daemon.configuration.DaemonPriority
 import org.gradle.launcher.daemon.context.DaemonContext
 import org.gradle.launcher.daemon.context.DefaultDaemonContext
 import org.gradle.launcher.daemon.registry.DaemonDir
@@ -31,7 +32,7 @@ import spock.lang.Specification
 import spock.lang.Subject
 
 import static org.gradle.internal.nativeintegration.services.NativeServices.NativeServicesMode
-import static org.gradle.launcher.daemon.server.api.DaemonStateControl.State.Idle
+import static org.gradle.launcher.daemon.server.api.DaemonState.Idle
 import static org.gradle.launcher.daemon.server.expiry.DaemonExpirationStatus.DO_NOT_EXPIRE
 import static org.gradle.launcher.daemon.server.expiry.DaemonExpirationStatus.GRACEFUL_EXPIRE
 
@@ -44,7 +45,7 @@ class DaemonRegistryUnavailableExpirationStrategyTest extends Specification {
     def "daemon should expire when registry file is unreachable"() {
         given:
         DaemonRegistryUnavailableExpirationStrategy expirationStrategy = new DaemonRegistryUnavailableExpirationStrategy(daemon)
-        DaemonContext daemonContext = new DefaultDaemonContext("user", null, JavaVersion.current(), tempDir.file("BOGUS"), 51234L, 10000, [] as List<String>, false, NativeServicesMode.ENABLED, DaemonParameters.Priority.NORMAL)
+        DaemonContext daemonContext = new DefaultDaemonContext("user", null, JavaLanguageVersion.current(), null, tempDir.file("BOGUS"), 51234L, 10000, [] as List<String>, false, NativeServicesMode.ENABLED, DaemonPriority.NORMAL)
 
         when:
         1 * daemon.getDaemonContext() >> { daemonContext }
@@ -62,7 +63,7 @@ class DaemonRegistryUnavailableExpirationStrategyTest extends Specification {
                 return "DAEMON_ADDRESS"
             }
         }
-        DaemonContext daemonContext = new DefaultDaemonContext("user", null, JavaVersion.current(), daemonDir, 51234L, 10000, [] as List<String>, false, NativeServicesMode.ENABLED, DaemonParameters.Priority.NORMAL)
+        DaemonContext daemonContext = new DefaultDaemonContext("user", null, JavaLanguageVersion.current(), null, daemonDir, 51234L, 10000, [] as List<String>, false, NativeServicesMode.ENABLED, DaemonPriority.NORMAL)
         DaemonDir daemonDir = new DaemonDir(daemonDir)
         DaemonRegistry registry = new EmbeddedDaemonRegistry()
         daemonDir.getRegistry().createNewFile()
@@ -76,5 +77,48 @@ class DaemonRegistryUnavailableExpirationStrategyTest extends Specification {
         DaemonExpirationResult expirationCheck = expirationStrategy.checkExpiration()
         expirationCheck.status == DO_NOT_EXPIRE
         expirationCheck.reason == null
+    }
+
+    def "daemon expiration result does not execute expiration check when daemon registry has not changed"() {
+        given:
+        Address address = new Address() {
+            String getDisplayName() {
+                return "DAEMON_ADDRESS"
+            }
+        }
+        DaemonRegistryUnavailableExpirationStrategy expirationStrategy = new DaemonRegistryUnavailableExpirationStrategy(daemon)
+        DaemonContext daemonContext = new DefaultDaemonContext("user", null, JavaLanguageVersion.current(), null, daemonDir, 51234L, 10000, [] as List<String>, false, NativeServicesMode.ENABLED, DaemonPriority.NORMAL)
+        DaemonDir daemonDirObject = new DaemonDir(daemonDir)
+        DaemonRegistry registry = new EmbeddedDaemonRegistry()
+        daemonDirObject.getRegistry().createNewFile()
+        registry.store(new DaemonInfo(address, daemonContext, "password".bytes, Idle))
+
+        when:
+        DaemonExpirationResult expirationCheck = expirationStrategy.checkExpiration()
+
+        then:
+        1 * daemon.getDaemonContext() >> { daemonContext }
+        1 * daemon.getDaemonRegistry() >> { registry }
+        expirationCheck.status == DO_NOT_EXPIRE
+        expirationCheck.reason == null
+
+        when:
+        expirationCheck = expirationStrategy.checkExpiration()
+
+        then:
+        1 * daemon.getDaemonContext() >> { daemonContext }
+        0 * daemon.getDaemonRegistry()
+        expirationCheck.status == DO_NOT_EXPIRE
+
+        when:
+        daemonDirObject.getRegistry().setLastModified(System.currentTimeMillis())
+        expirationCheck = expirationStrategy.checkExpiration()
+
+        then:
+        1 * daemon.getDaemonContext() >> { daemonContext }
+        1 * daemon.getDaemonRegistry() >> { registry }
+        expirationCheck.status == DO_NOT_EXPIRE
+        expirationCheck.reason == null
+
     }
 }

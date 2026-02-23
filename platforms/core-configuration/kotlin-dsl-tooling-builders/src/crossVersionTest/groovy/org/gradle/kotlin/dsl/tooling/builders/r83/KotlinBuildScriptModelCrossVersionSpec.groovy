@@ -28,10 +28,13 @@ class KotlinBuildScriptModelCrossVersionSpec extends AbstractKotlinScriptModelCr
     @Issue("https://github.com/gradle/gradle/issues/25555")
     def "single project with parallel build should not emit configuration resolution deprecation warning"() {
         given:
+        // This test is flaky because of locking timeout on shared caches.
+        // See https://github.com/gradle/gradle/pull/34665
+        requireIsolatedUserHome()
         propertiesFile << gradleProperties
 
         expect:
-        loadValidatedToolingModel(KotlinDslScriptsModel)
+        loadToolingModel(KotlinDslScriptsModel)
     }
 
     @Issue("https://github.com/gradle/gradle/issues/25555")
@@ -41,7 +44,7 @@ class KotlinBuildScriptModelCrossVersionSpec extends AbstractKotlinScriptModelCr
         propertiesFile << gradleProperties
 
         expect:
-        loadValidatedToolingModel(KotlinDslScriptsModel)
+        loadToolingModel(KotlinDslScriptsModel)
     }
 
     def 'exceptions in different scripts are reported on the corresponding scripts'() {
@@ -55,7 +58,7 @@ class KotlinBuildScriptModelCrossVersionSpec extends AbstractKotlinScriptModelCr
         spec.scripts["b"] << "throw RuntimeException(\"ex2\")"
 
 
-        def model = loadValidatedToolingModel(KotlinDslScriptsModel) {
+        def model = loadToolingModel(KotlinDslScriptsModel) {
             KotlinScriptModelParameters.setModelParameters(it, true, true, [])
         }
 

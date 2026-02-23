@@ -19,6 +19,7 @@ app_name=${0##*/}
 bin_dir=${0%"$app_name"}
 app_dir=${bin_dir%build-logic/jvm/*}
 app_dir=${app_dir%.git*}
+app_dir_ref=\$APP_HOME/
 
 gradlew_program=    default_gradlew_program=${app_dir}gradlew
 gradlew_template=   default_gradlew_template=${app_dir}platforms/jvm/plugins-application/src/main/resources/org/gradle/api/internal/plugins/unixStartScript.txt
@@ -29,13 +30,28 @@ gradlew_template=   default_gradlew_template=${app_dir}platforms/jvm/plugins-app
 
   appHomeRelativePath=
 appNameSystemProperty=org.gradle.appname
-      applicationName=${gradlew_program##*/}
-            classpath=${app_dir}gradle/wrapper/gradle-wrapper.jar
-            classPath=$classpath
+      applicationName=Gradle
+            classpath=${app_dir_ref}gradle/wrapper/gradle-wrapper.jar
        defaultJvmOpts='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
+       entryPointArgs=
         mainClassName=org.gradle.wrapper.GradleWrapperMain
            modulePath=
    optsEnvironmentVar=GRADLE_OPTS
+
+# Use -jar instead of -classpath when appropriate
+case $classpath in
+    *.jar)
+       entryPointArgs="-jar \"$classpath\""
+            classpath=
+        mainClassName=
+esac
+            classPath=$classpath
+
+################################################################################
+
+# Guestimate
+
+gitRef=$( git log -n1 --format=%H || echo HEAD )
 
 ################################################################################
 
@@ -51,14 +67,15 @@ while :; do
     case $1 in
         (-c | --compare)    mode=COMPARE ;;
         (-g | --generate)   mode=REPLACE ;;
+        (-G | --git-ref)    gitRef=$2 ; shift ;;
         (-o | --output)     mode=OUTPUT ;;
         (-r | --replace)    mode=REPLACE ;;
         (-s | --source)     gradlew_template=$2 ; shift ;;
              (--source=*)   gradlew_template=${1#*=} ;;
         (-s?*)              gradlew_template=${1#-?} ;;
-        (-t | --target)     gradlew_program=$2 ; shift ;;
-        (-t?*)              gradlew_program=${1#-?} ;;
-             (--target=*)   gradlew_program=${1#*=} ;;
+        (-t | --target)     gradlew_program=$2 ; shift ; applicationName=${gradlew_program##*/} ;;
+        (-t?*)              gradlew_program=${1#-?}    ; applicationName=${gradlew_program##*/} ;;
+             (--target=*)   gradlew_program=${1#*=}    ; applicationName=${gradlew_program##*/} ;;
 
         (-h | --help)       cat <<-EndOfHelp ; exit 0 ;;
 				$app_name [-c|-g|-o]

@@ -197,7 +197,7 @@ class JavaExecDebugIntegrationTest extends AbstractIntegrationSpec {
                 suspend = false
             }
 
-            jvmArgs "-agentlib:jdwp=transport=dt_socket,server=n,suspend=n,address=$debugClient.port"
+            jvmArgs("-agentlib:jdwp=transport=dt_socket,server=n,suspend=n,address=$debugClient.port")
         """
 
         debugClient.listen()
@@ -268,7 +268,7 @@ class JavaExecDebugIntegrationTest extends AbstractIntegrationSpec {
             }
 
             tasks.withType(Test) {
-                onOutput { descriptor, event ->
+                addTestOutputListener { descriptor, event ->
                     logger.lifecycle("Test: " + descriptor + " produced standard out/err: " + event.message )
                 }
 

@@ -16,6 +16,7 @@
 
 package org.gradle.integtests.fixtures
 
+import groovy.transform.CompileStatic
 import org.gradle.api.specs.Spec
 import org.gradle.api.specs.Specs
 import org.gradle.integtests.fixtures.executer.GradleExecuter
@@ -26,6 +27,7 @@ import org.gradle.test.fixtures.file.TestDirectoryProvider
 
 import java.util.regex.Pattern
 
+@CompileStatic
 class BuildOperationsFixture extends BuildOperationTreeQueries {
 
     private String path
@@ -40,6 +42,8 @@ class BuildOperationsFixture extends BuildOperationTreeQueries {
         executer.beforeExecute {
             this.tree = null
             executer.withArgument("-D$BuildOperationTrace.SYSPROP=$path")
+            // disable memory hungry tree generation
+            executer.withArgument("-D$BuildOperationTrace.TREE_SYSPROP=false")
         }
     }
 
@@ -97,6 +101,11 @@ class BuildOperationsFixture extends BuildOperationTreeQueries {
     }
 
     @Override
+    BuildOperationRecord singleOrNone(Pattern displayName) {
+        return getTree().singleOrNone(displayName)
+    }
+
+    @Override
     List<BuildOperationRecord> parentsOf(BuildOperationRecord child) {
         return getTree().parentsOf(child)
     }
@@ -116,7 +125,7 @@ class BuildOperationsFixture extends BuildOperationTreeQueries {
 
     private BuildOperationTreeFixture getTree() {
         if (tree == null) {
-            tree = new BuildOperationTreeFixture(BuildOperationTrace.read(path))
+            tree = new BuildOperationTreeFixture(BuildOperationTrace.readTree(path))
         }
         return tree
     }

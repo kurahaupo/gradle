@@ -20,22 +20,18 @@ import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
-import org.gradle.api.capabilities.Capability;
-import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.api.internal.attributes.immutable.ImmutableAttributesSchema;
 import org.gradle.internal.component.external.model.ModuleDependencyMetadata;
 import org.gradle.internal.component.model.ComponentGraphResolveState;
 import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.ExcludeMetadata;
 import org.gradle.internal.component.model.ForcingDependencyMetadata;
-import org.gradle.internal.component.model.GraphVariantSelectionResult;
 import org.gradle.internal.component.model.GraphVariantSelector;
 import org.gradle.internal.component.model.IvyArtifactName;
-import org.gradle.internal.component.model.LocalComponentDependencyMetadata;
 import org.gradle.internal.component.model.VariantGraphResolveState;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
@@ -47,8 +43,18 @@ class LenientPlatformDependencyMetadata implements ModuleDependencyMetadata, For
     private final ComponentIdentifier platformId; // just for reporting
     private final boolean force;
     private final boolean transitive;
+    private final boolean constraint;
 
-    LenientPlatformDependencyMetadata(ResolveState resolveState, NodeState from, ModuleComponentSelector cs, ModuleComponentIdentifier componentId, @Nullable ComponentIdentifier platformId, boolean force, boolean transitive) {
+    LenientPlatformDependencyMetadata(
+        ResolveState resolveState,
+        NodeState from,
+        ModuleComponentSelector cs,
+        ModuleComponentIdentifier componentId,
+        @Nullable ComponentIdentifier platformId,
+        boolean force,
+        boolean transitive,
+        boolean constraint
+    ) {
         this.resolveState = resolveState;
         this.from = from;
         this.cs = cs;
@@ -56,6 +62,7 @@ class LenientPlatformDependencyMetadata implements ModuleDependencyMetadata, For
         this.platformId = platformId;
         this.force = force;
         this.transitive = transitive;
+        this.constraint = constraint;
     }
 
     @Override
@@ -65,27 +72,33 @@ class LenientPlatformDependencyMetadata implements ModuleDependencyMetadata, For
 
     @Override
     public ModuleDependencyMetadata withRequestedVersion(VersionConstraint requestedVersion) {
-        return this;
+        throw new UnsupportedOperationException("Applying component metadata rules to lenient platform dependencies is not supported.");
     }
 
     @Override
     public ModuleDependencyMetadata withReason(String reason) {
-        return this;
+        throw new UnsupportedOperationException("Applying component metadata rules to lenient platform dependencies is not supported.");
     }
 
     @Override
     public ModuleDependencyMetadata withEndorseStrictVersions(boolean endorse) {
-        return this;
+        throw new UnsupportedOperationException("Applying component metadata rules to lenient platform dependencies is not supported.");
     }
 
     @Override
-    public GraphVariantSelectionResult selectVariants(GraphVariantSelector variantSelector, ImmutableAttributes consumerAttributes, ComponentGraphResolveState targetComponentState, AttributesSchemaInternal consumerSchema, Collection<? extends Capability> explicitRequestedCapabilities) {
+    public @Nullable List<? extends VariantGraphResolveState> overrideVariantSelection(
+        GraphVariantSelector variantSelector,
+        ImmutableAttributes consumerAttributes,
+        ComponentGraphResolveState targetComponentState,
+        ImmutableAttributesSchema consumerSchema
+    ) {
         if (targetComponentState instanceof LenientPlatformGraphResolveState) {
-            VariantGraphResolveState variant = ((LenientPlatformGraphResolveState) targetComponentState).getDefaultVariant(from, platformId);
-            return new GraphVariantSelectionResult(Collections.singletonList(variant), false);
+            LenientPlatformGraphResolveState lenientPlatform = (LenientPlatformGraphResolveState) targetComponentState;
+            VariantGraphResolveState variant = lenientPlatform.getCandidatesForGraphVariantSelection().getVariantForSourceNode(from, platformId);
+            return Collections.singletonList(variant);
         }
-        // the target component exists, so we need to fallback to the traditional selection process
-        return new LocalComponentDependencyMetadata(cs, null, Collections.emptyList(), Collections.emptyList(), false, false, true, false, false, null).selectVariants(variantSelector, consumerAttributes, targetComponentState, consumerSchema, explicitRequestedCapabilities);
+
+        return null;
     }
 
     @Override
@@ -100,11 +113,15 @@ class LenientPlatformDependencyMetadata implements ModuleDependencyMetadata, For
 
     @Override
     public DependencyMetadata withTarget(ComponentSelector target) {
+        // TODO: This gets called when performing substitutions.
+        //       We probably shouldn't ignore this.
         return this;
     }
 
     @Override
     public DependencyMetadata withTargetAndArtifacts(ComponentSelector target, List<IvyArtifactName> artifacts) {
+        // TODO: This gets called when performing substitutions.
+        //       We probably shouldn't ignore this.
         return this;
     }
 
@@ -120,7 +137,7 @@ class LenientPlatformDependencyMetadata implements ModuleDependencyMetadata, For
 
     @Override
     public boolean isConstraint() {
-        return true;
+        return constraint;
     }
 
     @Override
@@ -135,7 +152,7 @@ class LenientPlatformDependencyMetadata implements ModuleDependencyMetadata, For
 
     @Override
     public String toString() {
-        return "virtual metadata for " + componentId;
+        return componentId.getDisplayName();
     }
 
     @Override
@@ -145,6 +162,6 @@ class LenientPlatformDependencyMetadata implements ModuleDependencyMetadata, For
 
     @Override
     public ForcingDependencyMetadata forced() {
-        return new LenientPlatformDependencyMetadata(resolveState, from, cs, componentId, platformId, true, transitive);
+        return new LenientPlatformDependencyMetadata(resolveState, from, cs, componentId, platformId, true, transitive, constraint);
     }
 }

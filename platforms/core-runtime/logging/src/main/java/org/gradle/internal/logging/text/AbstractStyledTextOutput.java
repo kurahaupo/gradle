@@ -16,8 +16,11 @@
 
 package org.gradle.internal.logging.text;
 
+import com.google.errorprone.annotations.FormatMethod;
 import org.gradle.api.logging.StandardOutputListener;
 import org.gradle.internal.SystemProperties;
+import org.gradle.internal.problems.failure.Failure;
+import org.gradle.internal.problems.failure.FailurePrinter;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -46,6 +49,7 @@ public abstract class AbstractStyledTextOutput implements StyledTextOutput, Stan
         return this;
     }
 
+    @FormatMethod
     @Override
     public StyledTextOutput format(String pattern, Object... args) {
         text(String.format(pattern, args));
@@ -59,6 +63,7 @@ public abstract class AbstractStyledTextOutput implements StyledTextOutput, Stan
         return this;
     }
 
+    @FormatMethod
     @Override
     public StyledTextOutput formatln(String pattern, Object... args) {
         format(pattern, args);
@@ -90,6 +95,16 @@ public abstract class AbstractStyledTextOutput implements StyledTextOutput, Stan
         throwable.printStackTrace(writer);
         writer.close();
         text(out.toString());
+        return this;
+    }
+
+    /**
+     * Appends the stacktrace of the given failure using the current style.
+     *
+     * @return this
+     */
+    public StyledTextOutput failure(Failure failure) {
+        text(FailurePrinter.printToString(failure));
         return this;
     }
 

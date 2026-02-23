@@ -17,32 +17,37 @@
 package org.gradle.kotlin.dsl.accessors
 
 import org.gradle.api.internal.file.FileCollectionFactory
+import org.gradle.internal.build.BuildState
 import org.gradle.internal.execution.ExecutionEngine
 import org.gradle.internal.execution.InputFingerprinter
 import org.gradle.internal.hash.ClassLoaderHierarchyHasher
+import org.gradle.internal.service.Provides
+import org.gradle.internal.service.ServiceRegistrationProvider
 import org.gradle.kotlin.dsl.cache.KotlinDslWorkspaceProvider
 import org.gradle.kotlin.dsl.concurrent.AsyncIOScopeFactory
 
 
 internal
-object BuildScopeServices {
+object BuildScopeServices : ServiceRegistrationProvider {
 
-    @Suppress("unused")
+    @Provides
     fun createStage1BlocksAccessorClassPathGenerator(
         classLoaderHierarchyHasher: ClassLoaderHierarchyHasher,
         fileCollectionFactory: FileCollectionFactory,
         executionEngine: ExecutionEngine,
         inputFingerprinter: InputFingerprinter,
-        workspaceProvider: KotlinDslWorkspaceProvider
+        workspaceProvider: KotlinDslWorkspaceProvider,
+        buildState: BuildState
     ) = Stage1BlocksAccessorClassPathGenerator(
         classLoaderHierarchyHasher,
         fileCollectionFactory,
         executionEngine,
         inputFingerprinter,
-        workspaceProvider
+        workspaceProvider,
+        buildState
     )
 
-    @Suppress("unused")
+    @Provides
     fun createProjectAccessorClassPathGenerator(
         fileCollectionFactory: FileCollectionFactory,
         projectSchemaProvider: ProjectSchemaProvider,

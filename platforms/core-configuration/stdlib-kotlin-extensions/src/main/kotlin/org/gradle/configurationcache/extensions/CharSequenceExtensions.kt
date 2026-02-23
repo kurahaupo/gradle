@@ -16,16 +16,11 @@
 
 package org.gradle.configurationcache.extensions
 
-import java.util.Locale
 
-
+@Deprecated(
+    "This was never intended as a public API.",
+    ReplaceWith("this.toString().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }"),
+    DeprecationLevel.HIDDEN
+)
 fun CharSequence.capitalized(): String =
-    when {
-        isEmpty() -> ""
-        else -> get(0).let { initial ->
-            when {
-                initial.isLowerCase() -> initial.titlecase(Locale.getDefault()) + substring(1)
-                else -> toString()
-            }
-        }
-    }
+    toString().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }

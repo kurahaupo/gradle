@@ -31,6 +31,7 @@ import org.gradle.internal.execution.BuildOutputCleanupRegistry
 import org.gradle.internal.execution.WorkValidationContext
 import org.gradle.internal.execution.impl.DefaultWorkValidationContext
 import org.gradle.internal.properties.bean.PropertyWalker
+import org.gradle.internal.service.ServiceRegistry
 import org.gradle.test.fixtures.file.CleanupTestDirectory
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.testfixtures.internal.ProjectBuilderImpl
@@ -64,7 +65,8 @@ abstract class AbstractProjectBuilderSpec extends Specification {
     @Rule SetSystemProperties systemProperties
 
     private ProjectInternal rootProject
-    ProjectExecutionServices executionServices
+    ServiceRegistry executionServices
+    def problems = TestUtil.problemsService()
 
     def setup() {
         System.setProperty("user.dir", temporaryFolder.testDirectory.absolutePath)
@@ -72,7 +74,7 @@ abstract class AbstractProjectBuilderSpec extends Specification {
         // and treating the root of the repository as the root of the build
         new File(temporaryFolder.testDirectory, "settings.gradle") << ""
         rootProject = TestUtil.createRootProject(temporaryFolder.testDirectory)
-        executionServices = new ProjectExecutionServices(rootProject)
+        executionServices = ProjectExecutionServices.create(rootProject)
     }
 
     final ProjectInternal getProject() {
@@ -86,7 +88,7 @@ abstract class AbstractProjectBuilderSpec extends Specification {
     }
 
     void execute(Task task) {
-        def workValidationContext = new DefaultWorkValidationContext(WorkValidationContext.TypeOriginInspector.NO_OP)
+        def workValidationContext = new DefaultWorkValidationContext(WorkValidationContext.TypeOriginInspector.NO_OP, problems)
         def taskExecutionContext = new DefaultTaskExecutionContext(
             new LocalTaskNode(task as TaskInternal, workValidationContext, { null }),
             DefaultTaskProperties.resolve(executionServices.get(PropertyWalker), executionServices.get(FileCollectionFactory), task as TaskInternal),

@@ -18,18 +18,21 @@ package org.gradle.internal.component.local.model;
 
 import com.google.common.base.Objects;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableSet;
+import org.gradle.api.artifacts.capability.CapabilitySelector;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.LibraryBinaryIdentifier;
 import org.gradle.api.artifacts.component.LibraryComponentSelector;
-import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.capabilities.Capability;
+import org.gradle.api.internal.artifacts.component.ComponentSelectorInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.List;
 
-public class DefaultLibraryComponentSelector implements LibraryComponentSelector {
+public class DefaultLibraryComponentSelector implements LibraryComponentSelector, ComponentSelectorInternal {
+
     private final String projectPath;
     private final String libraryName;
     private final String variant;
@@ -89,13 +92,18 @@ public class DefaultLibraryComponentSelector implements LibraryComponentSelector
     }
 
     @Override
-    public AttributeContainer getAttributes() {
+    public ImmutableAttributes getAttributes() {
         return ImmutableAttributes.EMPTY;
     }
 
     @Override
     public List<Capability> getRequestedCapabilities() {
         return Collections.emptyList();
+    }
+
+    @Override
+    public ImmutableSet<CapabilitySelector> getCapabilitySelectors() {
+        return ImmutableSet.of();
     }
 
     @Override
@@ -121,4 +129,5 @@ public class DefaultLibraryComponentSelector implements LibraryComponentSelector
     public String toString() {
         return getDisplayName();
     }
+
 }

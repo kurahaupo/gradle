@@ -20,14 +20,13 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.file.RegularFileProperty;
-import org.gradle.api.internal.file.FileOperations;
 import org.gradle.internal.IoActions;
 import org.gradle.internal.UncheckedException;
-import org.gradle.internal.deprecation.DeprecationLogger;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 import org.gradle.internal.util.PropertiesUtils;
 import org.gradle.util.internal.DeferredUtil;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -70,6 +69,7 @@ public abstract class WriteProperties extends DefaultTask {
      * @since 3.3
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public Map<String, String> getProperties() {
         ImmutableMap.Builder<String, String> propertiesBuilder = ImmutableMap.builder();
         propertiesBuilder.putAll(properties);
@@ -91,6 +91,7 @@ public abstract class WriteProperties extends DefaultTask {
      */
     public void setProperties(Map<String, Object> properties) {
         this.properties.clear();
+        this.deferredProperties.clear();
         properties(properties);
     }
 
@@ -119,8 +120,10 @@ public abstract class WriteProperties extends DefaultTask {
                     return String.valueOf(futureValue);
                 }
             });
+            properties.remove(name);
         } else {
             properties.put(name, String.valueOf(value));
+            deferredProperties.remove(name);
         }
     }
 
@@ -145,6 +148,7 @@ public abstract class WriteProperties extends DefaultTask {
      * Defaults to {@literal `\n`}.
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public String getLineSeparator() {
         return lineSeparator;
     }
@@ -162,6 +166,7 @@ public abstract class WriteProperties extends DefaultTask {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getComment() {
         return comment;
     }
@@ -178,6 +183,7 @@ public abstract class WriteProperties extends DefaultTask {
      * If set to anything different, unicode escaping is turned off.
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public String getEncoding() {
         return encoding;
     }
@@ -188,47 +194,6 @@ public abstract class WriteProperties extends DefaultTask {
      */
     public void setEncoding(String encoding) {
         this.encoding = encoding;
-    }
-
-    /**
-     * Returns the output file to write the properties to.
-     */
-    @Internal
-    @Deprecated
-    public File getOutputFile() {
-        deprecationWarning();
-        return getDestinationFile().getAsFile().getOrNull();
-    }
-
-    private void deprecationWarning() {
-        DeprecationLogger.deprecateProperty(WriteProperties.class, "outputFile").replaceWith("destinationFile")
-            .willBeRemovedInGradle9()
-            .withDslReference()
-            .nagUser();
-    }
-
-    /**
-     * Sets the output file to write the properties to.
-     *
-     * @deprecated Use {@link #getDestinationFile()} instead.
-     *
-     * @since 4.0
-     */
-    @Deprecated
-    public void setOutputFile(File outputFile) {
-        deprecationWarning();
-        getDestinationFile().set(outputFile);
-    }
-
-    /**
-     * Sets the output file to write the properties to.
-     *
-     * @deprecated Use {@link #getDestinationFile()} instead.
-     */
-    @Deprecated
-    public void setOutputFile(Object outputFile) {
-        deprecationWarning();
-        getDestinationFile().set(getServices().get(FileOperations.class).file(outputFile));
     }
 
     /**

@@ -16,7 +16,6 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.integtests.fixtures.SourceFile
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.IncrementalCppStaleCompileOutputApp
@@ -28,7 +27,6 @@ import org.gradle.nativeplatform.fixtures.app.SourceElement
 
 class CppIncrementalBuildStaleOutputsIntegrationTest extends AbstractInstalledToolChainIntegrationSpec implements CppTaskNames {
 
-    @ToBeFixedForConfigurationCache
     def "removes stale object files for executable"() {
         settingsFile << "rootProject.name = 'app'"
         def app = new IncrementalCppStaleCompileOutputApp()
@@ -47,15 +45,14 @@ class CppIncrementalBuildStaleOutputsIntegrationTest extends AbstractInstalledTo
 
         expect:
         succeeds "assemble"
+        result.assertTasksScheduled(tasks.debug.allToInstall, ":assemble")
         result.assertTasksExecuted(tasks.debug.allToInstall, ":assemble")
-        result.assertTasksNotSkipped(tasks.debug.allToInstall, ":assemble")
 
         file("build/obj/main/debug").assertHasDescendants(expectIntermediateDescendants(app.alternate))
         executable("build/exe/main/debug/app").assertExists()
         installation("build/install/main/debug").exec().out == app.expectedOutput
     }
 
-    @ToBeFixedForConfigurationCache
     def "removes stale object files for library"() {
         def lib = new IncrementalCppStaleCompileOutputLib()
         settingsFile << "rootProject.name = 'hello'"
@@ -74,14 +71,13 @@ class CppIncrementalBuildStaleOutputsIntegrationTest extends AbstractInstalledTo
 
         expect:
         succeeds "assemble"
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
         result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
-        result.assertTasksNotSkipped(tasks.debug.allToLink, ":assemble")
 
         file("build/obj/main/debug").assertHasDescendants(expectIntermediateDescendants(lib.alternate))
         sharedLibrary("build/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "removes stale installed executable and library file when all source files for executable are removed"() {
         createDirs("app", "greeter")
         settingsFile << "include 'app', 'greeter'"
@@ -121,8 +117,8 @@ class CppIncrementalBuildStaleOutputsIntegrationTest extends AbstractInstalledTo
         then:
         def skippedTasks = tasks(":greeter").debug.allToLink + [":greeter:assemble", ":assemble"]
         def notSkippedTasks = tasks(":app").debug.allToInstall + [":app:assemble"]
-        result.assertTasksExecuted(skippedTasks, notSkippedTasks)
-        result.assertTasksNotSkipped(notSkippedTasks)
+        result.assertTasksScheduled(skippedTasks, notSkippedTasks)
+        result.assertTasksExecuted(notSkippedTasks)
         result.assertTasksSkipped(skippedTasks)
 
         executable("app/build/exe/main/debug/app").assertDoesNotExist()
@@ -134,7 +130,6 @@ class CppIncrementalBuildStaleOutputsIntegrationTest extends AbstractInstalledTo
         file("greeter/build/obj/main/debug").assertHasDescendants(expectIntermediateDescendants(app.library.alternate))
     }
 
-    @ToBeFixedForConfigurationCache
     def "removes stale executable file when all source files are removed"() {
         settingsFile << "rootProject.name = 'app'"
         def app = new IncrementalCppStaleLinkOutputApp()
@@ -160,8 +155,8 @@ class CppIncrementalBuildStaleOutputsIntegrationTest extends AbstractInstalledTo
         succeeds "assemble"
 
         then:
+        result.assertTasksScheduled(tasks.debug.allToInstall, ":assemble")
         result.assertTasksExecuted(tasks.debug.allToInstall, ":assemble")
-        result.assertTasksNotSkipped(tasks.debug.allToInstall, ":assemble")
 
         executable("build/exe/main/debug/app").assertDoesNotExist()
         file("build/exe/main/debug").assertDoesNotExist()
@@ -169,7 +164,6 @@ class CppIncrementalBuildStaleOutputsIntegrationTest extends AbstractInstalledTo
         installation("build/install/main/debug").assertNotInstalled()
     }
 
-    @ToBeFixedForConfigurationCache
     def "removes stale library file when all source files are removed"() {
         def lib = new IncrementalCppStaleLinkOutputLib()
         settingsFile << "rootProject.name = 'hello'"
@@ -194,8 +188,8 @@ class CppIncrementalBuildStaleOutputsIntegrationTest extends AbstractInstalledTo
         succeeds "assemble"
 
         then:
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
         result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
-        result.assertTasksNotSkipped(tasks.debug.allToLink, ":assemble")
 
         sharedLibrary("build/lib/main/debug/hello").assertDoesNotExist()
         file("build/lib/main/debug").assertDoesNotExist()

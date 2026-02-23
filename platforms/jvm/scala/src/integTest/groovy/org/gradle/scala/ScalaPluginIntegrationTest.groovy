@@ -32,8 +32,10 @@ class ScalaPluginIntegrationTest extends MultiVersionIntegrationSpec {
 
     @Issue("https://issues.gradle.org/browse/GRADLE-3094")
     def "can apply scala plugin"() {
-        file("build.gradle") << """
-            apply plugin: "scala"
+        buildFile << """
+            plugins {
+                id("scala")
+            }
 
             task someTask
         """
@@ -138,9 +140,10 @@ class ScalaPluginIntegrationTest extends MultiVersionIntegrationSpec {
                     conf(project(":scala"))
                 }
                 task resolve {
-                    dependsOn configurations.conf
+                    def conf = configurations.conf
+                    dependsOn conf
                     doLast {
-                        println configurations.conf.files
+                        println conf.files
                     }
                 }
             }
@@ -181,7 +184,7 @@ class ScalaPluginIntegrationTest extends MultiVersionIntegrationSpec {
             project(":ear") {
                 apply plugin: 'ear'
                 dependencies {
-                    deploy project(path: ':war', configuration: 'archives')
+                    deploy project(path: ':war')
                 }
             }
         """
@@ -201,7 +204,9 @@ class ScalaPluginIntegrationTest extends MultiVersionIntegrationSpec {
             rootProject.name = "scala"
         """
         buildFile << """
-            apply plugin: 'scala'
+            plugins {
+                id("scala")
+            }
 
             ${mavenCentralRepository()}
             dependencies {
@@ -228,7 +233,9 @@ class ScalaPluginIntegrationTest extends MultiVersionIntegrationSpec {
             rootProject.name = "scala"
         """
         buildFile << """
-            apply plugin: 'scala'
+            plugins {
+                id("scala")
+            }
 
             ${mavenCentralRepository()}
 
@@ -248,8 +255,10 @@ class ScalaPluginIntegrationTest extends MultiVersionIntegrationSpec {
     @Issue("gradle/gradle#19300")
     def 'show that log4j-core, if present, is 2_17_1 at the minimum'() {
         given:
-        file('build.gradle') << """
-            apply plugin: 'scala'
+        buildFile << """
+            plugins {
+                id("scala")
+            }
 
             ${mavenCentralRepository()}
         """
@@ -267,7 +276,7 @@ class ScalaPluginIntegrationTest extends MultiVersionIntegrationSpec {
     def "Scala compiler daemon respects keepalive option"() {
         buildFile << """
             plugins {
-                id 'scala'
+                id("scala")
             }
 
             ${mavenCentralRepository()}
@@ -295,4 +304,5 @@ class ScalaPluginIntegrationTest extends MultiVersionIntegrationSpec {
         succeeds(':compileScala', '--info')
         postBuildOutputDoesNotContain('Stopped 1 worker daemon')
     }
+
 }

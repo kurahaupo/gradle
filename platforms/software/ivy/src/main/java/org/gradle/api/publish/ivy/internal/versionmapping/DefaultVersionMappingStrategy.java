@@ -16,51 +16,59 @@
 package org.gradle.api.publish.ivy.internal.versionmapping;
 
 import com.google.common.collect.ArrayListMultimap;
-import com.google.common.collect.Lists;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Multimap;
 import org.gradle.api.Action;
 import org.gradle.api.InvalidUserCodeException;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.attributes.Attribute;
 import org.gradle.api.attributes.Usage;
+import org.gradle.api.internal.attributes.AttributeSchemaServices;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
+import org.gradle.api.internal.attributes.immutable.ImmutableAttributesSchema;
+import org.gradle.api.internal.attributes.matching.AttributeMatcher;
+import org.gradle.api.internal.attributes.matching.ImmutableAttributesBackedMatchingCandidate;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.publish.VariantVersionMappingStrategy;
 import org.gradle.api.publish.internal.versionmapping.DefaultVariantVersionMappingStrategy;
 import org.gradle.api.publish.internal.versionmapping.VariantVersionMappingStrategyInternal;
 import org.gradle.api.publish.internal.versionmapping.VersionMappingStrategyInternal;
-import org.gradle.internal.component.model.AttributeMatcher;
-import org.gradle.internal.component.model.AttributeMatchingExplanationBuilder;
 
 import javax.inject.Inject;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class DefaultVersionMappingStrategy implements VersionMappingStrategyInternal {
     private final ObjectFactory objectFactory;
     private final ConfigurationContainer configurations;
     private final AttributesSchemaInternal schema;
-    private final ImmutableAttributesFactory attributesFactory;
-    private final List<Action<? super VariantVersionMappingStrategy>> mappingsForAllVariants = Lists.newArrayListWithExpectedSize(2);
-    private final Map<ImmutableAttributes, String> defaultConfigurations = new HashMap<>();
-    private final Multimap<ImmutableAttributes, Action<? super VariantVersionMappingStrategy>> attributeBasedMappings = ArrayListMultimap.create();
+    private final AttributesFactory attributesFactory;
+    private final AttributeSchemaServices attributeSchemaServices;
+
+    private final List<Action<? super VariantVersionMappingStrategy>> mappingsForAllVariants = new ArrayList<>(2);
+    private final Map<ImmutableAttributesBackedMatchingCandidate, String> defaultConfigurations = new HashMap<>();
+    private final Multimap<ImmutableAttributesBackedMatchingCandidate, Action<? super VariantVersionMappingStrategy>> attributeBasedMappings = ArrayListMultimap.create();
+
+    private AttributeMatcher matcher;
 
     @Inject
     public DefaultVersionMappingStrategy(
         ObjectFactory objectFactory,
         ConfigurationContainer configurations,
         AttributesSchemaInternal schema,
-        ImmutableAttributesFactory attributesFactory
+        AttributesFactory attributesFactory,
+        AttributeSchemaServices attributeSchemaServices
     ) {
         this.objectFactory = objectFactory;
         this.configurations = configurations;
         this.schema = schema;
         this.attributesFactory = attributesFactory;
+        this.attributeSchemaServices = attributeSchemaServices;
     }
 
     @Override
@@ -70,7 +78,8 @@ public class DefaultVersionMappingStrategy implements VersionMappingStrategyInte
 
     @Override
     public <T> void variant(Attribute<T> attribute, T attributeValue, Action<? super VariantVersionMappingStrategy> action) {
-        attributeBasedMappings.put(attributesFactory.of(attribute, attributeValue), action);
+        ImmutableAttributes attributes = attributesFactory.of(attribute, attributeValue);
+        attributeBasedMappings.put(new ImmutableAttributesBackedMatchingCandidate(attributes), action);
     }
 
     @Override
@@ -80,7 +89,8 @@ public class DefaultVersionMappingStrategy implements VersionMappingStrategyInte
 
     @Override
     public void defaultResolutionConfiguration(String usage, String defaultConfiguration) {
-        defaultConfigurations.put(attributesFactory.of(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, usage)), defaultConfiguration);
+        ImmutableAttributes attributes = attributesFactory.of(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, usage));
+        defaultConfigurations.put(new ImmutableAttributesBackedMatchingCandidate(attributes), defaultConfiguration);
     }
 
     @Override
@@ -93,9 +103,8 @@ public class DefaultVersionMappingStrategy implements VersionMappingStrategyInte
 
         // Then use attribute specific mapping
         if (!attributeBasedMappings.isEmpty()) {
-            AttributeMatcher matcher = schema.matcher();
-            Set<ImmutableAttributes> candidates = attributeBasedMappings.keySet();
-            List<ImmutableAttributes> matches = matcher.matches(candidates, variantAttributes, AttributeMatchingExplanationBuilder.NO_OP);
+            List<ImmutableAttributesBackedMatchingCandidate> candidates = ImmutableList.copyOf(attributeBasedMappings.keySet());
+            List<ImmutableAttributesBackedMatchingCandidate> matches = getMatcher().matchMultipleCandidates(candidates, variantAttributes);
             if (matches.size() == 1) {
                 Collection<Action<? super VariantVersionMappingStrategy>> actions = attributeBasedMappings.get(matches.get(0));
                 for (Action<? super VariantVersionMappingStrategy> action : actions) {
@@ -113,14 +122,22 @@ public class DefaultVersionMappingStrategy implements VersionMappingStrategyInte
         if (!defaultConfigurations.isEmpty()) {
             // First need to populate the default variant version mapping strategy with the default values
             // provided by plugins
-            AttributeMatcher matcher = schema.matcher();
-            Set<ImmutableAttributes> candidates = defaultConfigurations.keySet();
-            List<ImmutableAttributes> matches = matcher.matches(candidates, variantAttributes, AttributeMatchingExplanationBuilder.NO_OP);
-            for (ImmutableAttributes match : matches) {
+            List<ImmutableAttributesBackedMatchingCandidate> candidates = ImmutableList.copyOf(defaultConfigurations.keySet());
+            List<ImmutableAttributesBackedMatchingCandidate> matches = getMatcher().matchMultipleCandidates(candidates, variantAttributes);
+            for (ImmutableAttributesBackedMatchingCandidate match : matches) {
                 strategy.setDefaultResolutionConfiguration(configurations.getByName(defaultConfigurations.get(match)));
             }
         }
         return strategy;
+    }
+
+    private AttributeMatcher getMatcher() {
+        if (matcher == null) {
+            ImmutableAttributesSchema immutableSchema = attributeSchemaServices.getSchemaFactory().create(schema);
+            matcher = attributeSchemaServices.getMatcher(immutableSchema, ImmutableAttributesSchema.EMPTY);
+        }
+
+        return matcher;
     }
 
 }

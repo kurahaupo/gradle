@@ -30,7 +30,7 @@ import javassist.CtConstructor
 import javassist.CtField
 import javassist.CtMember
 import javassist.CtMethod
-import org.jetbrains.kotlin.kdoc.psi.api.KDoc
+import javassist.Modifier
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtConstructor
@@ -53,32 +53,32 @@ object KotlinSourceQueries {
         }
     }
 
-    fun isSince(version: String, member: JApiCompatibility): (KtFile) -> Boolean = { ktFile ->
+    fun getSince(member: JApiCompatibility): (KtFile) -> SinceTagStatus = { ktFile ->
         val ctMember = member.newCtMember
         val ctDeclaringClass = ctMember.declaringClass
+        val declaringClassSince = ktFile.ktClassOf(ctDeclaringClass)?.getSince()
         when {
-            ctMember is CtMethod && ctMember.isSynthetic -> true // synthetic members cannot have kdoc
-            ctMember is CtClass -> ktFile.ktClassOf(ctMember)?.isDocumentedAsSince(version) == true
-            ktFile.ktClassOf(ctDeclaringClass)?.isDocumentedAsSince(version) == true -> true
+            ctMember is CtMethod && ctMember.isSynthetic -> SinceTagStatus.NotNeeded // synthetic members cannot have kdoc
+            ctMember is CtClass -> ktFile.ktClassOf(ctMember).getSinceStatus()
             else -> when (ctMember) {
-                is CtField -> ktFile.isDocumentedAsSince(version, ctDeclaringClass, ctMember)
-                is CtConstructor -> ktFile.isDocumentedAsSince(version, ctDeclaringClass, ctMember)
-                is CtMethod -> ktFile.isDocumentedAsSince(version, ctDeclaringClass, ctMember)
-                else -> throw IllegalStateException("Unsupported japicmp member type '${member::class}'")
+                is CtField -> ktFile.getSince(ctDeclaringClass, ctMember, fallback = declaringClassSince)
+                is CtConstructor -> ktFile.getSince(ctDeclaringClass, ctMember, fallback = declaringClassSince)
+                is CtMethod -> ktFile.getSince(ctDeclaringClass, ctMember, fallback = declaringClassSince)
+                else -> error("Unsupported japicmp member type '${member::class}'")
             }
         }
     }
 
     private
-    fun KtFile.isDocumentedAsSince(version: String, declaringClass: CtClass, field: CtField): Boolean =
+    fun KtFile.getSince(declaringClass: CtClass, field: CtField, fallback: String?): SinceTagStatus =
         "${declaringClass.baseQualifiedKotlinName}.${field.name}".let { fqn ->
             collectDescendantsOfType<KtProperty>()
                 .firstOrNull { it.fqName?.asString() == fqn }
-                ?.isDocumentedAsSince(version) == true
+                .getSinceStatus(fallback)
         }
 
     private
-    fun KtFile.isDocumentedAsSince(version: String, declaringClass: CtClass, constructor: CtConstructor): Boolean {
+    fun KtFile.getSince(declaringClass: CtClass, constructor: CtConstructor, fallback: String?): SinceTagStatus {
         val classFqName = declaringClass.name
         val ctorParamTypes = constructor.parameterTypes.map { it.name }
         return collectDescendantsOfType<KtConstructor<*>>()
@@ -88,14 +88,43 @@ object KotlinSourceQueries {
                 val sameParamTypes = sameParamCount && ctorParamTypes.mapIndexed { idx, paramType -> paramType.endsWith(ktCtor.valueParameters[idx].typeReference!!.text) }.all { it }
                 sameName && sameParamCount && sameParamTypes
             }
-            ?.isDocumentedAsSince(version) == true
+            .getSinceStatus(fallback)
     }
 
     private
-    fun KtFile.isDocumentedAsSince(version: String, declaringClass: CtClass, method: CtMethod): Boolean =
-        kotlinDeclarationSatisfies(declaringClass, method) { declaration ->
-            declaration.isDocumentedAsSince(version)
+    fun KtFile.getSince(declaringClass: CtClass, method: CtMethod, fallback: String?): SinceTagStatus {
+        val qualifiedBaseName = declaringClass.baseQualifiedKotlinName
+
+        val functions = collectKtFunctionsFor(qualifiedBaseName, method)
+        if (functions.isNotEmpty()) {
+            return getSinceStatus(functions, fallback)
         }
+
+        val properties = collectKtPropertiesFor(qualifiedBaseName, method)
+        return getSinceStatus(properties, fallback)
+    }
+
+    private
+    fun getSinceStatus(declarations: List<KtDeclaration>, fallback: String?): SinceTagStatus {
+        val sinceTags = declarations.map { it.getSince() }
+        return when {
+            sinceTags.isEmpty() -> {
+                fallback?.let { SinceTagStatus.Present(it) } ?: SinceTagStatus.Missing
+            }
+
+            sinceTags.all { it == sinceTags.first() } -> {
+                (sinceTags.first() ?: fallback)?.let { SinceTagStatus.Present(it) } ?: SinceTagStatus.Missing
+            }
+
+            else -> {
+                SinceTagStatus.Inconsistent(sinceTags)
+            }
+        }
+    }
+
+    private
+    fun KtDeclaration?.getSinceStatus(fallback: String? = null): SinceTagStatus =
+        (this?.getSince() ?: fallback)?.let { SinceTagStatus.Present(it) } ?: SinceTagStatus.Missing
 }
 
 
@@ -135,6 +164,7 @@ fun KtFile.collectKtFunctionsFor(qualifiedBaseName: String, method: CtMethod): L
         if (!(extensionCandidate || ktFunction.valueParameters.size == paramCount)) {
             return@collectDescendantsOfType false
         }
+        val isVarargs = Modifier.isVarArgs(method.modifiers)
 
         // Parameter type check
         method.parameterTypes
@@ -142,9 +172,9 @@ fun KtFile.collectKtFunctionsFor(qualifiedBaseName: String, method: CtMethod): L
             // Drop the receiver if present
             .drop(if (extensionCandidate) 1 else 0)
             .withIndex()
-            .all<IndexedValue<CtClass>> {
+            .all {
                 val ktParamType = ktFunction.valueParameters[it.index].typeReference!!
-                it.value.isLikelyEquivalentTo(ktParamType)
+                it.value.isLikelyEquivalentTo(ktParamType) || (isVarargs && it.value.componentType?.isLikelyEquivalentTo(ktParamType) == true)
             }
     }
 }
@@ -223,7 +253,7 @@ val JApiCompatibility.newCtMember: CtClassOrCtMember
         is JApiConstructor -> newConstructor.get()
         is JApiField -> newFieldOptional.get()
         is JApiMethod -> newMethod.get()
-        else -> throw IllegalStateException("Unsupported japicmp member type '${this::class}'")
+        else -> error("Unsupported japicmp member type '${this::class}'")
     }
 
 
@@ -239,7 +269,7 @@ val CtClassOrCtMember.declaringClass: CtClass
     get() = when (this) {
         is CtClass -> declaringClass ?: this
         is CtMember -> declaringClass
-        else -> throw IllegalStateException("Unsupported javassist member type '${this::class}'")
+        else -> error("Unsupported javassist member type '${this::class}'")
     }
 
 
@@ -272,7 +302,7 @@ fun CtClass.isLikelyEquivalentTo(ktTypeReference: KtTypeReference): Boolean {
         .trimEnd('?') // nullability is not part of JVM types
         .substringBefore('<') // generics are not part of parameter types in JVM method signatures
 
-    val thisTypeAsKt = primitiveTypeStrings[name] ?: name
+    val thisTypeAsKt = name.mapJavaTypeToKotlinType()
     return thisTypeAsKt.endsWith(ktTypeRawName)
 }
 
@@ -283,13 +313,18 @@ fun KtFile.ktClassOf(member: CtClass) =
 
 
 private
-fun KtDeclaration.isDocumentedAsSince(version: String) =
-    docComment?.isSince(version) == true
+val SINCE_REGEX = Regex("""@since ([^\s]+)""")
+
+
+fun KtDeclaration.getSince(): String? =
+    docComment?.let { SINCE_REGEX.find(it.text)?.groupValues?.get(1) }
 
 
 private
-fun KDoc.isSince(version: String) =
-    text.contains("@since $version")
+fun String.mapJavaTypeToKotlinType(): String {
+    val javaTypeName = this
+    return primitiveTypeStrings[javaTypeName] ?: collectionTypeStrings[javaTypeName] ?: javaTypeName
+}
 
 
 // TODO:kotlin-dsl dedupe with KotlinTypeStrings.primitiveTypeStrings
@@ -314,4 +349,24 @@ val primitiveTypeStrings =
         "float" to "Float",
         "java.lang.Double" to "Double",
         "double" to "Double"
+    )
+
+
+// See `org.gradle.kotlin.dsl.internal.sharedruntime.codegen.ApiTypeProviderKt.mappedTypeStrings`
+private
+val collectionTypeStrings =
+    mapOf(
+        "java.lang.Iterable" to "kotlin.collections.Iterable",
+        "java.util.Iterator" to "kotlin.collections.Iterator",
+        "java.util.ListIterator" to "kotlin.collections.ListIterator",
+        "java.util.Collection" to "kotlin.collections.Collection",
+        "java.util.List" to "kotlin.collections.List",
+        "java.util.ArrayList" to "kotlin.collections.ArrayList",
+        "java.util.Set" to "kotlin.collections.Set",
+        "java.util.HashSet" to "kotlin.collections.HashSet",
+        "java.util.LinkedHashSet" to "kotlin.collections.LinkedHashSet",
+        "java.util.Map" to "kotlin.collections.Map",
+        "java.util.Map\$Entry" to "kotlin.collections.Map.Entry",
+        "java.util.HashMap" to "kotlin.collections.HashMap",
+        "java.util.LinkedHashMap" to "kotlin.collections.LinkedHashMap"
     )

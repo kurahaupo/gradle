@@ -5,115 +5,97 @@ plugins {
 
 description = "Implementation for launching, controlling and communicating with Gradle Daemon from CLI and TAPI"
 
-errorprone {
-    disabledChecks.addAll(
-        "DefaultCharset", // 5 occurrences
-        "FutureReturnValueIgnored", // 2 occurrences
-        "InlineFormatString", // 1 occurrences
-        "LockNotBeforeTry", // 7 occurrences
-        "MissingCasesInEnumSwitch", // 1 occurrences
-        "NarrowCalculation", // 1 occurrences
-        "StringCaseLocaleUsage", // 1 occurrences
-        "StringSplitter", // 1 occurrences
-        "URLEqualsHashCode", // 3 occurrences
-        "UndefinedEquals", // 1 occurrences
-        "UnusedVariable", // 3 occurrences
-    )
-}
-
 dependencies {
-    api(project(":base-services"))
-    api(project(":build-events"))
-    api(project(":build-operations"))
-    api(project(":build-option"))
-    api(project(":build-state"))
-    api(project(":cli"))
-    api(project(":concurrent"))
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":daemon-protocol"))
-    api(project(":enterprise-logging"))
-    api(project(":execution"))
-    api(project(":file-collections"))
-    api(project(":file-watching"))
-    api(project(":files"))
-    api(project(":hashing"))
-    api(project(":java-language-extensions"))
-    api(project(":jvm-services"))
-    api(project(":logging"))
-    api(project(":logging-api"))
-    api(project(":messaging"))
-    api(project(":model-core"))
-    api(project(":native"))
-    api(project(":persistent-cache"))
-    api(project(":process-services"))
-    api(project(":serialization"))
-    api(project(":service-provider"))
-    api(project(":snapshots"))
-    api(project(":time"))
-    api(project(":toolchains-jvm-shared"))
-    api(project(":tooling-api"))
+    api(projects.baseServices)
+    api(projects.buildDiscovery)
+    api(projects.buildDiscoveryImpl)
+    api(projects.buildEvents)
+    api(projects.buildOperations)
+    api(projects.buildOption)
+    api(projects.buildState)
+    api(projects.cli)
+    api(projects.concurrent)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.daemonLogging)
+    api(projects.daemonProtocol)
+    api(projects.enterpriseLogging)
+    api(projects.execution)
+    api(projects.fileCollections)
+    api(projects.fileWatching)
+    api(projects.files)
+    api(projects.hashing)
+    api(projects.instrumentationAgentServices)
+    api(projects.stdlibJavaExtensions)
+    api(projects.jvmServices)
+    api(projects.logging)
+    api(projects.loggingApi)
+    api(projects.messaging)
+    api(projects.modelCore)
+    api(projects.native)
+    api(projects.persistentCache)
+    api(projects.problemsApi)
+    api(projects.processMemoryServices)
+    api(projects.serialization)
+    api(projects.serviceLookup)
+    api(projects.serviceProvider)
+    api(projects.snapshots)
+    api(projects.time)
+    api(projects.toolingApi)
 
     // This project contains the Gradle client, daemon and tooling API provider implementations.
     // It should be split up, but for now, add dependencies on both the client and daemon pieces
-    api(project(":client-services"))
-    api(project(":daemon-services"))
+    api(projects.clientServices)
+    api(projects.daemonServices)
 
     api(libs.guava)
-    api(libs.jsr305)
+    api(libs.jspecify)
 
-    implementation(project(":build-configuration"))
-    implementation(project(":enterprise-operations"))
-    implementation(project(":functional"))
+    implementation(projects.buildProcessServices)
+    implementation(projects.classloaders)
+    implementation(projects.collections)
+    implementation(projects.enterpriseOperations)
     implementation(projects.io)
-    implementation(project(":problems-api"))
-    implementation(project(":build-process-services"))
+    implementation(projects.serviceRegistryBuilder)
 
-    implementation(libs.groovy) // for 'ReleaseInfo.getVersion()'
     implementation(libs.slf4jApi)
-    implementation(libs.commonsIo)
-    implementation(libs.commonsLang)
+    // Required directly by CliTextPrinter (uses Ant Main and Groovy ReleaseInfo)
     implementation(libs.ant)
+    implementation(libs.groovy)
 
-    runtimeOnly(project(":gradle-cli-main"))
-    runtimeOnly(project(":declarative-dsl-provider"))
-    runtimeOnly(project(":problems"))
+    runtimeOnly(projects.gradleCliMain)
+    runtimeOnly(projects.declarativeDslProvider)
+    runtimeOnly(projects.problems)
 
     runtimeOnly(libs.commonsIo)
     runtimeOnly(libs.commonsLang)
     runtimeOnly(libs.slf4jApi)
 
+    runtimeOnly(projects.kotlinDsl) {
+        because("KotlinScriptPluginFactory is loaded dynamically at runtime by ScriptPluginFactorySelector")
+    }
+
     // The wrapper expects the launcher Jar to have classpath entries that contain the main class and its runtime classpath
-    manifestClasspath(project(":gradle-cli-main"))
+    manifestClasspath(projects.gradleCliMain)
 
-    testImplementation(project(":internal-integ-testing"))
-    testImplementation(project(":native"))
-    testImplementation(project(":cli"))
-    testImplementation(project(":process-services"))
-    testImplementation(project(":core-api"))
-    testImplementation(project(":model-core"))
-    testImplementation(project(":resources"))
-    testImplementation(project(":snapshots"))
-    testImplementation(project(":base-services-groovy")) // for 'Specs'
-
+    testImplementation(projects.internalIntegTesting)
     testImplementation(testFixtures(projects.serialization))
-    testImplementation(testFixtures(project(":core")))
-    testImplementation(testFixtures(project(":language-java")))
-    testImplementation(testFixtures(project(":messaging")))
-    testImplementation(testFixtures(project(":logging")))
-    testImplementation(testFixtures(project(":tooling-api")))
+    testImplementation(testFixtures(projects.core))
+    testImplementation(testFixtures(projects.time))
+    testImplementation(testFixtures(projects.logging))
+    testImplementation(testFixtures(projects.toolingApi))
+    testImplementation(testFixtures(projects.daemonProtocol))
 
-    integTestImplementation(project(":persistent-cache"))
+    integTestImplementation(projects.persistentCache)
     integTestImplementation(libs.slf4jApi)
     integTestImplementation(libs.guava)
     integTestImplementation(libs.commonsLang)
     integTestImplementation(libs.commonsIo)
-    integTestImplementation(testFixtures(project(":build-configuration")))
+    integTestImplementation(testFixtures(projects.buildConfiguration))
+    integTestImplementation(testFixtures(projects.buildProcessServices))
+    integTestImplementation(testFixtures(projects.toolchainsJvmShared))
 
-    testRuntimeOnly(project(":distributions-core")) {
-        because("Tests instantiate DefaultClassLoaderRegistry which requires a 'gradle-plugins.properties' through DefaultPluginModuleRegistry")
-    }
-    integTestDistributionRuntimeOnly(project(":distributions-full")) {
+    integTestDistributionRuntimeOnly(projects.distributionsFull) {
         because("built-in options are required to be present at runtime for 'TaskOptionsSpec'")
     }
 }
@@ -123,3 +105,6 @@ strictCompile {
 }
 
 testFilesCleanup.reportOnly = true
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}

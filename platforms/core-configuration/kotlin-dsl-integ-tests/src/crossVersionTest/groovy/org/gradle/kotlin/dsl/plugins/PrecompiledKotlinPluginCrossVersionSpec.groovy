@@ -20,6 +20,7 @@ import org.gradle.integtests.fixtures.CrossVersionIntegrationSpec
 import org.gradle.integtests.fixtures.TargetVersions
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import org.gradle.integtests.fixtures.executer.GradleDistribution
+import org.gradle.integtests.fixtures.executer.GradleExecuter
 import org.gradle.util.GradleVersion
 
 import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.mavenCentralRepository
@@ -27,7 +28,7 @@ import static org.gradle.test.fixtures.dsl.GradleDsl.KOTLIN
 import static org.junit.Assume.assumeFalse
 import static org.junit.Assume.assumeTrue
 
-@TargetVersions("5.0+")
+@TargetVersions("6.0+")
 class PrecompiledKotlinPluginCrossVersionSpec extends CrossVersionIntegrationSpec {
 
     private static final GradleVersion GRADLE_7_1 = GradleVersion.version("7.1")
@@ -51,43 +52,60 @@ class PrecompiledKotlinPluginCrossVersionSpec extends CrossVersionIntegrationSpe
         precompiledKotlinPluginsBuiltWith(previous)
 
         when:
-        def result = pluginsAppliedWith(current)
+        def executor = pluginsAppliedWith(current)
+        if (previous.version < GradleVersion.version('6.0')) {
+            3.times { executor.expectDocumentedDeprecationWarning("Applying a Kotlin DSL precompiled script plugin published with Gradle versions < 6.0. This behavior has been deprecated. This behavior is scheduled to be removed in Gradle 9.0. Use a version of the plugin published with Gradle >= 6.0. Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_8.html#kotlin_dsl_precompiled_gradle_lt_6") }
+        }
+        def result = executor.run()
 
         then:
-        result.assertOutputContains("My gradle plugin applied!")
-        result.assertOutputContains("My settings plugin applied!")
-        result.assertOutputContains("settings pluginManagement {}")
-        if (supportsSettingsPluginsBlock) {
-            result.assertOutputContains("settings plugins {}")
-        }
-        result.assertOutputContains("My project plugin applied!")
-        result.assertOutputContains("My task executed!")
+        assertSuccess(result)
     }
 
-    def "precompiled Kotlin plugins built with current Gradle version can be used with Gradle 6.0+"() {
-        assumeTrue(previous.version >= GradleVersion.version('6.0'))
+    def "precompiled Kotlin plugins built with current Gradle version can be used with Gradle 9.0.0+"() {
+
+        // 9.0.0 is the first version that embeds Kotlin 2.2 and can execute code compiled for Kotlin 2.2
+        assumeTrue(previous.version >= GradleVersion.version('9.0.0'))
 
         given:
         precompiledKotlinPluginsBuiltWith(current)
 
         when:
-        def result = pluginsAppliedWith(previous)
+        def result = pluginsAppliedWith(previous).run()
 
         then:
-        result.assertOutputContains("My gradle plugin applied!")
-        result.assertOutputContains("My settings plugin applied!")
-        result.assertOutputContains("settings pluginManagement {}")
-        if (supportsSettingsPluginsBlock) {
-            result.assertOutputContains("settings plugins {}")
-        }
-        result.assertOutputContains("My project plugin applied!")
-        result.assertOutputContains("My task executed!")
+        assertSuccess(result)
     }
 
-    private void precompiledKotlinPluginsBuiltWith(GradleDistribution distribution) {
+    def "precompiled Kotlin plugins built with current Gradle version can be used with Gradle #minGradle+ targeting Kotlin #kotlinLanguageVersion"() {
 
-        file("plugin/settings.gradle.kts").text = ""
-        file("plugin/build.gradle.kts").text = """
+        assumeTrue(previous.version >= GradleVersion.version(minGradle))
+
+        given:
+        precompiledKotlinPluginsBuiltWith(current, "KOTLIN_${kotlinLanguageVersion.replace(".", "_")}")
+
+        when:
+        def result = pluginsAppliedWith(previous).run()
+
+        then:
+        assertSuccess(result)
+
+        where:
+        minGradle | kotlinLanguageVersion
+        "6.8"     | "1.9"
+        "6.8"     | "2.0"
+        "8.11"    | "2.1"
+    }
+
+    private void precompiledKotlinPluginsBuiltWith(GradleDistribution distribution, String kotlinVersion = null) {
+
+        file("plugin/settings.gradle.kts").text = """
+            println("Publishing plugin with ${'$'}{org.gradle.util.GradleVersion.current()}")
+        """
+        def pluginBuildScript = file("plugin/build.gradle.kts")
+        pluginBuildScript.text = """
+            import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
             plugins {
                 `kotlin-dsl`
                 `maven-publish`
@@ -101,6 +119,39 @@ class PrecompiledKotlinPluginCrossVersionSpec extends CrossVersionIntegrationSpe
                 }
             }
         """
+
+        if (distribution.version >= GradleVersion.version("8.2")) {
+            pluginBuildScript.text = """
+                import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+                ${pluginBuildScript.text}
+
+                java {
+                    targetCompatibility = JavaVersion.VERSION_1_8
+                }
+
+                tasks.withType<KotlinCompile>().configureEach {
+                    compilerOptions {
+                        jvmTarget = JvmTarget.JVM_1_8
+                    }
+                }
+            """
+        }
+
+        if (kotlinVersion != null) {
+            pluginBuildScript.text = """
+                import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+
+                ${pluginBuildScript.text}
+
+                tasks.withType<KotlinCompile>().configureEach {
+                    compilerOptions {
+                        languageVersion = KotlinVersion.$kotlinVersion
+                        apiVersion = KotlinVersion.$kotlinVersion
+                    }
+                }
+            """
+        }
         file("plugin/src/main/kotlin/my-gradle-plugin.init.gradle.kts").text = """
             println("My gradle plugin applied!")
         """
@@ -134,25 +185,27 @@ class PrecompiledKotlinPluginCrossVersionSpec extends CrossVersionIntegrationSpe
         version(distribution)
             .inDirectory(file("plugin"))
             .withTasks("publish")
+            .noDeprecationChecks()
             .run()
     }
 
-    private ExecutionResult pluginsAppliedWith(GradleDistribution distribution) {
+    private GradleExecuter pluginsAppliedWith(GradleDistribution distribution) {
         file("consumer/init.gradle.kts").text = """
             initscript {
                 repositories {
-                    maven(url = "${mavenRepo.uri}")
+                    maven(url = uri("${mavenRepo.uri}"))
                 }
                 dependencies {
                     classpath("com.example:plugin:1.0")
                 }
             }
+            println("Applying plugin with ${'$'}{org.gradle.util.GradleVersion.current()}")
             apply<MyGradlePluginPlugin>()
         """
         file("consumer/settings.gradle.kts").text = """
             pluginManagement {
                 repositories {
-                    maven(url = "${mavenRepo.uri}")
+                    maven(url = uri("${mavenRepo.uri}"))
                 }
             }
             ${supportsSettingsPluginsBlock ? """
@@ -162,7 +215,7 @@ class PrecompiledKotlinPluginCrossVersionSpec extends CrossVersionIntegrationSpe
             """ : """
             buildscript {
                 repositories {
-                    maven(url = "${mavenRepo.uri}")
+                    maven(url = uri("${mavenRepo.uri}"))
                 }
                 dependencies {
                     classpath("com.example:plugin:1.0")
@@ -181,6 +234,16 @@ class PrecompiledKotlinPluginCrossVersionSpec extends CrossVersionIntegrationSpe
             .withArgument("-I")
             .withArgument("init.gradle.kts")
             .withTasks("myTask")
-            .run()
+    }
+
+    private void assertSuccess(ExecutionResult result) {
+        result.assertOutputContains("My gradle plugin applied!")
+        result.assertOutputContains("My settings plugin applied!")
+        result.assertOutputContains("settings pluginManagement {}")
+        if (supportsSettingsPluginsBlock) {
+            result.assertOutputContains("settings plugins {}")
+        }
+        result.assertOutputContains("My project plugin applied!")
+        result.assertOutputContains("My task executed!")
     }
 }

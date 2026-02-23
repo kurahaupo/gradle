@@ -83,9 +83,10 @@ class GradleImplDepsConcurrencyIntegrationTest extends BaseGradleImplDepsIntegra
             }
 
             task resolveDependencies {
+                def files = configurations.gradleImplDeps
+                def outputFile = file('deps.txt')
                 doLast {
-                    def files = configurations.gradleImplDeps.resolve()
-                    file('deps.txt').text = files.collect {
+                    outputFile.text = files.collect {
                         org.gradle.internal.hash.Hashing.md5().hashFile(it).toString()
                     }.join(',')
                 }
@@ -95,13 +96,15 @@ class GradleImplDepsConcurrencyIntegrationTest extends BaseGradleImplDepsIntegra
 
     static String gradleApiAndTestKitClassLoadingTestClass() {
         """
-            class MyTest extends groovy.test.GroovyTestCase {
+            class MyTest {
 
+                @org.junit.jupiter.api.Test
                 void testUsageOfGradleApiAndTestKitClasses() {
                     def classLoader = getClass().classLoader
                     classLoader.loadClass('${Plugin.class.getName()}')
                     classLoader.loadClass('org.gradle.testkit.runner.GradleRunner')
                 }
+
             }
         """
     }

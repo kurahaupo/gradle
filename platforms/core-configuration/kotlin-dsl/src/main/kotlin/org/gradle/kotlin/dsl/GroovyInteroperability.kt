@@ -20,7 +20,6 @@ import groovy.lang.Closure
 import groovy.lang.GroovyObject
 import groovy.lang.MetaClass
 import org.codehaus.groovy.runtime.InvokerHelper.getMetaClass
-import org.gradle.api.Incubating
 import org.gradle.kotlin.dsl.support.uncheckedCast
 import org.gradle.kotlin.dsl.support.unsafeLazy
 
@@ -67,7 +66,7 @@ open class KotlinClosure0<V : Any>(
     val function: () -> V?,
     owner: Any? = null,
     thisObject: Any? = null
-) : groovy.lang.Closure<V?>(owner, thisObject) {
+) : Closure<V?>(owner, thisObject) {
 
     @Suppress("unused") // to be called dynamically by Groovy
     fun doCall(): V? = function()
@@ -75,7 +74,7 @@ open class KotlinClosure0<V : Any>(
 
 
 /**
- * Adapts an unary Kotlin function to an unary Groovy [Closure].
+ * Adapts a unary Kotlin function to a unary Groovy [Closure].
  *
  * @param T the type of the single argument to the closure.
  * @param V the return type.
@@ -220,7 +219,6 @@ interface GroovyBuilderScope : GroovyObject {
      *
      * @since 8.1
      */
-    @Incubating
     fun hasProperty(name: String): Boolean
 
     /**
@@ -231,6 +229,7 @@ interface GroovyBuilderScope : GroovyObject {
     /**
      * Invokes with Groovy semantics and no arguments.
      */
+    @Suppress("SpreadOperator")
     operator fun String.invoke(): Any? =
         invoke(*emptyArray<Any>())
 
@@ -318,7 +317,7 @@ class GroovyBuilderScopeForRegularObject(override val delegate: Any) : GroovyBui
         groovyMetaClass.getProperty(delegate, propertyName)
 
     override fun setMetaClass(metaClass: MetaClass?) =
-        throw IllegalStateException()
+        error("Setting meta class not supported")
 
     override fun getMetaClass(): MetaClass =
         groovyMetaClass

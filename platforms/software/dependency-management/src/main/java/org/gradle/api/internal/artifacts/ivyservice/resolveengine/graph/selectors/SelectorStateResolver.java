@@ -15,7 +15,6 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.selectors;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.internal.artifacts.ResolvedVersionConstraint;
@@ -163,6 +162,7 @@ public class SelectorStateResolver<T extends ComponentResolutionState> {
      * Collect the result of the 'prefer' constraint of the selector, if present and not failing.
      * These results are integrated with the 'require' results in the second phase.
      */
+    @SuppressWarnings("NonApiType") //TODO: evaluate errorprone suppression (https://github.com/gradle/gradle/issues/35864)
     private TreeSet<ComponentIdResolveResult> maybeResolvePreferConstraint(TreeSet<ComponentIdResolveResult> previousResults, ResolvableSelectorState selector, VersionSelector allRejects) {
 
         TreeSet<ComponentIdResolveResult> preferResults = previousResults;
@@ -181,6 +181,7 @@ public class SelectorStateResolver<T extends ComponentResolutionState> {
      * Given the result of resolving any 'prefer' constraints, see if these can be used to further refine the results
      *  of resolving the 'require' constraints.
      */
+    @SuppressWarnings("NonApiType") //TODO: evaluate errorprone suppression (https://github.com/gradle/gradle/issues/35864)
     private void integratePreferResults(ModuleSelectors<? extends ResolvableSelectorState> selectors, SelectorStateResolverResults results, TreeSet<ComponentIdResolveResult> preferResults) {
 
         if (preferResults == null) {
@@ -208,7 +209,7 @@ public class SelectorStateResolver<T extends ComponentResolutionState> {
             ResolvedVersionConstraint versionConstraint = selector.getVersionConstraint();
             if (versionConstraint != null && versionConstraint.getRejectedSelector() != null) {
                 if (rejectSelectors == null) {
-                    rejectSelectors = Lists.newArrayListWithCapacity(selectors.size());
+                    rejectSelectors = new ArrayList<>(selectors.size());
                 }
                 rejectSelectors.add(versionConstraint.getRejectedSelector());
             }

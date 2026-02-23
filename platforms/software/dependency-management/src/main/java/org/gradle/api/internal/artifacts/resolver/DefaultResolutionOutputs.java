@@ -21,27 +21,30 @@ import org.gradle.api.Action;
 import org.gradle.api.artifacts.ArtifactView;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.result.ResolvedComponentResult;
+import org.gradle.api.artifacts.result.ResolvedVariantResult;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.ResolverResults;
 import org.gradle.api.internal.artifacts.configurations.ArtifactCollectionInternal;
 import org.gradle.api.internal.artifacts.configurations.DefaultArtifactCollection;
-import org.gradle.api.internal.artifacts.configurations.ResolutionBackedFileCollection;
-import org.gradle.api.internal.artifacts.configurations.ResolutionResultProvider;
+import org.gradle.api.internal.artifacts.configurations.ResolutionResultProviderBackedSelectedArtifactSet;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ArtifactSelectionSpec;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.SelectedArtifactSet;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.results.VisitedGraphResults;
+import org.gradle.api.internal.artifacts.result.MinimalResolutionResult;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.attributes.AttributeDesugaring;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.file.FileCollectionInternal;
 import org.gradle.api.internal.provider.DefaultProvider;
 import org.gradle.api.internal.tasks.TaskDependencyFactory;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.internal.Actions;
 import org.gradle.internal.model.CalculatedValueContainerFactory;
-import org.gradle.internal.reflect.Instantiator;
+
+import javax.inject.Inject;
 
 /**
  * Default implementation of {@link ResolutionOutputsInternal}. This class is in charge of
@@ -60,42 +63,38 @@ public class DefaultResolutionOutputs implements ResolutionOutputsInternal {
     private final ResolutionAccess resolutionAccess;
     private final TaskDependencyFactory taskDependencyFactory;
     private final CalculatedValueContainerFactory calculatedValueContainerFactory;
-    private final ImmutableAttributesFactory attributesFactory;
-    private final Instantiator instantiator;
+    private final AttributesFactory attributesFactory;
+    private final AttributeDesugaring attributeDesugaring;
+    private final ObjectFactory objectFactory;
 
     public DefaultResolutionOutputs(
         ResolutionAccess resolutionAccess,
         TaskDependencyFactory taskDependencyFactory,
         CalculatedValueContainerFactory calculatedValueContainerFactory,
-        ImmutableAttributesFactory attributesFactory,
-        Instantiator instantiator
+        AttributesFactory attributesFactory,
+        AttributeDesugaring attributeDesugaring,
+        ObjectFactory objectFactory
     ) {
         this.resolutionAccess = resolutionAccess;
         this.taskDependencyFactory = taskDependencyFactory;
         this.calculatedValueContainerFactory = calculatedValueContainerFactory;
         this.attributesFactory = attributesFactory;
-        this.instantiator = instantiator;
+        this.attributeDesugaring = attributeDesugaring;
+        this.objectFactory = objectFactory;
     }
 
     @Override
-    public ResolutionResultProvider<ResolverResults> getRawResults() {
-        return resolutionAccess.getResults();
+    public Provider<ResolvedVariantResult> getRootVariant() {
+        return new DefaultProvider<>(() -> getResolutionResult().getGraphSource().get().getRootVariant());
     }
 
     @Override
     public Provider<ResolvedComponentResult> getRootComponent() {
-        return new DefaultProvider<>(() -> getVisitedGraphResults().getResolutionResult().getRootSource().get());
+        return new DefaultProvider<>(() -> getResolutionResult().getGraphSource().get().getRootComponent());
     }
 
-    /**
-     * Get the resolved graph, throwing any non-fatal exception that occurred during resolution.
-     */
-    private VisitedGraphResults getVisitedGraphResults() {
-        VisitedGraphResults graph = resolutionAccess.getResults().getValue().getVisitedGraph();
-        graph.getResolutionFailure().ifPresent(ex -> {
-            throw ex;
-        });
-        return graph;
+    private MinimalResolutionResult getResolutionResult() {
+        return resolutionAccess.getResults().getValue().getVisitedGraph().getResolutionResult();
     }
 
     @Override
@@ -115,19 +114,20 @@ public class DefaultResolutionOutputs implements ResolutionOutputsInternal {
 
     private DefaultArtifactView doGetArtifactView(Action<? super ArtifactView.ViewConfiguration> action) {
         // We use the instantiator to generate closure-accepting methods.
-        DefaultArtifactViewConfiguration viewConfiguration = instantiator.newInstance(DefaultArtifactViewConfiguration.class, attributesFactory);
+        DefaultArtifactViewConfiguration viewConfiguration = objectFactory.newInstance(DefaultArtifactViewConfiguration.class, attributesFactory);
         action.execute(viewConfiguration);
 
         return new DefaultArtifactView(
             viewConfiguration.lenient,
             viewConfiguration.componentFilter,
             viewConfiguration.reselectVariants,
-            viewConfiguration.viewAttributes.asImmutable(),
+            viewConfiguration.viewAttributes,
 
             resolutionAccess,
             taskDependencyFactory,
             calculatedValueContainerFactory,
-            attributesFactory
+            attributesFactory,
+            attributeDesugaring
         );
     }
 
@@ -138,24 +138,26 @@ public class DefaultResolutionOutputs implements ResolutionOutputsInternal {
         private final boolean lenient;
         private final Spec<? super ComponentIdentifier> componentFilter;
         private final boolean reselectVariants;
-        private final ImmutableAttributes viewAttributes;
+        private final AttributeContainerInternal viewAttributes;
 
         // Services
         private final ResolutionAccess resolutionAccess;
         private final TaskDependencyFactory taskDependencyFactory;
         private final CalculatedValueContainerFactory calculatedValueContainerFactory;
-        private final ImmutableAttributesFactory attributesFactory;
+        private final AttributesFactory attributesFactory;
+        private final AttributeDesugaring attributeDesugaring;
 
         public DefaultArtifactView(
             boolean lenient,
             Spec<? super ComponentIdentifier> componentFilter,
             boolean reselectVariants,
-            ImmutableAttributes viewAttributes,
+            AttributeContainerInternal viewAttributes,
 
             ResolutionAccess resolutionAccess,
             TaskDependencyFactory taskDependencyFactory,
             CalculatedValueContainerFactory calculatedValueContainerFactory,
-            ImmutableAttributesFactory attributesFactory
+            AttributesFactory attributesFactory,
+            AttributeDesugaring attributeDesugaring
         ) {
             this.lenient = lenient;
             this.componentFilter = componentFilter;
@@ -166,31 +168,37 @@ public class DefaultResolutionOutputs implements ResolutionOutputsInternal {
             this.taskDependencyFactory = taskDependencyFactory;
             this.calculatedValueContainerFactory = calculatedValueContainerFactory;
             this.attributesFactory = attributesFactory;
+            this.attributeDesugaring = attributeDesugaring;
         }
 
         @Override
         public ArtifactCollectionInternal getArtifacts() {
+            SelectedArtifactSet selectedArtifacts = new ResolutionResultProviderBackedSelectedArtifactSet(
+                resolutionAccess.getResults().map(this::selectArtifacts)
+            );
+
             return new DefaultArtifactCollection(
-                getFiles(),
+                selectedArtifacts,
                 lenient,
                 resolutionAccess.getHost(),
-                calculatedValueContainerFactory
+                taskDependencyFactory,
+                calculatedValueContainerFactory,
+                attributeDesugaring
             );
         }
 
         @Override
-        public ResolutionBackedFileCollection getFiles() {
-            return new ResolutionBackedFileCollection(
-                resolutionAccess.getResults().map(this::selectArtifacts),
-                lenient,
-                resolutionAccess.getHost(),
-                taskDependencyFactory
-            );
+        public FileCollectionInternal getFiles() {
+            return getArtifacts().getArtifactFiles();
         }
 
         private SelectedArtifactSet selectArtifacts(ResolverResults results) {
             // If the user set the view attributes, we allow variant matching to fail for no matching variants.
             // If we are using the original request attributes, variant matching should not fail.
+            // TODO #27773: This is probably not desired behavior. It can be very confusing to request new attributes and
+            // then have an ArtifactView silently return no results. We should add a switch specifying whether you
+            // want 0 or 1 artifact result, 1 artifact result, or 1+ artifact results for each graph variant, and then
+            // deprecate views that select no artifacts without the user specifying that switch.
             boolean allowNoMatchingVariants = !viewAttributes.isEmpty();
 
             return results.getVisitedArtifacts().select(new ArtifactSelectionSpec(
@@ -213,11 +221,11 @@ public class DefaultResolutionOutputs implements ResolutionOutputsInternal {
 
             // When re-selecting, we do not base the view attributes on the original request attributes.
             if (reselectVariants) {
-                return viewAttributes;
+                return viewAttributes.asImmutable();
             }
 
             // Otherwise, artifact views without re-selection are based on the original request attributes.
-            return attributesFactory.concat(baseAttributes, viewAttributes);
+            return attributesFactory.concat(baseAttributes, viewAttributes.asImmutable());
         }
     }
 
@@ -227,7 +235,8 @@ public class DefaultResolutionOutputs implements ResolutionOutputsInternal {
         private boolean lenient;
         private boolean reselectVariants;
 
-        public DefaultArtifactViewConfiguration(ImmutableAttributesFactory attributesFactory) {
+        @Inject
+        public DefaultArtifactViewConfiguration(AttributesFactory attributesFactory) {
             this.viewAttributes = attributesFactory.mutable();
         }
 

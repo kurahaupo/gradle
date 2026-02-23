@@ -5,38 +5,54 @@ plugins {
 description = "Kotlin DSL Tooling Builders for IDEs"
 
 dependencies {
-    api(project(":core-api"))
-    api(project(":core"))
+    api(projects.baseServices)
+    api(projects.coreApi)
+    api(projects.core)
+    api(projects.serviceProvider)
     api(libs.kotlinStdlib)
 
-    implementation(projects.javaLanguageExtensions)
+    implementation(projects.classloaders)
+    implementation(projects.serviceLookup)
+    implementation(projects.stdlibJavaExtensions)
     implementation(projects.time)
-    implementation(project(":kotlin-dsl"))
-    implementation(project(":base-services"))
-    implementation(project(":resources"))
-    implementation(project(":platform-base"))
-    implementation(project(":platform-jvm"))
-    implementation(project(":plugins-java-base"))
-    implementation(project(":tooling-api"))
-    implementation(project(":logging"))
-    implementation(project(":kotlin-dsl-tooling-models"))
-    implementation(project(":build-process-services"))
+    implementation(projects.kotlinDsl)
+    implementation(projects.logging)
+    implementation(projects.resources)
+    implementation(projects.platformBase)
+    implementation(projects.platformJvm)
+    implementation(projects.pluginsJavaBase)
+    implementation(projects.toolingApi)
+    implementation(projects.kotlinDslToolingModels)
+    implementation(projects.buildProcessServices)
 
-    testImplementation(testFixtures(project(":kotlin-dsl")))
-    integTestImplementation(testFixtures(project(":tooling-api")))
+    compileOnly(libs.jspecify)
 
-    integTestImplementation(project(":internal-testing"))
-    testFixturesImplementation(project(":internal-integ-testing"))
+    testImplementation(testFixtures(projects.kotlinDsl))
 
-    crossVersionTestImplementation(project(":persistent-cache"))
-    crossVersionTestImplementation(libs.slf4jApi)
-    crossVersionTestImplementation(libs.guava)
+    integTestImplementation(projects.internalTesting)
+    integTestImplementation(testFixtures(projects.toolingApi))
+
+    integTestDistributionRuntimeOnly(projects.distributionsBasics)
+
+    testFixturesImplementation(projects.kotlinDsl)
+    testFixturesImplementation(projects.toolingApi)
+    testFixturesImplementation(projects.internalIntegTesting)
+
+    crossVersionTestImplementation(projects.internalIntegTesting)
+    crossVersionTestImplementation(projects.kotlinDsl)
+    crossVersionTestImplementation(projects.kotlinDslToolingModels)
+    crossVersionTestImplementation(projects.persistentCache)
     crossVersionTestImplementation(libs.ant)
+    crossVersionTestImplementation(libs.guava)
+    crossVersionTestImplementation(libs.slf4jApi)
 
-    integTestDistributionRuntimeOnly(project(":distributions-basics"))
-    crossVersionTestDistributionRuntimeOnly(project(":distributions-jvm")) {
+    crossVersionTestDistributionRuntimeOnly(projects.distributionsJvm) {
         because("Uses application plugin.")
     }
 }
 
 testFilesCleanup.reportOnly = true
+
+// Kotlin DSL tooling builders should not be part of the public API
+// TODO Find a way to not register this and the task instead
+configurations.remove(configurations.apiStubElements.get())

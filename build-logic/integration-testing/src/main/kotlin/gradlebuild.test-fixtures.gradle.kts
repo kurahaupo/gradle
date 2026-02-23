@@ -27,10 +27,14 @@ import org.gradle.plugins.ide.idea.model.IdeaModel
  * Configures the Project as a test fixtures consumer according to the `testFixtures` extension configuration.
  */
 plugins {
-    `java-library`
     `java-test-fixtures`
     groovy
     id("gradlebuild.dependency-modules")
+    id("gradlebuild.jvm-compile")
+}
+
+jvmCompile {
+    addCompilationFrom(sourceSets.named("testFixtures"))
 }
 
 // The below mimics what the java-library plugin does, but creating a library of test fixtures instead.
@@ -53,17 +57,20 @@ testFixturesRuntimeElements.extendsFrom(testFixturesRuntimeOnly)
 
 // do not attempt to find projects when the plugin is applied just to generate accessors
 if (project.name != "gradle-kotlin-dsl-accessors" && project.name != "test" /* remove once wrapper is updated */) {
+    val libs = project.versionCatalogs.named("libs")
+    val testLibs = project.versionCatalogs.named("testLibs")
+
     dependencies {
         testFixturesApi(project(":internal-testing"))
         // platform
         testFixturesImplementation(platform(project(":distributions-dependencies")))
 
         // add a set of default dependencies for fixture implementation
-        testFixturesImplementation(libs.junit)
-        testFixturesImplementation(libs.groovy)
-        testFixturesImplementation(libs.spock)
-        testFixturesRuntimeOnly(libs.bytebuddy)
-        testFixturesRuntimeOnly(libs.cglib)
+        testFixturesImplementation(testLibs.findLibrary("junit").get())
+        testFixturesImplementation(libs.findLibrary("groovy").get())
+        testFixturesImplementation(testLibs.findLibrary("spock").get())
+        testFixturesRuntimeOnly(testLibs.findLibrary("bytebuddy").get())
+        testFixturesRuntimeOnly(testLibs.findLibrary("cglib").get())
     }
 }
 

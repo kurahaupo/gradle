@@ -46,10 +46,11 @@ class DependencyConstraintsBugsIntegrationTest extends AbstractHttpDependencyRes
                 id 'java-library'
             }
 
+            ${mavenCentralRepository()}
+
             repositories {
-                ${mavenCentralRepository()}
                 maven {
-                   url(uri("./ktor-repo/"))
+                   url = file("./ktor-repo/")
                 }
             }
 
@@ -79,14 +80,14 @@ class DependencyConstraintsBugsIntegrationTest extends AbstractHttpDependencyRes
     }
 
     def "can use a provider to declare a dependency constraint"() {
-        def resolve = new ResolveTestFixture(buildFile, "conf")
+        def resolve = new ResolveTestFixture(testDirectory)
         settingsFile << """
             rootProject.name = 'test'
         """
 
         buildFile << """
             repositories {
-                maven { url "${mavenHttpRepo.uri}" }
+                maven { url = "${mavenHttpRepo.uri}" }
             }
             configurations {
                 conf
@@ -97,8 +98,8 @@ class DependencyConstraintsBugsIntegrationTest extends AbstractHttpDependencyRes
                 }
                 conf "org:foo"
             }
+            ${resolve.configureProject("conf")}
         """
-        resolve.prepare()
         def module = mavenHttpRepo.module("org", "foo", "1.1").publish()
 
         when:

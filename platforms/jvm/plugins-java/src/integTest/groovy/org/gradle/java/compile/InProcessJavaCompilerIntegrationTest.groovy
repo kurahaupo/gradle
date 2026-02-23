@@ -15,7 +15,7 @@
  */
 package org.gradle.java.compile
 
-class InProcessJavaCompilerIntegrationTest extends JavaCompilerIntegrationSpec {
+class InProcessJavaCompilerIntegrationTest extends AbstractJavaCompilerIntegrationSpec {
 
     @Override
     String compilerConfiguration() {
@@ -29,5 +29,11 @@ class InProcessJavaCompilerIntegrationTest extends JavaCompilerIntegrationSpec {
     @Override
     String logStatement() {
         "Java compiler API"
+    }
+
+    @Override
+    void releaseFlagAssertions() {
+        failureHasCause("Java compilation initialization error")
+        failureCauseContains('Cannot specify --release via `CompileOptions.compilerArgs` when using `CompileOptions.release`.')
     }
 }

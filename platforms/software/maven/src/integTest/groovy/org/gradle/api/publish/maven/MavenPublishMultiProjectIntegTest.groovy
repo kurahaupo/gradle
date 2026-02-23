@@ -41,9 +41,9 @@ class MavenPublishMultiProjectIntegTest extends AbstractMavenPublishIntegTest {
 project(":project3") {
     publishing {
         publications.maven {
-            groupId "changed.group"
-            artifactId "changed-artifact-id"
-            version "changed"
+            groupId = "changed.group"
+            artifactId = "changed-artifact-id"
+            version = "changed"
         }
     }
 }
@@ -94,14 +94,14 @@ project(":project2") {
         publications {
             extraComp(MavenPublication) {
                 from components.java
-                groupId "extra.group"
-                artifactId "extra-comp"
-                version "extra"
+                groupId = "extra.group"
+                artifactId = "extra-comp"
+                version = "extra"
             }
             extra(MavenPublication) {
-                groupId "extra.group"
-                artifactId "extra"
-                version "extra"
+                groupId = "extra.group"
+                artifactId = "extra"
+                version = "extra"
             }
         }
     }
@@ -125,9 +125,9 @@ project(":project3") {
     publishing {
         publications {
             extra(MavenPublication) {
-                groupId "extra.group"
-                artifactId "extra"
-                version "extra"
+                groupId = "extra.group"
+                artifactId = "extra"
+                version = "extra"
             }
         }
     }
@@ -154,15 +154,15 @@ project(":project3") {
         publications {
             extra1(MavenPublication) {
                 from c1
-                groupId "extra.group"
-                artifactId "extra1"
-                version "extra"
+                groupId = "extra.group"
+                artifactId = "extra1"
+                version = "extra"
             }
             extra2(MavenPublication) {
                 from c2
-                groupId "custom"
-                artifactId "custom3"
-                version "456"
+                groupId = "custom"
+                artifactId = "custom3"
+                version = "456"
             }
         }
     }
@@ -210,54 +210,67 @@ project(":project2") {
     @Issue("GRADLE-3366")
     def "project dependency excludes are correctly reflected in pom when using maven-publish plugin"() {
         given:
-        createDirs("project1", "project2")
         settingsFile << """
-include "project1", "project2"
-"""
+            include "project1", "project2"
+        """
 
-        buildFile << """
-allprojects {
-    apply plugin: 'java-library'
-    apply plugin: 'maven-publish'
-
-    group = "org.gradle.test"
-
-    ${mavenCentralRepository()}
-}
-
-project(":project1") {
-    version = "1.0"
-
-    dependencies {
-        api "commons-collections:commons-collections:3.2.2"
-        api "commons-io:commons-io:1.4"
-    }
-}
-
-project(":project2") {
-    version = "2.0"
-
-    dependencies {
-        api project(":project1"), {
-            exclude module: "commons-collections"
-            exclude group: "commons-io"
-        }
-    }
-
-    publishing {
-        repositories {
-            maven { url "${mavenRepo.uri}" }
-        }
-        publications {
-            maven(MavenPublication) {
-                from components.java
+        file("project1/build.gradle") << """
+            plugins {
+                id("java-library")
+                id("maven-publish")
             }
-        }
-    }
-}
-"""
+
+            group = "org.gradle.test"
+            version = "1.0"
+
+            ${mavenCentralRepository()}
+
+            dependencies {
+                api "commons-collections:commons-collections:3.2.2"
+                api "commons-io:commons-io:1.4"
+            }
+
+            publishing {
+                publications {
+                    maven(MavenPublication) {
+                        from components.java
+                    }
+                }
+            }
+        """
+
+        file("project2/build.gradle") << """
+            plugins {
+                id("java-library")
+                id("maven-publish")
+            }
+
+            group = "org.gradle.test"
+            version = "2.0"
+
+            ${mavenCentralRepository()}
+
+            dependencies {
+                api project(":project1"), {
+                    exclude module: "commons-collections"
+                    exclude group: "commons-io"
+                }
+            }
+
+            publishing {
+                repositories {
+                    maven { url = "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from components.java
+                    }
+                }
+            }
+        """
+
         when:
-        run "publish"
+        run ":project2:publish"
 
         then:
         project2.assertPublished()
@@ -316,7 +329,7 @@ project(":$platformName") {
     }
     publishing {
         repositories {
-            maven { url "${mavenRepo.uri}" }
+            maven { url = "${mavenRepo.uri}" }
         }
         publications {
             maven(MavenPublication) { from components.javaPlatform }
@@ -333,7 +346,7 @@ project(":library") {
     }
     publishing {
         repositories {
-            maven { url "${mavenRepo.uri}" }
+            maven { url = "${mavenRepo.uri}" }
         }
         publications {
             maven(MavenPublication) { from components.java }
@@ -397,7 +410,7 @@ subprojects {
 
     publishing {
         repositories {
-            maven { url "${mavenRepo.uri}" }
+            maven { url = "${mavenRepo.uri}" }
         }
         publications {
             maven(MavenPublication) {

@@ -17,10 +17,9 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph;
 
 import org.gradle.api.artifacts.component.ComponentSelector;
-import org.gradle.api.artifacts.result.ComponentSelectionReason;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentSelectionReasonInternal;
 import org.gradle.internal.resolve.ModuleVersionResolveException;
-
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The final representation of a dependency in the resolved dependency graph.
@@ -28,33 +27,34 @@ import javax.annotation.Nullable;
  */
 public interface ResolvedGraphDependency {
 
+    /**
+     * The component selector that the user requested, before substitutions are applied.
+     */
     ComponentSelector getRequested();
 
     @Nullable
     ModuleVersionResolveException getFailure();
 
     /**
-     * Returns the simple id of the selected component, as per {@link ResolvedGraphComponent#getResultId()}.
+     * Returns the simple ID of the selected component, as per {@link ResolvedGraphComponent#getResultId()}.
+     *
+     * @throws IllegalStateException if {@link #getFailure()} is not null.
      */
-    @Nullable
-    Long getSelected();
+    long getTargetComponentId();
 
     /**
      * Not null only when failure is not null.
      */
     @Nullable
-    ComponentSelectionReason getReason();
+    ComponentSelectionReasonInternal getReason();
 
     boolean isConstraint();
 
     /**
-     * Returns the simple id of the source variant, as per {@link ResolvedGraphVariant#getNodeId()}.
+     * Returns the simple ID of the selected variant, as per {@link ResolvedGraphVariant#getNodeId()}.
+     *
+     * @throws IllegalStateException if {@link #getFailure()} is not null.
      */
-    Long getFromVariant();
+    long getTargetVariantId();
 
-    /**
-     * Returns the simple id of the selected variant, as per {@link ResolvedGraphVariant#getNodeId()}.
-     */
-    @Nullable
-    Long getSelectedVariant();
 }

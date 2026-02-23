@@ -18,9 +18,14 @@ package org.gradle.api.publish;
 
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
+import org.gradle.api.component.SoftwareComponent;
+import org.gradle.api.component.SoftwareComponentFactory;
+import org.jspecify.annotations.NullMarked;
+
+import javax.inject.Inject;
 
 /**
- * The configuration of how to “publish” the different components of a project.
+ * The configuration of how to "publish" the different components of a project.
  *
  * @since 1.3
  */
@@ -50,10 +55,10 @@ public interface PublishingExtension {
      *
      * publishing {
      *   repositories {
-     *     // Create an ivy publication destination named “releases”
+     *     // Create an ivy publication destination named "releases"
      *     ivy {
-     *       name "releases"
-     *       url "http://my.org/ivy-repos/releases"
+     *       name = "releases"
+     *       url = "http://my.org/ivy-repos/releases"
      *     }
      *   }
      * }
@@ -85,7 +90,7 @@ public interface PublishingExtension {
      * by building the project. An example of a publication would be an Ivy Module (i.e. {@code ivy.xml} and artifacts), or
      * Maven Project (i.e. {@code pom.xml} and artifacts).
      * <p>
-     * Actual publication implementations and the ability to create them are provided by different plugins. The “publishing” plugin itself does not provide any publication types.
+     * Actual publication implementations and the ability to create them are provided by different plugins. The "publishing" plugin itself does not provide any publication types.
      * For example, given that the 'maven-publish' plugin provides a {@link org.gradle.api.publish.maven.MavenPublication} type, you can create a publication like:
      * <pre class='autoTested'>
      * plugins {
@@ -106,5 +111,19 @@ public interface PublishingExtension {
      * @param configure The action or closure to configure the publications with.
      */
     void publications(Action<? super PublicationContainer> configure);
+
+    /**
+     * Get an instance of the {@link SoftwareComponentFactory} service.
+     * <p>
+     * This service may be used to create component instances for publishing with
+     * {@link org.gradle.api.publish.maven.MavenPublication#from(SoftwareComponent)} and
+     * {@link org.gradle.api.publish.ivy.IvyPublication#from(SoftwareComponent)}
+     *
+     * @return the software component factory service.
+     *
+     * @since 9.2.0
+     */
+    @Inject
+    @NullMarked SoftwareComponentFactory getSoftwareComponentFactory();
 
 }

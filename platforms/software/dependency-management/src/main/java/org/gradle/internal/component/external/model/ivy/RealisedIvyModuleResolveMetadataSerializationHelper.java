@@ -20,11 +20,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.LinkedHashMultimap;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.SetMultimap;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
+import org.gradle.api.internal.artifacts.NamedVariantIdentifier;
+import org.gradle.api.internal.artifacts.capability.CapabilitySelectorSerializer;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.AttributeContainerSerializer;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.IvyArtifactNameSerializer;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
@@ -48,10 +49,12 @@ import org.gradle.internal.component.model.Exclude;
 import org.gradle.internal.component.model.ExcludeMetadata;
 import org.gradle.internal.component.model.IvyArtifactName;
 import org.gradle.internal.component.model.ModuleConfigurationMetadata;
+import org.gradle.internal.component.model.VariantIdentifier;
 import org.gradle.internal.serialize.Decoder;
 import org.gradle.internal.serialize.Encoder;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,8 +62,12 @@ import java.util.Set;
 
 public class RealisedIvyModuleResolveMetadataSerializationHelper extends AbstractRealisedModuleResolveMetadataSerializationHelper {
 
-    public RealisedIvyModuleResolveMetadataSerializationHelper(AttributeContainerSerializer attributeContainerSerializer, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
-        super(attributeContainerSerializer, moduleIdentifierFactory);
+    public RealisedIvyModuleResolveMetadataSerializationHelper(
+        AttributeContainerSerializer attributeContainerSerializer,
+        CapabilitySelectorSerializer capabilitySelectorSerializer,
+        ImmutableModuleIdentifierFactory moduleIdentifierFactory
+    ) {
+        super(attributeContainerSerializer, capabilitySelectorSerializer, moduleIdentifierFactory);
     }
 
     public ModuleComponentResolveMetadata readMetadata(Decoder decoder, DefaultIvyModuleResolveMetadata resolveMetadata) throws IOException {
@@ -145,9 +152,11 @@ public class RealisedIvyModuleResolveMetadataSerializationHelper extends Abstrac
             }
             ImmutableList<? extends ModuleComponentArtifactMetadata> artifacts = readFiles(decoder, metadata.getId());
 
+            VariantIdentifier id = new NamedVariantIdentifier(metadata.getId(), configurationName);
             RealisedConfigurationMetadata configurationMetadata = new RealisedConfigurationMetadata(
-                metadata.getId(),
                 configurationName,
+                id,
+                metadata.getId(),
                 transitive,
                 visible,
                 hierarchy,
@@ -155,8 +164,9 @@ public class RealisedIvyModuleResolveMetadataSerializationHelper extends Abstrac
                 excludes,
                 attributes,
                 capabilities,
-                    false,
-                isExternalVariant);
+                false,
+                isExternalVariant
+            );
 
             ImmutableList.Builder<ModuleDependencyMetadata> builder = ImmutableList.builder();
             int dependenciesCount = decoder.readSmallInt();
@@ -257,7 +267,7 @@ public class RealisedIvyModuleResolveMetadataSerializationHelper extends Abstrac
 
     private List<Artifact> readDependencyArtifactDescriptors(Decoder decoder) throws IOException {
         int size = decoder.readSmallInt();
-        List<Artifact> result = Lists.newArrayListWithCapacity(size);
+        List<Artifact> result = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             IvyArtifactName ivyArtifactName = IvyArtifactNameSerializer.INSTANCE.read(decoder);
             result.add(new Artifact(ivyArtifactName, readStringSet(decoder)));
@@ -267,7 +277,7 @@ public class RealisedIvyModuleResolveMetadataSerializationHelper extends Abstrac
 
     private List<Exclude> readDependencyExcludes(Decoder decoder) throws IOException {
         int len = decoder.readSmallInt();
-        List<Exclude> result = Lists.newArrayListWithCapacity(len);
+        List<Exclude> result = new ArrayList<>(len);
         for (int i = 0; i < len; i++) {
             DefaultExclude rule = readExcludeRule(decoder);
             result.add(rule);

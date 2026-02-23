@@ -16,6 +16,8 @@
 
 package org.gradle.buildinit.plugins
 
+import org.gradle.api.JavaVersion
+import org.gradle.api.internal.tasks.testing.report.generic.GenericTestExecutionResult
 import org.gradle.buildinit.plugins.fixtures.ScriptDslFixture
 
 class GroovyApplicationInitIntegrationTest extends AbstractJvmLibraryInitIntegrationSpec {
@@ -26,9 +28,14 @@ class GroovyApplicationInitIntegrationTest extends AbstractJvmLibraryInitIntegra
     @Override
     String subprojectName() { 'app' }
 
+    @Override
+    def setup() {
+        resultsTestFramework(GenericTestExecutionResult.TestFramework.SPOCK)
+    }
+
     def "creates sample source if no source present with #scriptDsl build scripts"() {
         when:
-        run('init', '--type', 'groovy-application', '--dsl', scriptDsl.id)
+        run('init', '--type', 'groovy-application', '--dsl', scriptDsl.id, '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/groovy").assertHasDescendants(SAMPLE_APP_CLASS)
@@ -55,7 +62,7 @@ class GroovyApplicationInitIntegrationTest extends AbstractJvmLibraryInitIntegra
 
     def "creates sample source using spock instead of junit with #scriptDsl build scripts"() {
         when:
-        run('init', '--type', 'groovy-application', '--test-framework', 'spock', '--dsl', scriptDsl.id)
+        run('init', '--type', 'groovy-application', '--test-framework', 'spock', '--dsl', scriptDsl.id, '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/groovy").assertHasDescendants(SAMPLE_APP_CLASS)
@@ -76,7 +83,7 @@ class GroovyApplicationInitIntegrationTest extends AbstractJvmLibraryInitIntegra
 
     def "specifying TestNG is not supported with #scriptDsl build scripts"() {
         when:
-        fails('init', '--type', 'groovy-application', '--test-framework', 'testng', '--dsl', scriptDsl.id)
+        fails('init', '--type', 'groovy-application', '--test-framework', 'testng', '--dsl', scriptDsl.id, '--java-version', JavaVersion.current().majorVersion)
 
         then:
         failure.assertHasCause("""The requested test framework 'testng' is not supported for 'groovy-application' build type. Supported frameworks:
@@ -88,7 +95,7 @@ class GroovyApplicationInitIntegrationTest extends AbstractJvmLibraryInitIntegra
 
     def "creates sample source with package and #scriptDsl build scripts"() {
         when:
-        run('init', '--type', 'groovy-application', '--package', 'my.app', '--dsl', scriptDsl.id)
+        run('init', '--type', 'groovy-application', '--package', 'my.app', '--dsl', scriptDsl.id, '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/groovy").assertHasDescendants("my/app/App.groovy")
@@ -117,7 +124,7 @@ class GroovyApplicationInitIntegrationTest extends AbstractJvmLibraryInitIntegra
         def dslFixture = dslFixtureFor(scriptDsl)
 
         when:
-        run('init', '--type', 'groovy-application', '--package', 'my.app', '--dsl', scriptDsl.id, '--incubating')
+        run('init', '--type', 'groovy-application', '--package', 'my.app', '--dsl', scriptDsl.id, '--incubating', '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/groovy").assertHasDescendants("my/app/App.groovy")
@@ -145,10 +152,14 @@ class GroovyApplicationInitIntegrationTest extends AbstractJvmLibraryInitIntegra
 
     def "creates with gradle.properties when using #scriptDsl build scripts with --incubating"() {
         when:
-        run('init', '--type', 'groovy-application', '--package', 'my.app', '--dsl', scriptDsl.id, '--incubating')
+        run('init', '--type', 'groovy-application', '--package', 'my.app', '--dsl', scriptDsl.id, '--incubating', '--java-version', JavaVersion.current().majorVersion)
 
         then:
-        gradlePropertiesGenerated()
+        gradlePropertiesGenerated {
+            assertCachingEnabled()
+            assertParallelEnabled()
+            assertConfigurationCacheEnabled()
+        }
 
         when:
         run("build")
@@ -184,7 +195,7 @@ class GroovyApplicationInitIntegrationTest extends AbstractJvmLibraryInitIntegra
                 }
         """
         when:
-        run('init', '--type', 'groovy-application', '--dsl', scriptDsl.id, '--overwrite')
+        run('init', '--type', 'groovy-application', '--dsl', scriptDsl.id, '--overwrite', '--java-version', JavaVersion.current().majorVersion)
 
         then:
         subprojectDir.file("src/main/groovy").assertHasDescendants("org/acme/SampleMain.groovy")

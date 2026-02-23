@@ -19,31 +19,57 @@ plugins {
 }
 
 description = """A problems description API
-    |
-    |This project provides base classes to describe problems and their
-    |solutions, in a way that enforces the creation of good error messages.
-    |
-    |It's a stripped down version of the original code available
-    |at https://github.com/melix/jdoctor/
-""".trimMargin()
 
-gradlebuildJava.usedInWorkers()
+This project provides base classes to describe problems and their
+solutions, in a way that enforces the creation of good error messages.
+
+It's a stripped down version of the original code available
+at https://github.com/melix/jdoctor/
+"""
+
+gradleModule {
+    targetRuntimes {
+        usedInWorkers = true
+    }
+}
+
+jvmCompile {
+    compilations {
+        named("testFixtures") {
+            // The TAPI cross version tests depend on these test fixtures
+            targetJvmVersion = 8
+        }
+    }
+}
 
 dependencies {
-    api(projects.javaLanguageExtensions)
-    api(project(":base-services"))
-    api(project(":build-operations"))
+    api(projects.baseServices)
+    api(projects.buildOperations)
+    api(projects.enterpriseOperations)
+    api(projects.serialization)
+    api(projects.snapshots)
+    api(projects.stdlibJavaExtensions)
 
     api(libs.guava)
     api(libs.inject)
-    api(libs.jsr305)
+    api(libs.jspecify)
+    api(projects.serialization)
 
-    testImplementation(project(":logging"))
-    integTestImplementation(project(":internal-testing"))
-    integTestImplementation(testFixtures(project(":logging")))
-    integTestDistributionRuntimeOnly(project(":distributions-core"))
+    implementation(libs.jsr305)
 
-    testFixturesImplementation(project(":enterprise-operations"))
-    testFixturesImplementation(project(":base-services"))
-    testFixturesImplementation(project(":internal-integ-testing"))
+    testImplementation(projects.logging)
+    integTestImplementation(projects.internalTesting)
+    integTestImplementation(testFixtures(projects.logging))
+    integTestDistributionRuntimeOnly(projects.distributionsCore)
+
+    testFixturesImplementation(projects.enterpriseOperations)
+    testFixturesImplementation(projects.baseServices)
+    testFixturesImplementation(projects.internalDistributionTesting)
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}
+
+packageCycles {
+    excludePatterns.add("org/gradle/api/problems/**") // ProblemId.create() and ProblemGroup.create() return internal types
 }

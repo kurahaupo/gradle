@@ -20,17 +20,36 @@ import org.gradle.api.artifacts.ModuleIdentifier;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+/**
+ * Tracks hard (non-constraint) dependencies targeting a given module. A module should end up in a graph if it has
+ * hard dependencies. Also tracks all constraints that have been observed for a module. These constraints should be
+ * activated when the hard edge count becomes positive.
+ */
 public class PendingDependencies {
     private final ModuleIdentifier moduleIdentifier;
     private final Set<NodeState> constraintProvidingNodes;
     private int hardEdges;
-    private boolean reportActivePending;
 
     PendingDependencies(ModuleIdentifier moduleIdentifier) {
         this.moduleIdentifier = moduleIdentifier;
         this.constraintProvidingNodes = new LinkedHashSet<>();
         this.hardEdges = 0;
-        this.reportActivePending = true;
+    }
+
+    boolean addIncomingHardEdge() {
+        increaseHardEdgeCount();
+        if (!hasConstraintProviders()) {
+            return false;
+        }
+
+        assert hardEdges == 1;
+
+        for (NodeState node : constraintProvidingNodes) {
+            node.prepareForConstraintNoLongerPending(moduleIdentifier);
+        }
+        constraintProvidingNodes.clear();
+
+        return true;
     }
 
     void registerConstraintProvider(NodeState nodeState) {
@@ -38,26 +57,18 @@ public class PendingDependencies {
             throw new IllegalStateException("Cannot add a pending node for a dependency which is not pending");
         }
         constraintProvidingNodes.add(nodeState);
-        if (nodeState.getComponent().getModule().isVirtualPlatform()) {
-            reportActivePending = false;
-        }
     }
 
     public void unregisterConstraintProvider(NodeState nodeState) {
         if (hardEdges != 0) {
             throw new IllegalStateException("Cannot remove a pending node for a dependency which is not pending");
         }
-        boolean removed = constraintProvidingNodes.remove(nodeState);
+        constraintProvidingNodes.remove(nodeState);
     }
 
-    void turnIntoHardDependencies() {
-        for (NodeState affectedComponent : constraintProvidingNodes) {
-            affectedComponent.prepareForConstraintNoLongerPending(moduleIdentifier);
-        }
-        constraintProvidingNodes.clear();
-        reportActivePending = true;
-    }
-
+    /**
+     * Return true iff all nodes in this module have no non-constraint edges
+     */
     public boolean isPending() {
         return hardEdges == 0;
     }
@@ -75,8 +86,7 @@ public class PendingDependencies {
         hardEdges--;
     }
 
-    public boolean shouldReportActivatePending() {
-        return reportActivePending;
+    public void retarget(PendingDependencies pendingDependencies) {
+        hardEdges += pendingDependencies.hardEdges;
     }
-
 }

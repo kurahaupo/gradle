@@ -17,20 +17,16 @@
 package org.gradle.api.tasks.javadoc;
 
 import org.gradle.api.InvalidUserDataException;
-import org.gradle.api.UncheckedIOException;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileSystemOperations;
 import org.gradle.api.file.FileTree;
-import org.gradle.api.internal.file.temp.TemporaryFileProvider;
-import org.gradle.api.internal.project.IsolatedAntBuilder;
-import org.gradle.api.internal.tasks.AntGroovydoc;
-import org.gradle.api.logging.LogLevel;
+import org.gradle.api.internal.tasks.GroovydocAntAction;
+import org.gradle.api.internal.tasks.GroovydocParameters;
 import org.gradle.api.provider.Property;
 import org.gradle.api.resources.TextResource;
 import org.gradle.api.tasks.CacheableTask;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
-import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
@@ -38,9 +34,12 @@ import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SourceTask;
 import org.gradle.api.tasks.TaskAction;
+import org.gradle.internal.UncheckedException;
 import org.gradle.internal.file.Deleter;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
+import org.gradle.workers.WorkerExecutor;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.io.IOException;
@@ -52,6 +51,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * <p>Generates HTML API documentation for Groovy source, and optionally, Java source.
@@ -67,8 +67,6 @@ public abstract class Groovydoc extends SourceTask {
     private FileCollection classpath;
 
     private File destinationDir;
-
-    private AntGroovydoc antGroovydoc;
 
     private boolean use;
 
@@ -88,17 +86,8 @@ public abstract class Groovydoc extends SourceTask {
 
     private Set<Link> links = new LinkedHashSet<Link>();
 
-    private final Property<GroovydocAccess> access = getProject().getObjects().property(GroovydocAccess.class);
-
-    private final Property<Boolean> includeAuthor = getProject().getObjects().property(Boolean.class);
-
-    private final Property<Boolean> processScripts = getProject().getObjects().property(Boolean.class);
-
-    private final Property<Boolean> includeMainForScripts = getProject().getObjects().property(Boolean.class);
-
-    public Groovydoc() {
-        getLogging().captureStandardOutput(LogLevel.INFO);
-    }
+    @Inject
+    protected abstract WorkerExecutor getWorkerExecutor();
 
     @TaskAction
     protected void generate() {
@@ -107,15 +96,39 @@ public abstract class Groovydoc extends SourceTask {
         try {
             getDeleter().ensureEmptyDirectory(destinationDir);
         } catch (IOException ex) {
-            throw new UncheckedIOException(ex);
+            throw UncheckedException.throwAsUncheckedException(ex);
         }
-        getAntGroovydoc().execute(
-            getSource(), destinationDir, isUse(), isNoTimestamp(), isNoVersionStamp(),
-            getWindowTitle(), getDocTitle(), getHeader(), getFooter(), getPathToOverview(),
-            getAccess().get(), getLinks(), getGroovyClasspath(), getClasspath(),
-            getTemporaryDir(), getServices().get(FileSystemOperations.class),
-            getIncludeAuthor().get(), getProcessScripts().get(), getIncludeMainForScripts().get()
-        );
+        FileSystemOperations fsOperations = getServices().get(FileSystemOperations.class);
+
+        // Copy all sources into one place
+        File tmpDir = getTemporaryDir();
+        fsOperations.delete(spec -> spec.delete(tmpDir));
+        fsOperations.copy(spec -> spec.from(getSource()).into(tmpDir));
+
+        getWorkerExecutor().classLoaderIsolation().submit(GroovydocAntAction.class, parameters -> {
+            parameters.getAntLibraryClasspath().from(getClasspath());
+            parameters.getAntLibraryClasspath().from(getGroovyClasspath());
+            parameters.getSource().convention(getSource());
+            parameters.getDestinationDirectory().fileValue(destinationDir);
+            parameters.getUse().convention(isUse());
+            parameters.getNoTimestamp().convention(isNoTimestamp());
+            parameters.getNoVersionStamp().convention(isNoVersionStamp());
+            parameters.getWindowTitle().convention(getWindowTitle());
+            parameters.getDocTitle().convention(getDocTitle());
+            parameters.getHeader().convention(getHeader());
+            parameters.getFooter().convention(getFooter());
+            parameters.getOverview().convention(getPathToOverview());
+            parameters.getAccess().convention(getAccess());
+            parameters.getLinks().convention(
+                getLinks().stream()
+                    .map(link -> new GroovydocParameters.Link(link.getPackages(), link.getUrl()))
+                    .collect(Collectors.toList())
+            );
+            parameters.getTmpDir().fileValue(getTemporaryDir());
+            parameters.getIncludeAuthor().convention(getIncludeAuthor());
+            parameters.getProcessScripts().convention(getProcessScripts());
+            parameters.getIncludeMainForScripts().convention(getIncludeMainForScripts());
+        });
     }
 
     @Nullable
@@ -138,6 +151,7 @@ public abstract class Groovydoc extends SourceTask {
      */
     @PathSensitive(PathSensitivity.RELATIVE)
     @Override
+    @ToBeReplacedByLazyProperty
     public FileTree getSource() {
         return super.getSource();
     }
@@ -148,6 +162,7 @@ public abstract class Groovydoc extends SourceTask {
      * @return The directory to generate the documentation into
      */
     @OutputDirectory
+    @ToBeReplacedByLazyProperty
     public File getDestinationDir() {
         return destinationDir;
     }
@@ -165,6 +180,7 @@ public abstract class Groovydoc extends SourceTask {
      * @return The classpath containing the Groovy library to be used
      */
     @Classpath
+    @ToBeReplacedByLazyProperty
     public FileCollection getGroovyClasspath() {
         return groovyClasspath;
     }
@@ -182,6 +198,7 @@ public abstract class Groovydoc extends SourceTask {
      * @return The classpath used to locate classes referenced by the documented sources
      */
     @Classpath
+    @ToBeReplacedByLazyProperty
     public FileCollection getClasspath() {
         return classpath;
     }
@@ -193,24 +210,11 @@ public abstract class Groovydoc extends SourceTask {
         this.classpath = classpath;
     }
 
-    @Internal
-    public AntGroovydoc getAntGroovydoc() {
-        if (antGroovydoc == null) {
-            IsolatedAntBuilder antBuilder = getServices().get(IsolatedAntBuilder.class);
-            TemporaryFileProvider temporaryFileProvider = getServices().get(TemporaryFileProvider.class);
-            antGroovydoc = new AntGroovydoc(antBuilder, temporaryFileProvider);
-        }
-        return antGroovydoc;
-    }
-
-    public void setAntGroovydoc(AntGroovydoc antGroovydoc) {
-        this.antGroovydoc = antGroovydoc;
-    }
-
     /**
      * Returns whether to create class and package usage pages.
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public boolean isUse() {
         return use;
     }
@@ -226,6 +230,7 @@ public abstract class Groovydoc extends SourceTask {
      * Returns whether to include timestamp within hidden comment in generated HTML (Groovy &gt;= 2.4.6).
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public boolean isNoTimestamp() {
         return noTimestamp;
     }
@@ -241,6 +246,7 @@ public abstract class Groovydoc extends SourceTask {
      * Returns whether to include version stamp within hidden comment in generated HTML (Groovy &gt;= 2.4.6).
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public boolean isNoVersionStamp() {
         return noVersionStamp;
     }
@@ -258,6 +264,7 @@ public abstract class Groovydoc extends SourceTask {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getWindowTitle() {
         return windowTitle;
     }
@@ -277,6 +284,7 @@ public abstract class Groovydoc extends SourceTask {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getDocTitle() {
         return docTitle;
     }
@@ -296,6 +304,7 @@ public abstract class Groovydoc extends SourceTask {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getHeader() {
         return header;
     }
@@ -315,6 +324,7 @@ public abstract class Groovydoc extends SourceTask {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getFooter() {
         return footer;
     }
@@ -358,9 +368,7 @@ public abstract class Groovydoc extends SourceTask {
      * @since 7.5
      */
     @Input
-    public Property<GroovydocAccess> getAccess() {
-        return access;
-    }
+    public abstract Property<GroovydocAccess> getAccess();
 
     /**
      * Whether to include author paragraphs.
@@ -368,9 +376,7 @@ public abstract class Groovydoc extends SourceTask {
      * @since 7.5
      */
     @Input
-    public Property<Boolean> getIncludeAuthor() {
-        return includeAuthor;
-    }
+    public abstract Property<Boolean> getIncludeAuthor();
 
     /**
      * Whether to process scripts.
@@ -378,9 +384,7 @@ public abstract class Groovydoc extends SourceTask {
      * @since 7.5
      */
     @Input
-    public Property<Boolean> getProcessScripts() {
-        return processScripts;
-    }
+    public abstract Property<Boolean> getProcessScripts();
 
     /**
      * Whether to include main method for scripts.
@@ -388,14 +392,13 @@ public abstract class Groovydoc extends SourceTask {
      * @since 7.5
      */
     @Input
-    public Property<Boolean> getIncludeMainForScripts() {
-        return includeMainForScripts;
-    }
+    public abstract Property<Boolean> getIncludeMainForScripts();
 
     /**
      * Returns the links to groovydoc/javadoc output at the given URL.
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public Set<Link> getLinks() {
         return Collections.unmodifiableSet(links);
     }
@@ -495,7 +498,5 @@ public abstract class Groovydoc extends SourceTask {
     }
 
     @Inject
-    protected Deleter getDeleter() {
-        throw new UnsupportedOperationException("Decorator takes care of injection");
-    }
+    protected abstract Deleter getDeleter();
 }

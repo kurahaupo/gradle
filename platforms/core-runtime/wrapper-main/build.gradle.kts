@@ -16,6 +16,9 @@
 
 import com.gradleup.gr8.EmbeddedJarTask
 import com.gradleup.gr8.Gr8Task
+import gradlebuild.basics.launcherDebuggingIsEnabled
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.jar.Attributes
 
 plugins {
@@ -25,32 +28,39 @@ plugins {
 
 description = "Entry point of the Gradle wrapper command"
 
-gradlebuildJava.usedInWorkers()
+gradleModule {
+    targetRuntimes {
+        usedInClient = true
+    }
+}
 
 dependencies {
-    implementation(project(":cli"))
-    implementation(project(":wrapper-shared"))
+    implementation(projects.cli)
+    implementation(projects.wrapperShared)
 
-    testImplementation(project(":base-services"))
-    testImplementation(testFixtures(project(":core")))
+    testImplementation(projects.baseServices)
+    testImplementation(testFixtures(projects.core))
 
-    integTestImplementation(project(":build-option"))
-    integTestImplementation(project(":launcher"))
-    integTestImplementation(project(":logging"))
-    integTestImplementation(project(":core-api"))
+    integTestImplementation(projects.buildOption)
+    integTestImplementation(projects.launcher)
+    integTestImplementation(projects.logging)
+    integTestImplementation(projects.coreApi)
     integTestImplementation(libs.commonsIo)
-    integTestImplementation(libs.littleproxy)
-    integTestImplementation(libs.jetty)
+    integTestImplementation(testLibs.littleproxy)
+    integTestImplementation(testLibs.jetty)
+    integTestImplementation(testFixtures(projects.buildProcessServices))
 
-    crossVersionTestImplementation(project(":logging"))
-    crossVersionTestImplementation(project(":persistent-cache"))
-    crossVersionTestImplementation(project(":launcher"))
+    integTestNormalizedDistribution(projects.distributionsFull)
+    integTestDistributionRuntimeOnly(projects.distributionsFull)
 
-    integTestNormalizedDistribution(project(":distributions-full"))
-    crossVersionTestNormalizedDistribution(project(":distributions-full"))
+    crossVersionTestImplementation(projects.internalIntegTesting)
+    crossVersionTestImplementation(projects.launcher)
+    crossVersionTestImplementation(projects.logging)
+    crossVersionTestImplementation(projects.persistentCache)
+    crossVersionTestImplementation(testFixtures(projects.buildProcessServices))
 
-    integTestDistributionRuntimeOnly(project(":distributions-full"))
-    crossVersionTestDistributionRuntimeOnly(project(":distributions-full"))
+    crossVersionTestNormalizedDistribution(projects.distributionsFull)
+    crossVersionTestDistributionRuntimeOnly(projects.distributionsFull)
 }
 
 val executableJar by tasks.registering(Jar::class) {
@@ -58,12 +68,15 @@ val executableJar by tasks.registering(Jar::class) {
     manifest {
         attributes.remove(Attributes.Name.IMPLEMENTATION_VERSION.toString())
         attributes(Attributes.Name.IMPLEMENTATION_TITLE.toString() to "Gradle Wrapper")
+        attributes("SPDX-License-Identifier" to "Apache-2.0")
+        attributes(Attributes.Name.MAIN_CLASS.toString() to "org.gradle.wrapper.GradleWrapperMain")
+        // Allow launcher to access JNI: https://openjdk.org/jeps/472
+        attributes("Enable-Native-Access" to "ALL-UNNAMED")
     }
     from(layout.projectDirectory.dir("src/executable/resources"))
     from(sourceSets.main.get().output)
     // Exclude properties files from this project as they are not needed for the executable JAR
     exclude("gradle-*-classpath.properties")
-    exclude("gradle-*-parameter-names.properties")
 }
 
 // Using Gr8 plugin with ProGuard to minify the wrapper JAR.
@@ -80,7 +93,6 @@ gr8 {
         exclude("META-INF/.*")
         // Exclude properties files from dependency subprojects
         exclude("gradle-.*-classpath.properties")
-        exclude("gradle-.*-parameter-names.properties")
     }
 }
 
@@ -93,12 +105,41 @@ tasks.named<EmbeddedJarTask>("gr8EmbeddedJar") {
 // Before introducing gr8, wrapper jar is generated as build/libs/gradle-wrapper.jar and used in promotion build
 // After introducing gr8, wrapper jar is generated as build/libs/gradle-wrapper-executable.jar and processed
 //   by gr8, then the processed `gradle-wrapper.jar` need to be copied back to build/libs for promotion build
-val copyGr8OutputJarAsGradleWrapperJar by tasks.registering(Copy::class) {
-    from(tasks.named<Gr8Task>("gr8R8Jar").flatMap { it.outputJar() })
-    into(layout.buildDirectory.dir("libs"))
+val copyGr8OutputJarAsGradleWrapperJar by tasks.registering {
+    // Declare file inputs and outputs
+    // We use a custom task to not have Copy "own" its output directory when copying a single file
+    val source = tasks.named<Gr8Task>("gr8R8Jar").flatMap { it.outputJar() }
+    val target = layout.buildDirectory.dir("libs").map { it.file("gradle-wrapper.jar") }
+
+    inputs.file(source)
+    outputs.file(target)
+    // Do the copy with a simple JDK copy action
+    doLast {
+        Files.copy(
+            source.get().asFile.toPath(),
+            target.get().asFile.toPath(),
+            StandardCopyOption.REPLACE_EXISTING
+        )
+    }
+}
+
+val debuggableJar by tasks.registering(Jar::class) {
+    archiveFileName = "gradle-wrapper.jar"
+    from(executableJar.map { it.source })
+    from(configurations.runtimeClasspath.get().incoming.artifactView {
+        attributes.attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.CLASSES))
+    }.files)
 }
 
 tasks.jar {
-    from(tasks.named<Gr8Task>("gr8R8Jar").flatMap { it.outputJar() })
-    dependsOn(copyGr8OutputJarAsGradleWrapperJar)
+    if (launcherDebuggingIsEnabled) { // shadowing and minification prevents debugging
+        from(debuggableJar)
+    } else {
+        from(tasks.named<Gr8Task>("gr8R8Jar").flatMap { it.outputJar() })
+        dependsOn(copyGr8OutputJarAsGradleWrapperJar)
+    }
+}
+
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

@@ -18,7 +18,10 @@ package org.gradle.kotlin.dsl.provider.plugins.precompiled.tasks
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
+import org.gradle.api.initialization.Settings
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.IgnoreEmptyDirectories
 import org.gradle.api.tasks.InputFiles
@@ -27,23 +30,19 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-
 import org.gradle.kotlin.dsl.execution.Program
 import org.gradle.kotlin.dsl.execution.ProgramKind
 import org.gradle.kotlin.dsl.execution.ProgramParser
 import org.gradle.kotlin.dsl.execution.ProgramSource
 import org.gradle.kotlin.dsl.execution.ProgramTarget
-
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.PrecompiledScriptPlugin
 import org.gradle.kotlin.dsl.provider.plugins.precompiled.scriptPluginFilesOf
-
 import org.gradle.kotlin.dsl.support.KotlinScriptType
-
 import java.io.File
 
 
 /**
- * Extracts the `plugins` block of each precompiled [Project] script plugin
+ * Extracts the `plugins` block of each precompiled [Project] or [Settings] script plugin
  * and writes it to a file with the same name under [outputDir].
  */
 @CacheableTask
@@ -54,20 +53,20 @@ abstract class ExtractPrecompiledScriptPluginPlugins : DefaultTask() {
 
     @get:Internal
     internal
-    lateinit var plugins: List<PrecompiledScriptPlugin>
+    abstract val plugins: ListProperty<PrecompiledScriptPlugin>
 
     @get:InputFiles
     @get:IgnoreEmptyDirectories
     @get:PathSensitive(PathSensitivity.RELATIVE)
     @Suppress("unused")
     internal
-    val scriptFiles: Set<File>
+    val scriptFiles: Provider<Set<File>>
         get() = scriptPluginFilesOf(plugins)
 
     @TaskAction
     fun extract() {
         outputDir.withOutputDirectory {
-            extractPrecompiledScriptPluginPluginsTo(it, plugins)
+            extractPrecompiledScriptPluginPluginsTo(it, plugins.get())
         }
     }
 }
@@ -86,8 +85,9 @@ fun extractPrecompiledScriptPluginPluginsTo(outputDir: File, scriptPlugins: List
 private
 fun pluginsBlockOf(scriptPlugin: PrecompiledScriptPlugin): Program.Plugins? =
     when (scriptPlugin.scriptType) {
-        KotlinScriptType.PROJECT -> pluginsBlockOf(parse(scriptPlugin))
-        else -> null
+        KotlinScriptType.PROJECT -> pluginsBlockOf(parse(scriptPlugin, target = ProgramTarget.Project))
+        KotlinScriptType.SETTINGS -> pluginsBlockOf(parse(scriptPlugin, target = ProgramTarget.Settings))
+        KotlinScriptType.INIT -> null
     }
 
 
@@ -102,10 +102,10 @@ fun pluginsBlockOf(program: Program): Program.Plugins? =
 
 
 private
-fun parse(scriptPlugin: PrecompiledScriptPlugin): Program = ProgramParser.parse(
+fun parse(scriptPlugin: PrecompiledScriptPlugin, target: ProgramTarget): Program = ProgramParser.parse(
     ProgramSource(scriptPlugin.scriptFileName, scriptPlugin.scriptText),
     ProgramKind.TopLevel,
-    ProgramTarget.Project
+    target,
 ).document
 
 

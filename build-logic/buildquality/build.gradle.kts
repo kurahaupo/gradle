@@ -7,28 +7,30 @@ description = "Provides plugins to configure quality checks (incubating report, 
 dependencies {
     implementation("gradlebuild:basics")
 
-    implementation(project(":cleanup"))
-    implementation(project(":documentation"))
-    implementation(project(":integration-testing"))
-    implementation(project(":performance-testing"))
-    implementation(project(":profiling"))
-    implementation(project(":binary-compatibility"))
+    implementation(projects.cleanup)
+    implementation(projects.documentation)
+    implementation(projects.integrationTesting)
+    implementation(projects.jvm)
+    implementation(projects.performanceTesting)
+    implementation(projects.profiling)
+    implementation(projects.binaryCompatibility)
+    implementation(projects.dependencyModules)
 
-    implementation("org.codenarc:CodeNarc") {
+    implementation(buildLibs.codenarc) {
         exclude(group = "org.apache.groovy")
         exclude(group = "org.codehaus.groovy")
     }
-    implementation("com.github.javaparser:javaparser-symbol-solver-core") {
+    implementation(buildLibs.javaParserSymbolSolver) {
         exclude(group = "com.google.guava")
     }
-    implementation("org.gradle.kotlin:gradle-kotlin-dsl-conventions")
-    implementation(kotlin("gradle-plugin"))
-    implementation(kotlin("compiler-embeddable") as String) {
+    implementation(buildLibs.kgp)
+    compileOnly(buildLibs.kotlinCompilerEmbeddable) {
         because("Required by IncubatingApiReportTask")
     }
-    implementation("com.gradle:develocity-gradle-plugin") {
+    implementation(buildLibs.develocityPlugin) {
         because("Arch-test plugin configures the PTS extension")
     }
 
-    testImplementation("org.junit.jupiter:junit-jupiter-engine")
+    testImplementation(testLibs.junit5JupiterEngine)
+    testImplementation(buildLibs.commonsLang3)
 }

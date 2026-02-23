@@ -25,6 +25,7 @@ import org.gradle.integtests.fixtures.executer.InProcessGradleExecuter;
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext;
 import org.gradle.integtests.fixtures.executer.UnderDevelopmentGradleDistribution;
 import org.gradle.test.fixtures.IntegrationTest;
+import org.gradle.test.fixtures.dsl.GradleDsl;
 import org.gradle.test.fixtures.file.TestFile;
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider;
 import org.gradle.test.fixtures.ivy.IvyFileRepository;
@@ -40,7 +41,7 @@ import java.util.List;
 
 @IntegrationTest
 @Category(IntegrationTest.class)
-public abstract class AbstractIntegrationTest {
+public abstract class AbstractIntegrationTest implements HasGradleExecutor {
 
     @Rule
     public final PreconditionVerifier preconditionVerifier = new PreconditionVerifier();
@@ -83,7 +84,8 @@ public abstract class AbstractIntegrationTest {
         return distribution;
     }
 
-    protected GradleExecuter getExecuter() {
+    @Override
+    public GradleExecuter getExecuter() {
         return executer;
     }
 
@@ -113,11 +115,6 @@ public abstract class AbstractIntegrationTest {
 
     protected GradleExecuter inDirectory(File directory) {
         return getExecuter().inDirectory(directory);
-    }
-
-    @Deprecated
-    protected GradleExecuter usingBuildFile(File file) {
-        return getExecuter().usingBuildScript(file);
     }
 
     protected GradleExecuter usingProjectDir(File projectDir) {
@@ -167,6 +164,10 @@ public abstract class AbstractIntegrationTest {
     }
 
     public static String mavenCentralRepository() {
-        return RepoScriptBlockUtil.mavenCentralRepository();
+        return mavenCentralRepository(GradleDsl.GROOVY);
+    }
+
+    public static String mavenCentralRepository(GradleDsl dsl) {
+        return RepoScriptBlockUtil.mavenCentralRepository(dsl);
     }
 }

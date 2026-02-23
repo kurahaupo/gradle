@@ -25,6 +25,8 @@ import org.gradle.util.SetSystemProperties
 import org.junit.Rule
 import spock.lang.Specification
 
+import java.util.regex.Pattern
+
 import static org.gradle.util.Matchers.isSerializable
 import static org.hamcrest.MatcherAssert.assertThat
 
@@ -34,8 +36,6 @@ class StartParameterTest extends Specification {
 
     void "new instance has correct state"() {
         def parameter = new StartParameter()
-        parameter.settingsFile = 'settingsfile' as File
-        parameter.buildFile = 'buildfile' as File
         parameter.taskNames = ['a']
         parameter.buildProjectDependencies = true
         parameter.currentDir = new File('a')
@@ -103,10 +103,6 @@ class StartParameterTest extends Specification {
         expect:
         parameter.gradleUserHomeDir == StartParameter.DEFAULT_GRADLE_USER_HOME
         parameter.currentDir == new File(System.getProperty("user.dir")).getCanonicalFile()
-
-        parameter.buildFile == null
-        parameter.settingsFile == null
-
         parameter.logLevel == LogLevel.LIFECYCLE
         parameter.consoleOutput == ConsoleOutput.Auto
         assertRunsDefaultTasks(parameter)
@@ -147,33 +143,6 @@ class StartParameterTest extends Specification {
         assertThat(parameter, isSerializable())
     }
 
-    void "can configure build file"() {
-        StartParameter parameter = new StartParameter()
-        File file = new File('test/build file')
-
-        when:
-        parameter.buildFile = file
-
-        then:
-        parameter.buildFile == file.canonicalFile
-        parameter.currentDir == file.canonicalFile.parentFile
-        assertThat(parameter, isSerializable())
-    }
-
-    void "can configure null build file"() {
-        StartParameter parameter = new StartParameter()
-        parameter.buildFile = new File('test/build file')
-
-        when:
-        parameter.buildFile = null
-
-        then:
-        parameter.buildFile == null
-        parameter.currentDir == new File(System.getProperty("user.dir")).getCanonicalFile()
-        parameter.initScripts.empty
-        assertThat(parameter, isSerializable())
-    }
-
     void "can configure project dir"() {
         StartParameter parameter = new StartParameter()
         File file = new File('test/project dir')
@@ -195,30 +164,6 @@ class StartParameterTest extends Specification {
 
         then:
         parameter.currentDir == new File(System.getProperty("user.dir")).getCanonicalFile()
-        assertThat(parameter, isSerializable())
-    }
-
-    void "can configure settings file"() {
-        StartParameter parameter = new StartParameter()
-        File file = new File('some dir/settings file')
-
-        when:
-        parameter.settingsFile = file
-
-        then:
-        parameter.currentDir == file.canonicalFile.parentFile
-        parameter.settingsFile == file.canonicalFile
-        assertThat(parameter, isSerializable())
-    }
-
-    void "can configure null settings file"() {
-        StartParameter parameter = new StartParameter()
-
-        when:
-        parameter.settingsFile = null
-
-        then:
-        parameter.settingsFile == null
         assertThat(parameter, isSerializable())
     }
 
@@ -258,14 +203,13 @@ class StartParameterTest extends Specification {
         parameter.consoleOutput = ConsoleOutput.Plain
         parameter.configureOnDemand = true
         parameter.systemPropertiesArgs.put("testprop", "foo")
+        parameter.dryRun = true
+        parameter.taskGraph = true
 
         // Non-copied
         parameter.currentDir = new File("other")
-        parameter.buildFile = new File("build file")
-        parameter.settingsFile = new File("settings file")
         parameter.taskNames = ['task1']
         parameter.excludedTaskNames = ['excluded1']
-        parameter.dryRun = true
         parameter.continueOnFailure = true
         parameter.rerunTasks = true
         parameter.refreshDependencies = true
@@ -294,12 +238,12 @@ class StartParameterTest extends Specification {
         newParameter.buildCacheEnabled == parameter.buildCacheEnabled
         newParameter.writeDependencyLocks == parameter.writeDependencyLocks
         newParameter.lockedDependenciesToUpdate == parameter.lockedDependenciesToUpdate
+        newParameter.dryRun == parameter.dryRun
+        newParameter.taskGraph == parameter.taskGraph
 
-        newParameter.buildFile == null
         assertRunsDefaultTasks(newParameter)
         newParameter.excludedTaskNames.empty
         newParameter.currentDir == new File(System.getProperty("user.dir")).getCanonicalFile()
-        !newParameter.dryRun
         assertThat(newParameter, isSerializable())
     }
 
@@ -367,5 +311,30 @@ class StartParameterTest extends Specification {
     private void assertRunsDefaultTasks(StartParameter parameter) {
         assert parameter.taskNames.empty
         assert parameter.taskRequests.size() == 1 && parameter.taskRequests[0] instanceof RunDefaultTasksExecutionRequest
+    }
+
+    // Previously StartParameter's toString got wildly out of sync with the state inside of it
+    // Ensure that all state is represented in the toString, so it's more useful for debugging
+    // In the future StartParameter should be replaced with a `record` so this doesn't need to be checked
+    void "all state is represented in toString"() {
+        given:
+        def parameter = new StartParameter()
+        def fieldNames = StartParameter.class.getDeclaredFields()
+            .findAll { !it.synthetic }
+            .collect { it.name }
+            .toSet()
+
+        // Replace fields that are represented as multiple fields in the toString
+        fieldNames.remove("loggingConfiguration")
+        fieldNames.add("logLevel")
+        fieldNames.add("showStacktrace")
+
+        fieldNames.remove("parallelismConfiguration")
+        fieldNames.add("parallelProjectExecution")
+        fieldNames.add("maxWorkerCount")
+
+        for (fieldName in fieldNames) {
+            parameter.toString().matches("${Pattern.quote(fieldName)}=.*(, |\$)")
+        }
     }
 }

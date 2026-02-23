@@ -6,7 +6,14 @@ plugins {
 description = "Tools to work with functional code, including data structures"
 
 dependencies {
-    api(libs.jsr305)
+    api(libs.jspecify)
+    api(projects.stdlibJavaExtensions)
 
-    implementation(projects.javaLanguageExtensions)
+    implementation(libs.guava)
+    implementation(libs.fastutil)
+    implementation(libs.jsr305)
+}
+
+errorprone {
+    nullawayEnabled = true
 }

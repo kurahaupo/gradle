@@ -17,9 +17,12 @@
 package org.gradle.api.internal.provider;
 
 import org.gradle.api.Action;
+import org.gradle.api.Describable;
 import org.gradle.api.GradleException;
 import org.gradle.api.NonExtensible;
 import org.gradle.api.internal.properties.GradleProperties;
+import org.gradle.api.internal.provider.ValueSupplier.ExecutionTimeValue;
+import org.gradle.api.internal.provider.ValueSupplier.Value;
 import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ValueSource;
@@ -27,9 +30,8 @@ import org.gradle.api.provider.ValueSourceParameters;
 import org.gradle.api.provider.ValueSourceSpec;
 import org.gradle.internal.Cast;
 import org.gradle.internal.Describables;
+import org.gradle.internal.DisplayName;
 import org.gradle.internal.Try;
-import org.gradle.internal.event.AnonymousListenerBroadcast;
-import org.gradle.internal.event.ListenerManager;
 import org.gradle.internal.instantiation.InstanceGenerator;
 import org.gradle.internal.instantiation.InstantiatorFactory;
 import org.gradle.internal.isolated.IsolationScheme;
@@ -37,12 +39,13 @@ import org.gradle.internal.isolation.IsolatableFactory;
 import org.gradle.internal.logging.text.TreeFormatter;
 import org.gradle.internal.model.CalculatedValue;
 import org.gradle.internal.model.CalculatedValueFactory;
-import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.internal.service.ServiceLookup;
+import org.gradle.internal.service.ServiceRegistry;
+import org.gradle.internal.service.ServiceRegistryBuilder;
 import org.gradle.process.ExecOperations;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class DefaultValueSourceProviderFactory implements ValueSourceProviderFactory {
@@ -52,14 +55,15 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
     private final GradleProperties gradleProperties;
     private final CalculatedValueFactory calculatedValueFactory;
     private final ExecOperations execOperations;
-    private final AnonymousListenerBroadcast<ValueListener> valueBroadcaster;
-    private final AnonymousListenerBroadcast<ComputationListener> computationBroadcaster;
+    private final ValueListener valueListener;
+    private final ComputationListener computationListener;
     private final IsolationScheme<ValueSource, ValueSourceParameters> isolationScheme = new IsolationScheme<>(ValueSource.class, ValueSourceParameters.class, ValueSourceParameters.None.class);
     private final InstanceGenerator paramsInstantiator;
     private final InstanceGenerator specInstantiator;
 
     public DefaultValueSourceProviderFactory(
-        ListenerManager listenerManager,
+        ValueListener valueListener,
+        ComputationListener computationListener,
         InstantiatorFactory instantiatorFactory,
         IsolatableFactory isolatableFactory,
         GradleProperties gradleProperties,
@@ -67,16 +71,18 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
         ExecOperations execOperations,
         ServiceLookup services
     ) {
-        this.valueBroadcaster = listenerManager.createAnonymousBroadcaster(ValueListener.class);
-        this.computationBroadcaster = listenerManager.createAnonymousBroadcaster(ComputationListener.class);
+        this.valueListener = valueListener;
+        this.computationListener = computationListener;
         this.instantiatorFactory = instantiatorFactory;
         this.isolatableFactory = isolatableFactory;
         this.gradleProperties = gradleProperties;
         this.calculatedValueFactory = calculatedValueFactory;
         this.execOperations = execOperations;
         // TODO - dedupe logic copied from DefaultBuildServicesRegistry
+        // TODO: Is it intentional we use a service registry that allows all services, even internal ones, to be injected?
+        //       All other usages of `IsolationScheme` use a specially crafted service registry only allowing certain services to be injected.
         this.paramsInstantiator = instantiatorFactory.decorateScheme().withServices(services).instantiator();
-        this.specInstantiator = instantiatorFactory.decorateLenientScheme().withServices(services).instantiator();
+        this.specInstantiator = instantiatorFactory.decorateLenient(services);
     }
 
     @Override
@@ -99,27 +105,7 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
     }
 
     @Override
-    public void addValueListener(ValueListener listener) {
-        valueBroadcaster.add(listener);
-    }
-
-    @Override
-    public void removeValueListener(ValueListener listener) {
-        valueBroadcaster.remove(listener);
-    }
-
-    @Override
-    public void addComputationListener(ComputationListener listener) {
-        computationBroadcaster.add(listener);
-    }
-
-    @Override
-    public void removeComputationListener(ComputationListener listener) {
-        computationBroadcaster.remove(listener);
-    }
-
-    @Override
-    @Nonnull
+    @NonNull
     public <T, P extends ValueSourceParameters> Provider<T> instantiateValueSourceProvider(
         Class<? extends ValueSource<T, P>> valueSourceType,
         @Nullable Class<P> parametersType,
@@ -130,18 +116,23 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
         );
     }
 
-    @Nonnull
+    @NonNull
     public <T, P extends ValueSourceParameters> ValueSource<T, P> instantiateValueSource(
         Class<? extends ValueSource<T, P>> valueSourceType,
         @Nullable Class<P> parametersType,
         @Nullable P isolatedParameters
     ) {
-        DefaultServiceRegistry services = new DefaultServiceRegistry();
-        services.add(GradleProperties.class, gradleProperties);
-        services.add(ExecOperations.class, execOperations);
-        if (isolatedParameters != null) {
-            services.add(parametersType, isolatedParameters);
-        }
+        ServiceRegistry services = ServiceRegistryBuilder.builder()
+            .displayName("value source services")
+            .provider(registration -> {
+                registration.add(GradleProperties.class, gradleProperties);
+                registration.add(ExecOperations.class, execOperations);
+                if (isolatedParameters != null) {
+                    registration.add(parametersType, isolatedParameters);
+                }
+            })
+            .build();
+
         return instantiatorFactory
             .injectScheme()
             .withServices(services)
@@ -151,7 +142,7 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
 
     @Nullable
     private <T, P extends ValueSourceParameters> Class<P> extractParametersTypeOf(Class<? extends ValueSource<T, P>> valueSourceType) {
-        return isolationScheme.parameterTypeFor(valueSourceType, 1);
+        return isolationScheme.parameterTypeForOrNull(valueSourceType, 1);
     }
 
     private <P extends ValueSourceParameters> void configureParameters(@Nullable P parameters, Action<? super ValueSourceSpec<P>> configureAction) {
@@ -250,7 +241,7 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
         @Override
         public ExecutionTimeValue<T> calculateExecutionTimeValue() {
             if (value.hasBeenObtained()) {
-                return ExecutionTimeValue.ofNullable(value.obtain().get());
+                return value.obtain().asExecutionTimeValue();
             } else {
                 return ExecutionTimeValue.changingValue(this);
             }
@@ -258,7 +249,7 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
 
         @Override
         protected Value<? extends T> calculateOwnValue(ValueConsumer consumer) {
-            return Value.ofNullable(value.obtain().get());
+            return value.obtain().asNullableValue();
         }
     }
 
@@ -272,7 +263,7 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
         @Nullable
         public final P parameters;
 
-        private final CalculatedValue<@org.jetbrains.annotations.Nullable T> value;
+        private final CalculatedValue<@Nullable T> value;
         // A temporary holder for the source used to obtain the value.
         // This is sent to observers alongside the actual value by a single thread.
         // The thread then clears the reference to save memory.
@@ -287,13 +278,13 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
             this.parametersType = parametersType;
             this.parameters = parameters;
             this.value = calculatedValueFactory.create(Describables.of("ValueSource of type", sourceType), () -> {
-                    computationBroadcaster.getSource().beforeValueObtained();
+                    computationListener.beforeValueObtained();
                     try {
                         ValueSource<T, P> source = source();
                         sourceRef.set(source);
                         return source.obtain();
                     } finally {
-                        computationBroadcaster.getSource().afterValueObtained();
+                        computationListener.afterValueObtained();
                     }
                 }
             );
@@ -303,7 +294,7 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
             return value.isFinalized();
         }
 
-        public Try<@org.jetbrains.annotations.Nullable T> obtain() {
+        public ObtainedValueHolder<T> obtain() {
             final @Nullable ValueSource<T, P> obtainedFrom;
             try {
                 value.finalizeIfNotAlready();
@@ -312,15 +303,20 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
                 // This is mostly a theoretical possibility, but the call above is blocking, so it can be interrupted.
                 obtainedFrom = sourceRef.getAndSet(null);
             }
-            Try<@org.jetbrains.annotations.Nullable T> obtained = value.getValue();
+            Try<@Nullable T> obtained = value.getValue();
             if (obtainedFrom != null) {
                 // We are the first thread to see the obtained value. Let's tell the interested parties about it.
-                valueBroadcaster.getSource().valueObtained(obtainedValue(obtained), obtainedFrom);
+                valueListener.valueObtained(obtainedValue(obtained), obtainedFrom);
+                DisplayName displayName = null;
+                if (obtainedFrom instanceof Describable) {
+                    displayName = Describables.of(((Describable) obtainedFrom).getDisplayName());
+                }
+                return new ObtainedValueHolder<>(obtained, displayName);
             }
-            return obtained;
+            return new ObtainedValueHolder<>(obtained);
         }
 
-        @Nonnull
+        @NonNull
         private ValueSource<T, P> source() {
             return instantiateValueSource(
                 sourceType,
@@ -329,8 +325,8 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
             );
         }
 
-        @Nonnull
-        private DefaultObtainedValue<T, P> obtainedValue(Try<@org.jetbrains.annotations.Nullable T> obtained) {
+        @NonNull
+        private DefaultObtainedValue<T, P> obtainedValue(Try<@Nullable T> obtained) {
             return new DefaultObtainedValue<>(
                 obtained,
                 sourceType,
@@ -340,16 +336,39 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
         }
     }
 
+    private static class ObtainedValueHolder<T> {
+        private final Try<T> obtained;
+        @Nullable
+        private final DisplayName displayName;
+
+        private ObtainedValueHolder(Try<T> obtained, @Nullable DisplayName displayName) {
+            this.obtained = obtained;
+            this.displayName = displayName;
+        }
+
+        public ObtainedValueHolder(Try<T> obtained) {
+            this(obtained, null);
+        }
+
+        public Value<T> asNullableValue() {
+            return Value.ofNullable(obtained.get()).pushWhenMissing(displayName);
+        }
+
+        public ExecutionTimeValue<T> asExecutionTimeValue() {
+            return ExecutionTimeValue.ofNullable(obtained.get());
+        }
+    }
+
     private static class DefaultObtainedValue<T, P extends ValueSourceParameters> implements ValueListener.ObtainedValue<T, P> {
 
-        private final Try<@org.jetbrains.annotations.Nullable T> value;
+        private final Try<@Nullable T> value;
         private final Class<? extends ValueSource<T, P>> valueSourceType;
         private final Class<P> parametersType;
         @Nullable
         private final P parameters;
 
         public DefaultObtainedValue(
-            Try<@org.jetbrains.annotations.Nullable T> value,
+            Try<@Nullable T> value,
             Class<? extends ValueSource<T, P>> valueSourceType,
             @Nullable Class<P> parametersType,
             @Nullable P parameters
@@ -361,7 +380,7 @@ public class DefaultValueSourceProviderFactory implements ValueSourceProviderFac
         }
 
         @Override
-        public Try<@org.jetbrains.annotations.Nullable T> getValue() {
+        public Try<@Nullable T> getValue() {
             return value;
         }
 

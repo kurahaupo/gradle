@@ -8,23 +8,33 @@ plugins {
 description = "The collector project for the 'integ-tests' portion of the Gradle distribution"
 
 dependencies {
-    integTestImplementation(project(":internal-testing"))
-    integTestImplementation(project(":base-services"))
-    integTestImplementation(project(":logging"))
-    integTestImplementation(project(":core-api"))
+    integTestImplementation(projects.internalTesting)
+    integTestImplementation(projects.baseServices)
+    integTestImplementation(projects.logging)
+    integTestImplementation(projects.coreApi)
     integTestImplementation(libs.guava)
     integTestImplementation(libs.commonsIo)
     integTestImplementation(libs.ant)
 
-    integTestBinDistribution(project(":distributions-full"))
-    integTestAllDistribution(project(":distributions-full"))
-    integTestDocsDistribution(project(":distributions-full"))
-    integTestSrcDistribution(project(":distributions-full"))
+    integTestBinDistribution(projects.distributionsFull)
+    integTestAllDistribution(projects.distributionsFull)
+    integTestDocsDistribution(projects.distributionsFull)
+    integTestSrcDistribution(projects.distributionsFull)
 
-    integTestDistributionRuntimeOnly(project(":distributions-full"))
+    integTestDistributionRuntimeOnly(projects.distributionsFull)
 }
 
+// Using lazy makes sure we do not invalidate CC entries when head commit changes
+// The hack is needed because Gradle does not support `Provider<?>` in systemProperty
+// See https://github.com/gradle/gradle/issues/12247
 tasks.forkingIntegTest {
-    systemProperty("gradleBuildBranch", buildBranch.get())
-    systemProperty("gradleBuildCommitId", buildCommitId.get())
+    systemProperty("gradleBuildBranch", lazy(buildBranch::get))
+    systemProperty("gradleBuildCommitId", lazy(buildCommitId::get))
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}
+
+errorprone {
+    nullawayEnabled = true
 }

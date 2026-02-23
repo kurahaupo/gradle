@@ -16,6 +16,7 @@
 
 package gradlebuild.binarycompatibility
 
+import org.intellij.lang.annotations.Language
 import org.junit.Test
 
 
@@ -24,6 +25,7 @@ import org.junit.Test
  */
 class KotlinInternalFilteringTest : AbstractBinaryCompatibilityTest() {
 
+    @Language("kotlin")
     private
     val internalMembers = """
 
@@ -46,6 +48,7 @@ class KotlinInternalFilteringTest : AbstractBinaryCompatibilityTest() {
 
     """
 
+    @Language("kotlin")
     private
     val publicMembers = """
 
@@ -68,12 +71,14 @@ class KotlinInternalFilteringTest : AbstractBinaryCompatibilityTest() {
 
     """
 
+    @Language("kotlin")
     private
     val existingSource = """
 
         class ExistingClass {
 
-            class ExistingNestedClass
+            class ExistingNestedClass(foo: String)
+
         }
 
         val valTurnedIntoVar: String
@@ -82,6 +87,7 @@ class KotlinInternalFilteringTest : AbstractBinaryCompatibilityTest() {
         typealias ExistingTypeAlias = String
     """
 
+    @Language("kotlin")
     private
     val internalSource = """
 
@@ -93,7 +99,9 @@ class KotlinInternalFilteringTest : AbstractBinaryCompatibilityTest() {
 
             $internalMembers
 
-            class ExistingNestedClass {
+            class ExistingNestedClass internal constructor() {
+
+                constructor(foo: String) : this()
 
                 $internalMembers
 
@@ -129,6 +137,7 @@ class KotlinInternalFilteringTest : AbstractBinaryCompatibilityTest() {
         }
     """
 
+    @Language("kotlin")
     private
     val publicSource = """
 
@@ -140,7 +149,9 @@ class KotlinInternalFilteringTest : AbstractBinaryCompatibilityTest() {
 
             $publicMembers
 
-            class ExistingNestedClass {
+            class ExistingNestedClass() {
+
+                constructor(foo: String) : this()
 
                 $publicMembers
 
@@ -236,6 +247,8 @@ class KotlinInternalFilteringTest : AbstractBinaryCompatibilityTest() {
     ) + reportedMembersFor("AddedObject") + reportedMembersFor("ExistingClass") + listOf(
         "Constructor" to "ExistingClass(java.lang.String)"
     ) + reportedMembersFor("ExistingClass${'$'}ExistingNestedClass") + listOf(
+        "Constructor" to "ExistingClass${'$'}ExistingNestedClass()"
+    ) + listOf(
         "Field" to "cathedral"
     ) + reportedMembersFor("SourceKt") + listOf(
         "Method" to "SourceKt.setValTurnedIntoVar(java.lang.String)"

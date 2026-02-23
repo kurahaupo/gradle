@@ -21,10 +21,12 @@ import org.gradle.api.internal.tasks.compile.DefaultJavaCompilerFactory;
 import org.gradle.api.internal.tasks.compile.processing.AnnotationProcessorDetector;
 import org.gradle.api.problems.internal.InternalProblems;
 import org.gradle.initialization.layout.ProjectCacheDir;
+import org.gradle.internal.service.Provides;
 import org.gradle.internal.service.ServiceRegistration;
+import org.gradle.internal.service.ServiceRegistrationProvider;
 import org.gradle.internal.service.scopes.AbstractGradleModuleServices;
 import org.gradle.jvm.toolchain.internal.JavaCompilerFactory;
-import org.gradle.process.internal.ExecHandleFactory;
+import org.gradle.process.internal.ClientExecHandleBuilderFactory;
 import org.gradle.process.internal.JavaForkOptionsFactory;
 import org.gradle.process.internal.worker.child.WorkerDirectoryProvider;
 import org.gradle.workers.internal.ActionExecutionSpecFactory;
@@ -36,12 +38,13 @@ public class JavaToolchainServices extends AbstractGradleModuleServices {
         registration.addProvider(new ProjectScopeCompileServices());
     }
 
-    private static class ProjectScopeCompileServices {
+    private static class ProjectScopeCompileServices implements ServiceRegistrationProvider {
+        @Provides
         JavaCompilerFactory createJavaCompilerFactory(
             WorkerDaemonFactory workerDaemonFactory,
             JavaForkOptionsFactory forkOptionsFactory,
             WorkerDirectoryProvider workerDirectoryProvider,
-            ExecHandleFactory execHandleFactory,
+            ClientExecHandleBuilderFactory execHandleFactory,
             AnnotationProcessorDetector processorDetector,
             ClassPathRegistry classPathRegistry,
             ActionExecutionSpecFactory actionExecutionSpecFactory,
@@ -60,6 +63,5 @@ public class JavaToolchainServices extends AbstractGradleModuleServices {
                 projectCacheDir
             );
         }
-
     }
 }

@@ -1,3 +1,6 @@
+import gradlebuild.basics.buildCommitId
+import gradlebuild.identity.tasks.BuildReceipt
+
 plugins {
     id("gradlebuild.distribution.api-java")
     id("gradlebuild.jmh")
@@ -5,77 +8,54 @@ plugins {
 
 description = "A set of generic services and utilities."
 
-gradlebuildJava.usedInWorkers()
-
-/**
- * Use Java 8 compatibility for Unit tests, so we can test Java 8 features as well
- */
-tasks.named<JavaCompile>("compileTestJava") {
-    options.release = 8
+gradleModule {
+    targetRuntimes {
+        usedInWorkers = true
+    }
 }
 
-/**
- * Use Java 8 compatibility for JMH benchmarks
- */
-tasks.named<JavaCompile>("jmhCompileGeneratedClasses") {
-    options.release = 8
-}
-
-moduleIdentity.createBuildReceipt()
-
-errorprone {
-    disabledChecks.addAll(
-        "DefaultCharset", // 4 occurrences
-        "EmptyBlockTag", // 2 occurrences
-        "EscapedEntity", // 1 occurrences
-        "FutureReturnValueIgnored", // 1 occurrences
-        "ImmutableEnumChecker", // 1 occurrences
-        "InlineFormatString", // 2 occurrences
-        "InlineMeSuggester", // 1 occurrences
-        "JavaLangClash", // 1 occurrences
-        "MissingCasesInEnumSwitch", // 1 occurrences
-        "MixedMutabilityReturnType", // 3 occurrences
-        "NonAtomicVolatileUpdate", // 2 occurrences
-        "ReturnValueIgnored", // 1 occurrences
-        "StringCaseLocaleUsage", // 8 occurrences
-        "StringSplitter", // 3 occurrences
-        "ThreadLocalUsage", // 4 occurrences
-        "TypeParameterUnusedInFormals", // 5 occurrences
-        "URLEqualsHashCode", // 1 occurrences
-        "UnsynchronizedOverridesSynchronized", // 2 occurrences
-        "UnusedMethod", // 2 occurrences
-    )
+jvmCompile {
+    compilations {
+        named("main") {
+            usesFutureStdlib = true
+        }
+    }
 }
 
 dependencies {
+    api(projects.buildOperations)
+    api(projects.classloaders)
     api(projects.concurrent)
-    api(projects.javaLanguageExtensions)
+    api(projects.declarativeDslApi)
     api(projects.fileTemp)
-    api(projects.serviceProvider)
-    api(project(":hashing"))
-    api(project(":build-operations"))
+    api(projects.hashing)
+    api(projects.serviceLookup)
+    api(projects.stdlibJavaExtensions)
+
     api(libs.inject)
-    api(libs.jsr305)
+    api(libs.jspecify)
     api(libs.guava)
 
-    implementation(projects.io)
-    implementation(projects.time)
+    compileOnly(libs.jetbrainsAnnotations)
 
-    implementation(libs.asm)
+    implementation(projects.time)
+    implementation(projects.baseAsm)
+
     implementation(libs.commonsIo)
     implementation(libs.commonsLang)
+    implementation(libs.jsr305)
     implementation(libs.slf4jApi)
 
-    integTestImplementation(project(":logging"))
+    integTestImplementation(projects.logging)
 
-    testFixturesApi(project(":hashing"))
+    testFixturesApi(projects.hashing)
     testFixturesImplementation(libs.guava)
-    testImplementation(testFixtures(project(":core")))
-    testImplementation(libs.xerces)
+    testImplementation(testFixtures(projects.core))
+    testImplementation(testLibs.xerces)
 
-    integTestDistributionRuntimeOnly(project(":distributions-core"))
+    integTestDistributionRuntimeOnly(projects.distributionsCore)
 
-    jmh(platform(project(":distributions-dependencies")))
+    jmh(platform(projects.distributionsDependencies))
     jmh(libs.bouncycastleProvider)
     jmh(libs.guava)
 }
@@ -86,3 +66,27 @@ packageCycles {
 }
 
 jmh.includes = listOf("HashingAlgorithmsBenchmark")
+
+tasks.isolatedProjectsIntegTest {
+    enabled = false
+}
+
+// TODO: Base services should not be responsible for generating the build receipt.
+//       Perhaps :api-metadata is a better fit
+val createBuildReceipt by tasks.registering(BuildReceipt::class) {
+    this.version = gradleModule.identity.version.map { it.version }
+    this.baseVersion = gradleModule.identity.version.map { it.baseVersion.version }
+    this.snapshot = gradleModule.identity.snapshot
+    this.promotionBuild = gradleModule.identity.promotionBuild
+    this.buildTimestampFrom(gradleModule.identity.buildTimestamp)
+    this.commitId = project.buildCommitId
+    this.receiptFolder = project.layout.buildDirectory.dir("generated-resources/build-receipt")
+}
+
+tasks.named<Jar>("jar").configure {
+    from(createBuildReceipt.map { it.receiptFolder })
+}
+
+errorprone {
+    nullawayEnabled = true
+}

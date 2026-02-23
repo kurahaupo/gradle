@@ -19,12 +19,13 @@ package org.gradle.internal.build;
 import org.gradle.api.artifacts.component.BuildIdentifier;
 import org.gradle.api.internal.BuildDefinition;
 import org.gradle.internal.buildtree.NestedBuildTree;
+import org.gradle.internal.classpath.ClassPath;
 import org.gradle.internal.scopeids.id.BuildInvocationScopeId;
 import org.gradle.internal.service.scopes.Scope;
 import org.gradle.internal.service.scopes.ServiceScope;
 import org.gradle.util.Path;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.function.Consumer;
 
@@ -56,20 +57,30 @@ public interface BuildStateRegistry {
     Collection<? extends IncludedBuildState> getIncludedBuilds();
 
     /**
-     * Locates an included build by {@link BuildIdentifier}, if present. Fails if not an included build.
-     */
-    IncludedBuildState getIncludedBuild(BuildIdentifier buildIdentifier) throws IllegalArgumentException;
-
-    /**
      * Locates a build. Fails if not present.
+     * <p>
+     * Prefer {@link #getBuild(Path)}.
      */
     BuildState getBuild(BuildIdentifier buildIdentifier) throws IllegalArgumentException;
 
     /**
      * Finds a build. Returns null if there's no build with the given identifier.
+     * <p>
+     * Prefer {@link #findBuild(Path)}.
      */
     @Nullable
     BuildState findBuild(BuildIdentifier buildIdentifier);
+
+    /**
+     * Locates a build. Fails if not present.
+     */
+    BuildState getBuild(Path identityPath) throws IllegalArgumentException;
+
+    /**
+     * Finds a build. Returns null if there's no build with the given identifier.
+     */
+    @Nullable
+    BuildState findBuild(Path identityPath);
 
     /**
      * Notification that the settings have been loaded for the root build.
@@ -79,9 +90,14 @@ public interface BuildStateRegistry {
     void finalizeIncludedBuilds();
 
     /**
+     * Notifies the registry about root build inclusion.
+     */
+    default void onRootBuildInclude(RootBuildState rootBuild, BuildState referrer, boolean asPluginBuild) {}
+
+    /**
      * Creates an included build. An included build is-a nested build whose projects and outputs are treated as part of the composite build.
      */
-    IncludedBuildState addIncludedBuild(BuildDefinition buildDefinition);
+    IncludedBuildState addIncludedBuild(BuildDefinition buildDefinition, BuildState referrer);
 
     /**
      * Creates an included build. An included build is-a nested build whose projects and outputs are treated as part of the composite build.
@@ -104,7 +120,7 @@ public interface BuildStateRegistry {
     /**
      * Creates a new standalone nested build tree.
      */
-    NestedBuildTree addNestedBuildTree(BuildInvocationScopeId buildInvocationScopeId, BuildDefinition buildDefinition, BuildState owner, @Nullable String buildName);
+    NestedBuildTree addNestedBuildTree(BuildInvocationScopeId buildInvocationScopeId, BuildDefinition buildDefinition, BuildState owner, @Nullable String buildName, ClassPath injectedPluginClassPath);
 
     /**
      * Visits all registered builds, ordered by {@link BuildState#getIdentityPath()}

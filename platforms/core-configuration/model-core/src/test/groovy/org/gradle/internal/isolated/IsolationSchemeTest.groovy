@@ -31,20 +31,20 @@ class IsolationSchemeTest extends Specification {
 
     def "can extract parameters type"() {
         expect:
-        scheme.parameterTypeFor(DirectUsage) == CustomParams
-        scheme.parameterTypeFor(IndirectUsage) == CustomParams
-        scheme.parameterTypeFor(ParameterizedType) == CustomParams
-        scheme.parameterTypeFor(ComplexParameterizedType) == CustomParamsWithType
-        scheme.parameterTypeFor(InheritedParameterizedType) == ExtendedCustomParams
-        scheme.parameterTypeFor(FirstLevelInheritedParameterizedType) == ExtendedCustomParams
+        scheme.parameterTypeForOrNull(DirectUsage) == CustomParams
+        scheme.parameterTypeForOrNull(IndirectUsage) == CustomParams
+        scheme.parameterTypeForOrNull(ParameterizedType) == CustomParams
+        scheme.parameterTypeForOrNull(ComplexParameterizedType) == CustomParamsWithType
+        scheme.parameterTypeForOrNull(InheritedParameterizedType) == ExtendedCustomParams
+        scheme.parameterTypeForOrNull(FirstLevelInheritedParameterizedType) == ExtendedCustomParams
 
-        scheme.parameterTypeFor(NoParams) == null
-        scheme.parameterTypeFor(SomeAction) == null
+        scheme.parameterTypeForOrNull(NoParams) == null
+        scheme.parameterTypeForOrNull(SomeAction) == null
     }
 
     def "fails when base parameters type is used"() {
         when:
-        scheme.parameterTypeFor(BaseParams)
+        scheme.parameterTypeForOrNull(BaseParams)
 
         then:
         def e = thrown(IllegalArgumentException)
@@ -53,7 +53,7 @@ class IsolationSchemeTest extends Specification {
 
     def "fails when parameters type has not been declared"() {
         when:
-        scheme.parameterTypeFor(RawActionType)
+        scheme.parameterTypeForOrNull(RawActionType)
 
         then:
         def e = thrown(IllegalArgumentException)
@@ -66,7 +66,7 @@ class IsolationSchemeTest extends Specification {
         def service = Stub(serviceType)
         _ * allServices.find(serviceType) >> service
 
-        def injectedServices = scheme.servicesForImplementation(params, allServices)
+        def injectedServices = scheme.servicesForImplementation(params, allServices, [])
 
         when:
         def result = injectedServices.find(serviceType)
@@ -89,7 +89,7 @@ class IsolationSchemeTest extends Specification {
         def params = Stub(SomeParams)
         _ * allServices.find(serviceType) >> null
 
-        def injectedServices = scheme.servicesForImplementation(params, allServices)
+        def injectedServices = scheme.servicesForImplementation(params, allServices, [])
 
         when:
         def result = injectedServices.find(serviceType)
@@ -112,7 +112,7 @@ class IsolationSchemeTest extends Specification {
         def allServices = Mock(ServiceLookup)
         def params = Stub(SomeParams)
 
-        def injectedServices = scheme.servicesForImplementation(params, allServices)
+        def injectedServices = scheme.servicesForImplementation(params, allServices, [])
 
         when:
         def result = injectedServices.find(Instantiator)
@@ -132,7 +132,7 @@ class IsolationSchemeTest extends Specification {
         def allServices = Mock(ServiceLookup)
         def params = Stub(SomeParams)
 
-        def injectedServices = scheme.servicesForImplementation(params, allServices)
+        def injectedServices = scheme.servicesForImplementation(params, allServices, [])
 
         when:
         def result = injectedServices.find(SomeParams)
@@ -150,7 +150,7 @@ class IsolationSchemeTest extends Specification {
     def "cannot query parameters when parameters are null"() {
         def allServices = Mock(ServiceLookup)
 
-        def injectedServices = scheme.servicesForImplementation(null, allServices)
+        def injectedServices = scheme.servicesForImplementation(null, allServices, [])
 
         when:
         injectedServices.find(SomeParams)

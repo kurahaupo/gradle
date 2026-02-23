@@ -83,7 +83,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
         file("Package.swift").text.contains('"src/main/swift/dir/app.swift"')
 
         when:
@@ -97,7 +97,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
         !file("Package.swift").text.contains('main.swift')
 
         when:
@@ -107,7 +107,6 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         result.assertTaskSkipped(":generateSwiftPmManifest")
     }
 
-    @ToBeFixedForConfigurationCache
     def "regenerates manifest when Swift components added or removed"() {
         given:
         swiftBuild()
@@ -132,7 +131,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
         file("Package.swift").text.contains('lib2')
 
         when:
@@ -146,7 +145,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
         !file("Package.swift").text.contains('lib2')
 
         when:
@@ -156,7 +155,6 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         result.assertTaskSkipped(":generateSwiftPmManifest")
     }
 
-    @ToBeFixedForConfigurationCache
     def "regenerates manifest when Swift dependencies added or removed"() {
         given:
         settingsFile << """
@@ -181,7 +179,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
 
         when:
         run("generateSwiftPmManifest")
@@ -196,7 +194,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
 
         when:
         run("generateSwiftPmManifest")
@@ -209,7 +207,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
 
         when:
         run("generateSwiftPmManifest")
@@ -218,7 +216,6 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         result.assertTaskSkipped(":generateSwiftPmManifest")
     }
 
-    @ToBeFixedForConfigurationCache
     def "ignores irrelevant changes to Swift source"() {
         given:
         swiftBuild()
@@ -238,7 +235,6 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         result.assertTaskSkipped(":generateSwiftPmManifest")
     }
 
-    @ToBeFixedForConfigurationCache
     def "ignores irrelevant changes to Swift build"() {
         given:
         swiftBuild()
@@ -284,7 +280,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
         file("Package.swift").text.contains('"src/main/cpp/dir/app.cpp"')
 
         when:
@@ -298,11 +294,10 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
         !file("Package.swift").text.contains('main.cpp')
     }
 
-    @ToBeFixedForConfigurationCache
     def "regenerates manifest when C++ components added or removed"() {
         given:
         swiftBuild()
@@ -327,7 +322,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
         file("Package.swift").text.contains('lib2')
 
         when:
@@ -341,7 +336,7 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         run("generateSwiftPmManifest")
 
         then:
-        result.assertTaskNotSkipped(":generateSwiftPmManifest")
+        result.assertTaskExecuted(":generateSwiftPmManifest")
         !file("Package.swift").text.contains('lib2')
 
         when:
@@ -351,7 +346,6 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         result.assertTaskSkipped(":generateSwiftPmManifest")
     }
 
-    @ToBeFixedForConfigurationCache
     def "ignores irrelevant changes to C++ source"() {
         given:
         cppBuild()
@@ -374,7 +368,6 @@ class SwiftPackageManagerIncrementalExportIntegrationTest extends AbstractSwiftP
         result.assertTaskSkipped(":generateSwiftPmManifest")
     }
 
-    @ToBeFixedForConfigurationCache
     def "ignores irrelevant changes to C++ build"() {
         given:
         cppBuild()

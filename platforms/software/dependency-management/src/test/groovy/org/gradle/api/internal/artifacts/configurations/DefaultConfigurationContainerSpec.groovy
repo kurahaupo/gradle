@@ -16,28 +16,28 @@
 package org.gradle.api.internal.artifacts.configurations
 
 import org.gradle.api.Action
+import org.gradle.api.artifacts.DependencyResolutionListener
 import org.gradle.api.artifacts.UnknownConfigurationException
 import org.gradle.api.internal.CollectionCallbackActionDecorator
+import org.gradle.api.internal.ConfigurationServicesBundle
+import org.gradle.api.internal.DocumentationRegistry
 import org.gradle.api.internal.DomainObjectContext
 import org.gradle.api.internal.artifacts.ConfigurationResolver
 import org.gradle.api.internal.artifacts.ResolveExceptionMapper
-import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory
 import org.gradle.api.internal.artifacts.dependencies.DefaultExternalModuleDependency
 import org.gradle.api.internal.artifacts.dsl.PublishArtifactNotationParserFactory
-import org.gradle.api.internal.artifacts.dsl.dependencies.DependencyLockingProvider
-import org.gradle.api.internal.artifacts.ivyservice.moduleconverter.DefaultRootComponentMetadataBuilder
 import org.gradle.api.internal.attributes.AttributeDesugaring
 import org.gradle.api.internal.file.FileCollectionFactory
 import org.gradle.api.internal.file.TestFiles
-import org.gradle.api.internal.initialization.RootScriptDomainObjectContext
+import org.gradle.api.internal.initialization.StandaloneDomainObjectContext
 import org.gradle.api.internal.project.ProjectStateRegistry
+import org.gradle.api.model.ObjectFactory
 import org.gradle.api.specs.Spec
 import org.gradle.internal.code.UserCodeApplicationContext
+import org.gradle.internal.event.AnonymousListenerBroadcast
 import org.gradle.internal.event.ListenerManager
 import org.gradle.internal.model.CalculatedValueContainerFactory
 import org.gradle.internal.operations.BuildOperationRunner
-import org.gradle.internal.reflect.Instantiator
-import org.gradle.internal.work.WorkerThreadRegistry
 import org.gradle.util.AttributeTestUtil
 import org.gradle.util.Path
 import org.gradle.util.TestUtil
@@ -46,14 +46,15 @@ import spock.lang.Specification
 class DefaultConfigurationContainerSpec extends Specification {
 
     private ConfigurationResolver resolver = Mock()
-    private Instantiator instantiator = TestUtil.instantiatorFactory().decorateLenient()
+    private ConfigurationResolver.Factory resolverFactory = Mock(ConfigurationResolver.Factory) {
+        create(_, _, _) >> resolver
+    }
+
+    private ObjectFactory objectFactory = TestUtil.objectFactory()
     private DomainObjectContext domainObjectContext = Mock()
     private ListenerManager listenerManager = Mock()
-    private DependencyMetaDataProvider metaDataProvider = Mock()
     private FileCollectionFactory fileCollectionFactory = Mock()
-    private ComponentIdentifierFactory componentIdentifierFactory = Mock()
     private BuildOperationRunner buildOperationRunner = Mock()
-    private DependencyLockingProvider dependencyLockingProvider = Mock()
     private ProjectStateRegistry projectStateRegistry = Mock()
     private UserCodeApplicationContext userCodeApplicationContext = Mock()
     private CalculatedValueContainerFactory calculatedValueContainerFactory = Mock()
@@ -62,50 +63,52 @@ class DefaultConfigurationContainerSpec extends Specification {
         decorateSpec(_) >> { Spec spec -> spec }
         decorate(_ as Action) >> { it[0] }
     }
-    def immutableAttributesFactory = AttributeTestUtil.attributesFactory()
-    def metadataBuilder = Mock(DefaultRootComponentMetadataBuilder) {
-        getValidator() >> Mock(MutationValidator)
-    }
-    private DefaultRootComponentMetadataBuilder.Factory rootComponentMetadataBuilderFactory = Mock(DefaultRootComponentMetadataBuilder.Factory) {
-        create(_) >> metadataBuilder
-    }
-    private DefaultConfigurationFactory configurationFactory = new DefaultConfigurationFactory(
-        instantiator,
-        resolver,
-        listenerManager,
-        metaDataProvider,
-        componentIdentifierFactory,
-        dependencyLockingProvider,
-        domainObjectContext,
-        fileCollectionFactory,
+    def attributesFactory = AttributeTestUtil.attributesFactory()
+
+
+    ConfigurationServicesBundle configurationServices = new DefaultConfigurationServicesBundle(
         buildOperationRunner,
-        Stub(PublishArtifactNotationParserFactory),
-        immutableAttributesFactory,
-        Stub(ResolveExceptionMapper),
-        new AttributeDesugaring(AttributeTestUtil.attributesFactory()),
-        userCodeApplicationContext,
         projectStateRegistry,
-        Mock(WorkerThreadRegistry),
-        TestUtil.domainObjectCollectionFactory(),
         calculatedValueContainerFactory,
-        TestFiles.taskDependencyFactory()
+        objectFactory,
+        fileCollectionFactory,
+        TestFiles.taskDependencyFactory(),
+        attributesFactory,
+        TestUtil.domainObjectCollectionFactory(),
+        CollectionCallbackActionDecorator.NOOP,
+        TestUtil.problemsService(),
+        new AttributeDesugaring(AttributeTestUtil.attributesFactory()),
+        new ResolveExceptionMapper(domainObjectContext, new DocumentationRegistry()),
+        TestUtil.providerFactory()
     )
+
+    private DefaultConfigurationFactory configurationFactory = new DefaultConfigurationFactory(
+        configurationServices,
+        listenerManager,
+        domainObjectContext,
+        Stub(PublishArtifactNotationParserFactory),
+        userCodeApplicationContext
+    )
+
     private DefaultConfigurationContainer configurationContainer = new DefaultConfigurationContainer(
-        instantiator,
+        TestUtil.instantiatorFactory().decorateLenient(),
         domainObjectCollectionCallbackActionDecorator,
-        rootComponentMetadataBuilderFactory,
+        domainObjectContext,
         configurationFactory,
-        Mock(ResolutionStrategyFactory)
+        Mock(ResolutionStrategyFactory),
+        TestUtil.problemsService(),
+        resolverFactory,
+        AttributeTestUtil.mutableSchema()
     )
 
     def setup() {
-        metadataBuilder.withConfigurationsProvider(_) >> metadataBuilder
+        listenerManager.createAnonymousBroadcaster(DependencyResolutionListener) >> Mock(AnonymousListenerBroadcast)
     }
 
     def "adds and gets"() {
         1 * domainObjectContext.identityPath("compile") >> Path.path(":build:compile")
         1 * domainObjectContext.projectPath("compile") >> Path.path(":compile")
-        1 * domainObjectContext.model >> RootScriptDomainObjectContext.INSTANCE
+        1 * domainObjectContext.model >> StandaloneDomainObjectContext.ANONYMOUS
 
         when:
         def compile = configurationContainer.create("compile")
@@ -121,8 +124,6 @@ class DefaultConfigurationContainerSpec extends Specification {
         //finds configurations
         configurationContainer.findByName("compile") == compile
         configurationContainer.findByName("foo") == null
-        configurationContainer.findAll { it.name == "compile" } as Set == [compile] as Set
-        configurationContainer.findAll { it.name == "foo" } as Set == [] as Set
 
         configurationContainer as List == [compile] as List
 
@@ -136,7 +137,7 @@ class DefaultConfigurationContainerSpec extends Specification {
     def "configures and finds"() {
         1 * domainObjectContext.identityPath("compile") >> Path.path(":build:compile")
         1 * domainObjectContext.projectPath("compile") >> Path.path(":compile")
-        1 * domainObjectContext.model >> RootScriptDomainObjectContext.INSTANCE
+        1 * domainObjectContext.model >> StandaloneDomainObjectContext.ANONYMOUS
 
         when:
         def compile = configurationContainer.create("compile") {
@@ -152,7 +153,7 @@ class DefaultConfigurationContainerSpec extends Specification {
     def "creates detached"() {
         given:
         1 * domainObjectContext.projectPath("detachedConfiguration1") >> Path.path(":detachedConfiguration1")
-        1 * domainObjectContext.model >> RootScriptDomainObjectContext.INSTANCE
+        1 * domainObjectContext.model >> StandaloneDomainObjectContext.ANONYMOUS
 
         def dependency1 = new DefaultExternalModuleDependency("group", "name", "version")
         def dependency2 = new DefaultExternalModuleDependency("group", "name2", "version")
@@ -162,7 +163,6 @@ class DefaultConfigurationContainerSpec extends Specification {
 
         then:
         detached.name == "detachedConfiguration1"
-        detached.getAll() == [detached] as Set
         detached.getHierarchy() == [detached] as Set
         [dependency1, dependency2].each { detached.getDependencies().contains(it) }
         detached.getDependencies().size() == 2

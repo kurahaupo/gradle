@@ -16,12 +16,12 @@
 
 package org.gradle.integtests
 
-import com.gradle.develocity.testing.annotations.LocalOnly
 import org.gradle.integtests.fixtures.executer.GradleDistribution
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
+import org.gradle.testdistribution.LocalOnly
 import org.gradle.wrapper.WrapperExecutor
 import org.junit.Rule
 import spock.lang.Shared
@@ -50,7 +50,7 @@ class WrapperChecksumVerificationTest extends AbstractWrapperIntegrationSpec {
     def "wrapper execution fails when using bad checksum"() {
         given:
         configureServer(true)
-        prepareWrapper(new URI(gradleBin))
+        prepareWrapper(new URI(gradleBin)).run()
 
         and:
         file(WRAPPER_PROPERTIES_PATH) << 'distributionSha256Sum=bad'
@@ -66,10 +66,11 @@ Verification of Gradle distribution failed!
 Your Gradle distribution may have been tampered with.
 Confirm that the 'distributionSha256Sum' property in your gradle-wrapper.properties file is correct and you are downloading the wrapper from a trusted source.
 
- Distribution Url: $gradleBin
+Distribution Url: $gradleBin
 Download Location: $f.absolutePath
 Expected checksum: 'bad'
-  Actual checksum: '$distributionHash'
+Actual checksum:   '$distributionHash'
+Visit https://gradle.org/release-checksums/ to verify the checksums of official distributions. If your build uses a custom distribution, see with its provider.
 """.trim())
     }
 
@@ -87,7 +88,7 @@ Expected checksum: 'bad'
     def "wrapper successfully verifies good checksum"() {
         given:
         configureServer(true)
-        prepareWrapper(new URI(gradleBin))
+        prepareWrapper(new URI(gradleBin)).run()
 
         and:
         writeValidDistributionHash()
@@ -101,7 +102,7 @@ Expected checksum: 'bad'
     def "wrapper requires checksum configuration if a checksum is present in gradle-wrapper.properties"() {
         given:
         configureServer(true)
-        prepareWrapper(new URI(gradleBin))
+        prepareWrapper(new URI(gradleBin)).run()
 
         and:
         writeValidDistributionHash()
@@ -111,7 +112,9 @@ Expected checksum: 'bad'
 
         then:
         result.assertHasErrorOutput("gradle-wrapper.properties contains distributionSha256Sum property, but the wrapper configuration does not have one. " +
-            "Specify one in the wrapper task configuration or with the --gradle-distribution-sha256-sum task option")
+            "Specify one in the wrapper task configuration or with the --gradle-distribution-sha256-sum task option. " +
+            "You can find checksums for all Gradle releases at https://gradle.org/release-checksums"
+        )
     }
 
     private writeValidDistributionHash() {
@@ -121,7 +124,7 @@ Expected checksum: 'bad'
     def "wrapper uses new checksum if it was provided as an option"() {
         given:
         configureServer(true)
-        prepareWrapper(new URI(gradleBin))
+        prepareWrapper(new URI(gradleBin)).run()
 
         and:
         writeValidDistributionHash()
@@ -144,7 +147,7 @@ Expected checksum: 'bad'
         given:
         configureServer(false)
         def releasedDistribution = IntegrationTestBuildContext.INSTANCE.distribution("7.5")
-        prepareWrapper(releasedDistribution.binDistribution.toURI())
+        prepareWrapper(releasedDistribution.binDistribution.toURI()).run()
 
         and:
         def underDevelopmentDistributionChecksum = distributionHash

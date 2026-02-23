@@ -17,20 +17,19 @@
 package org.gradle.internal.declarativedsl.analysis.transformation
 
 import org.gradle.declarative.dsl.model.annotations.Adding
-import org.gradle.declarative.dsl.model.annotations.Configuring
-import org.gradle.declarative.dsl.model.annotations.Restricted
 import org.gradle.declarative.dsl.schema.DataClass
 import org.gradle.internal.declarativedsl.analysis.ObjectOrigin
+import org.gradle.internal.declarativedsl.analysis.ResolutionError
 import org.gradle.internal.declarativedsl.analysis.ResolutionResult
 import org.gradle.internal.declarativedsl.analysis.SchemaTypeRefContext
 import org.gradle.internal.declarativedsl.analysis.getDataType
 import org.gradle.internal.declarativedsl.demo.resolve
 import org.gradle.internal.declarativedsl.schemaBuilder.schemaFromTypes
-import kotlin.test.Test
-import kotlin.test.assertEquals
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.Test
 
 
-object OriginReplacementTest {
+class OriginReplacementTest {
     @Test
     fun `replaces configured object access and function call receiver`() {
         with(resolution("configuring { property = value() }")) {
@@ -56,7 +55,7 @@ object OriginReplacementTest {
         with(resolution("configuring { property = value(value()) }")) {
             val result = replaceInnerReceiverWithTopLevel(assignments.single().rhs)
             val argResult = (result as ObjectOrigin.NewObjectFromMemberFunction).parameterBindings.bindingMap.values.single()
-            assertEquals(topLevelReceiver, ((argResult as ObjectOrigin.NewObjectFromMemberFunction).receiver as ObjectOrigin.ImplicitThisReceiver).resolvedTo)
+            assertEquals(topLevelReceiver, ((argResult.objectOrigin as ObjectOrigin.NewObjectFromMemberFunction).receiver as ObjectOrigin.ImplicitThisReceiver).resolvedTo)
         }
     }
 
@@ -65,7 +64,7 @@ object OriginReplacementTest {
         with(resolution("configuring { addingValue(utils.value()) }")) {
             val result = replaceInnerReceiverWithTopLevel(additions.single().dataObject)
             val singleArg = (result as ObjectOrigin.NewObjectFromMemberFunction).parameterBindings.bindingMap.values.single()
-            val propertyReference = (singleArg as ObjectOrigin.NewObjectFromMemberFunction).receiver as ObjectOrigin.PropertyReference
+            val propertyReference = (singleArg.objectOrigin as ObjectOrigin.NewObjectFromMemberFunction).receiver as ObjectOrigin.PropertyReference
             assertEquals(topLevelReceiver, (propertyReference.receiver as ObjectOrigin.ImplicitThisReceiver).resolvedTo)
         }
     }
@@ -87,7 +86,7 @@ object OriginReplacementTest {
         with(resolution("configuring { addingValue(value().anotherValue()) }")) {
             val result = replaceInnerReceiverWithTopLevel(additions.single().dataObject)
             val singleArg = (result as ObjectOrigin.NewObjectFromMemberFunction).parameterBindings.bindingMap.values.single()
-            val propertyReference = (singleArg as ObjectOrigin.NewObjectFromMemberFunction).receiver as ObjectOrigin.NewObjectFromMemberFunction
+            val propertyReference = (singleArg.objectOrigin as ObjectOrigin.NewObjectFromMemberFunction).receiver as ObjectOrigin.NewObjectFromMemberFunction
             assertEquals(topLevelReceiver, (propertyReference.receiver as ObjectOrigin.ImplicitThisReceiver).resolvedTo)
         }
     }
@@ -95,7 +94,7 @@ object OriginReplacementTest {
     //endregion
 
     private
-    fun resolution(code: String) = schema.resolve(code).also { assertEquals(emptyList(), it.errors) }
+    fun resolution(code: String) = schema.resolve(code).also { assertEquals(emptyList<ResolutionError>(), it.errors) }
 
     private
     fun ResolutionResult.replaceInnerReceiverWithTopLevel(origin: ObjectOrigin) =
@@ -109,7 +108,6 @@ object OriginReplacementTest {
     val schema = schemaFromTypes(TopLevelReceiver::class, this::class.nestedClasses)
 
     interface TopLevelReceiver {
-        @Configuring
         fun configuring(fn: InnerReceiver.() -> Unit)
 
         @Adding
@@ -117,29 +115,23 @@ object OriginReplacementTest {
     }
 
     interface InnerReceiver {
-        @Restricted
         fun value(): Value
 
-        @Restricted
         fun value(arg: Value): Value
 
         @Adding
         fun addingValue(value: Value): Value
 
-        @get:Restricted
         val utils: Utils
 
-        @get:Restricted
         var property: Value
     }
 
     interface Utils {
-        @Restricted
         fun value(): Value
     }
 
     interface Value {
-        @Restricted
         fun anotherValue(): Value
     }
 }

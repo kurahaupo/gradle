@@ -18,6 +18,8 @@ package org.gradle.api.plugins;
 
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.provider.Property;
+import org.gradle.internal.instrumentation.api.annotations.NotToBeReplacedByLazyProperty;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 
 /**
  * Configuration for a Java application, defining how to assemble the application.
@@ -41,6 +43,7 @@ public interface JavaApplication {
     /**
      * The name of the application.
      */
+    @ToBeReplacedByLazyProperty
     String getApplicationName();
 
     /**
@@ -65,6 +68,7 @@ public interface JavaApplication {
     /**
      * Array of string arguments to pass to the JVM when running the application
      */
+    @ToBeReplacedByLazyProperty
     Iterable<String> getApplicationDefaultJvmArgs();
 
     /**
@@ -75,6 +79,7 @@ public interface JavaApplication {
     /**
      * Directory to place executables in
      */
+    @ToBeReplacedByLazyProperty
     String getExecutableDir();
 
     /**
@@ -102,6 +107,7 @@ public interface JavaApplication {
      * copy the application start scripts into the "{@code bin}" directory, and copy the built jar and its dependencies
      * into the "{@code lib}" directory.
      */
+    @NotToBeReplacedByLazyProperty(because = "Read-only nested like property")
     CopySpec getApplicationDistribution();
 
     void setApplicationDistribution(CopySpec applicationDistribution);

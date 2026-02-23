@@ -16,16 +16,13 @@
 
 package org.gradle.smoketests
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
+
 import org.gradle.test.fixtures.archive.JarTestFixture
-import org.gradle.test.precondition.Requires
-import org.gradle.test.preconditions.UnitTestPreconditions
 import spock.lang.Issue
 
 /**
  * Smoke tests for <a href="https://github.com/bndtools/bnd/blob/master/gradle-plugins/README.md">the BND plugin</a>.
  */
-@Requires(UnitTestPreconditions.Jdk17OrLater)
 class BNDSmokeTest extends AbstractPluginValidatingSmokeTest {
     def setup() {
         settingsFile << """
@@ -72,9 +69,7 @@ public class Example {
 """
 
         when:
-        runner("jar")
-            .forwardOutput()
-            .build()
+        runner("jar").build()
 
         then: "version numbers exist in the manifest"
         assertJarManifestContains("Import-Package", "org.apache.commons.lang3;version=\"$calculatedCommonsVersionRange\"")
@@ -154,9 +149,7 @@ public class MyUtil {
 """
 
         when:
-        runner(":jar")
-            .forwardOutput()
-            .build()
+        runner(":jar").build()
 
         then: "version numbers exist in the manifest"
         assertJarManifestContains("Import-Package", "com.example.util;version=\"$calculatedDirectVersionRange\"")
@@ -236,9 +229,7 @@ public class Util {
 """
 
         when:
-        runner("jar")
-                .forwardOutput()
-                .build()
+        runner("jar").build()
 
         then: "version numbers exist in the manifest"
         assertJarManifestContains("Import-Package", "com.example.util;version=\"$calculatedDirectVersionRange\"")
@@ -344,12 +335,9 @@ public class MyUtil {
 """
 
         expect:
-        runner(":resolve")
-                .forwardOutput()
-                .build()
+        runner(":resolve").build()
     }
 
-    @ToBeFixedForConfigurationCache(because = "Bndrun task does not support configuration cache")
     def "BND plugin can run a simple project"() {
         given:
         def pathToBndbnd = "bnd.bnd"
@@ -360,7 +348,7 @@ ${addBNDBuilderPlugin()}
 
 dependencies {
     compileOnly 'org.osgi:osgi.core:5.0.0'
-    runtimeOnly 'org.eclipse.platform:org.eclipse.osgi:3.18.100'
+    runtimeOnly 'org.eclipse.platform:org.eclipse.osgi:3.24.0'
 }
 
 tasks.named("jar") {
@@ -415,9 +403,7 @@ Bundle-Activator: com.example.Activator
 """
 
         expect:
-        def result = runner(":run")
-                .forwardOutput()
-                .build()
+        def result = runner(":run").build()
 
         assert result.getOutput().contains("Example project ran.")
     }

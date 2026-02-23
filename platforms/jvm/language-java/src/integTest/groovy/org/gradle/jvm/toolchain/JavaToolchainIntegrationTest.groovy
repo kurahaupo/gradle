@@ -20,12 +20,15 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.AvailableJavaHomes
 import org.gradle.integtests.fixtures.jvm.JavaToolchainFixture
 import org.gradle.internal.jvm.Jvm
+import org.gradle.internal.os.OperatingSystem
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.IntegTestPreconditions
 
 class JavaToolchainIntegrationTest extends AbstractIntegrationSpec implements JavaToolchainFixture {
 
     def "fails when using an invalid toolchain spec when #description"() {
 
-        buildScript """
+        buildFile """
             apply plugin: JvmToolchainsPlugin
 
             abstract class UnpackLauncher extends DefaultTask {
@@ -61,7 +64,7 @@ class JavaToolchainIntegrationTest extends AbstractIntegrationSpec implements Ja
     def "do not nag user when toolchain spec is valid (#description)"() {
         def jdkMetadata = AvailableJavaHomes.getJvmInstallationMetadata(Jvm.current())
 
-        buildScript """
+        buildFile """
             apply plugin: "java"
 
             javaToolchains.launcherFor {
@@ -83,10 +86,11 @@ class JavaToolchainIntegrationTest extends AbstractIntegrationSpec implements Ja
         "unconfigured"                              | false           | false
     }
 
+    @Requires(IntegTestPreconditions.JavaHomeWithDifferentVersionAvailable)
     def "identify whether #tool toolchain corresponds to the #current JVM"() {
         def jdkMetadata = AvailableJavaHomes.getJvmInstallationMetadata(jvm as Jvm)
 
-        buildScript """
+        buildFile """
             apply plugin: "java"
 
             def tool = javaToolchains.${toolMethod} {
@@ -116,11 +120,12 @@ class JavaToolchainIntegrationTest extends AbstractIntegrationSpec implements Ja
         current = (isCurrentJvm ? "current" : "non-current")
     }
 
+    @Requires(IntegTestPreconditions.JavaHomeWithDifferentVersionAvailable)
     def "fails when trying to change java extension toolchain spec property after it has been used to resolve a toolchain"() {
         def jdkMetadata1 = AvailableJavaHomes.getJvmInstallationMetadata(Jvm.current())
         def jdkMetadata2 = AvailableJavaHomes.getJvmInstallationMetadata(AvailableJavaHomes.differentVersion)
 
-        buildScript """
+        buildFile """
             apply plugin: "java"
 
             java {
@@ -143,10 +148,11 @@ class JavaToolchainIntegrationTest extends AbstractIntegrationSpec implements Ja
         failure.assertHasCause("The value for property 'languageVersion' is final and cannot be changed any further")
     }
 
+    @Requires(IntegTestPreconditions.JavaHomeWithDifferentVersionAvailable)
     def "fails when trying to change captured toolchain spec property after it has been used to resolve a toolchain"() {
         def jdkMetadata1 = AvailableJavaHomes.getJvmInstallationMetadata(Jvm.current())
         def jdkMetadata2 = AvailableJavaHomes.getJvmInstallationMetadata(AvailableJavaHomes.differentVersion)
-        buildScript """
+        buildFile """
             import java.util.concurrent.atomic.AtomicReference
             import org.gradle.jvm.toolchain.JavaToolchainSpec
 
@@ -169,29 +175,25 @@ class JavaToolchainIntegrationTest extends AbstractIntegrationSpec implements Ja
         failure.assertHasCause("The value for property 'languageVersion' is final and cannot be changed any further")
     }
 
-    def "nag user when toolchain spec is IBM_SEMERU"() {
+    def "does not nag user when toolchain spec is IBM"() {
         given:
-        buildScript """
+        buildFile """
             apply plugin: "java"
 
             java {
                 toolchain {
                     languageVersion = JavaLanguageVersion.of(11)
-                    vendor = JvmVendorSpec.IBM_SEMERU
+                    vendor = JvmVendorSpec.IBM
                     implementation = JvmImplementation.J9
                 }
             }
         """
 
-        when:
-        executer.expectDocumentedDeprecationWarning "Requesting JVM vendor IBM_SEMERU. " +
-            "This behavior has been deprecated. This behavior is scheduled to be removed in Gradle 9.0. " +
-            "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_8.html#ibm_semeru_should_not_be_used"
-
-        then:
+        expect:
         fails ':build'
         failure.assertHasDescription("Could not determine the dependencies of task ':compileJava'.")
-               .assertHasCause("Failed to calculate the value of task ':compileJava' property 'javaCompiler'.")
-               .assertHasCause("No locally installed toolchains match and toolchain auto-provisioning is not enabled.")
+            .assertHasCause("Failed to calculate the value of task ':compileJava' property 'javaCompiler'.")
+            .assertHasCause("Cannot find a Java installation on your machine (${OperatingSystem.current()}) matching: {languageVersion=11, vendor=IBM, implementation=J9, nativeImageCapable=false}. " +
+                "Toolchain auto-provisioning is not enabled.")
     }
 }

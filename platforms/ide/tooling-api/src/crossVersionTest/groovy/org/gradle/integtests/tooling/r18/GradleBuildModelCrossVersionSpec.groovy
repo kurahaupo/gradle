@@ -18,14 +18,15 @@ package org.gradle.integtests.tooling.r18
 
 
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
+import org.gradle.tooling.events.ProgressEvent
+import org.gradle.tooling.events.ProgressListener
+import org.gradle.tooling.events.lifecycle.BuildPhaseStartEvent
 import org.gradle.tooling.model.gradle.GradleBuild
 
 class GradleBuildModelCrossVersionSpec extends ToolingApiSpecification {
     def setup() {
-        file('settings.gradle') << '''
-include 'a'
-include 'b'
-include 'b:c'
+        includeProjects("a", "b", "b:c")
+        settingsFile << '''
 rootProject.name = 'test'
 '''
         buildFile << """
@@ -54,5 +55,37 @@ allprojects {
         assert model.projects*.name == ['test', 'a', 'b', 'c']
         assert model.projects*.path == [':', ':a', ':b', ':b:c']
         model
+    }
+
+    def "model is obtained without configuring the project"() {
+        when:
+        def listener = new ConfigurationPhaseMonitoringListener()
+        GradleBuild model = withConnection { connection ->
+            connection
+                .model(GradleBuild)
+                .addProgressListener(listener)
+                .get()
+        }
+
+        then:
+        model != null
+        listener.hasSeenSomeEvents && listener.configPhaseStartEvents.isEmpty()
+    }
+
+    private static final class ConfigurationPhaseMonitoringListener implements ProgressListener {
+
+        boolean hasSeenSomeEvents = false
+        final List<ProgressEvent> configPhaseStartEvents = new ArrayList<>()
+
+        @Override
+        void statusChanged(ProgressEvent event) {
+            hasSeenSomeEvents = true
+            if (event instanceof BuildPhaseStartEvent) {
+                BuildPhaseStartEvent buildPhaseStartEvent = (BuildPhaseStartEvent) event
+                if (buildPhaseStartEvent.descriptor.buildPhase.startsWith("CONFIGURE")) {
+                    configPhaseStartEvents.add(event)
+                }
+            }
+        }
     }
 }

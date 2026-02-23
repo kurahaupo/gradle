@@ -17,7 +17,6 @@
 package org.gradle.api.tasks
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.UnsupportedWithConfigurationCache
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.process.internal.util.LongCommandLineDetectionUtil
 
@@ -27,6 +26,9 @@ class JavaExecWithLongCommandLineIntegrationTest extends AbstractIntegrationSpec
     def veryLongFileNames = getLongCommandLine()
 
     def setup() {
+        executer.requireIsolatedDaemons()
+        executer.requireOwnGradleUserHomeDir("It generates {GRADLE_USER_HOME}/.tmp/gradle-javaexec-classpathXXXX.jar (https://github.com/gradle/gradle-private/issues/4587)")
+
         file("src/main/java/Driver.java") << """
             package driver;
 
@@ -43,20 +45,6 @@ class JavaExecWithLongCommandLineIntegrationTest extends AbstractIntegrationSpec
                 classpath = sourceSets.main.runtimeClasspath
                 classpath extraClasspath
                 mainClass = "driver.Driver"
-            }
-
-            task runWithJavaExec {
-                dependsOn sourceSets.main.runtimeClasspath
-                doLast {
-                    project.javaexec {
-                        if (run.executable) {
-                            executable run.executable
-                        }
-                        classpath = run.classpath
-                        mainClass = run.mainClass
-                        args run.args
-                    }
-                }
             }
 
             tasks.register("runWithExecOperations") {
@@ -80,7 +68,6 @@ class JavaExecWithLongCommandLineIntegrationTest extends AbstractIntegrationSpec
         """
     }
 
-    @UnsupportedWithConfigurationCache(iterationMatchers = ".* project.javaexec")
     def "still fail when classpath doesn't shorten the command line enough with #method"() {
         def veryLongCommandLineArgs = getLongCommandLine(getMaxArgs() * 16)
         buildFile << """
@@ -98,15 +85,13 @@ class JavaExecWithLongCommandLineIntegrationTest extends AbstractIntegrationSpec
         where:
         method                    | taskName
         'JavaExec task'           | 'run'
-        'project.javaexec'        | 'runWithJavaExec'
         'ExecOperations.javaexec' | 'runWithExecOperations'
     }
 
-    @UnsupportedWithConfigurationCache(iterationMatchers = ".* project.javaexec")
     def "does not suggest long command line failures when execution fails with #method"() {
         buildFile << """
             extraClasspath.from('${veryLongFileNames.join("','")}')
-            run.executable 'does-not-exist'
+            run.executable = 'does-not-exist'
         """
 
         when:
@@ -118,17 +103,15 @@ class JavaExecWithLongCommandLineIntegrationTest extends AbstractIntegrationSpec
 
         where:
         method                    | taskName
-        'project.javaexec'        | 'runWithJavaExec'
         'ExecOperations.javaexec' | 'runWithExecOperations'
         // The test does not work with the JavaExec task because the task resolves the executable prior to starting the process.
         // At the same time, all the cases test the same functionality of the ExecHandle implementation.
         // 'JavaExec task'           | 'run'
     }
 
-    @UnsupportedWithConfigurationCache(iterationMatchers = ".* project.javaexec")
     def "does not suggest long command line failures when execution fails for short command line with #method"() {
         buildFile << """
-            run.executable 'does-not-exist'
+            run.executable = 'does-not-exist'
         """
 
         when:
@@ -140,14 +123,12 @@ class JavaExecWithLongCommandLineIntegrationTest extends AbstractIntegrationSpec
 
         where:
         method                    | taskName
-        'project.javaexec'        | 'runWithJavaExec'
         'ExecOperations.javaexec' | 'runWithExecOperations'
         // The test does not work with the JavaExec task because the task resolves the executable prior to starting the process.
         // At the same time, all the cases test the same functionality of the ExecHandle implementation.
         // 'JavaExec task'           | 'run'
     }
 
-    @UnsupportedWithConfigurationCache(iterationMatchers = ".* project.javaexec")
     def "succeeds with long classpath with #method"() {
         buildFile << """
             extraClasspath.from('${veryLongFileNames.join("','")}')
@@ -168,7 +149,6 @@ class JavaExecWithLongCommandLineIntegrationTest extends AbstractIntegrationSpec
         where:
         method                    | taskName
         'JavaExec task'           | 'run'
-        'project.javaexec'        | 'runWithJavaExec'
         'ExecOperations.javaexec' | 'runWithExecOperations'
     }
 

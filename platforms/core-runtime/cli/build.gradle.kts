@@ -4,5 +4,16 @@ plugins {
 
 description = "Utilities for parsing command line arguments"
 
-gradlebuildJava.usedInWorkers()
+dependencies {
+    compileOnly(libs.jspecify)
+}
 
+gradleModule {
+    targetRuntimes {
+        usedInClient = true
+    }
+}
+
+errorprone {
+    nullawayEnabled = true
+}

@@ -31,13 +31,13 @@ val JApiCompatibility.jApiClass: JApiClass
         is JApiClass -> this
         is JApiField -> this.getjApiClass()
         is JApiBehavior -> this.getjApiClass()
-        else -> throw IllegalStateException("Unsupported japicmp member type '${this::class}'")
+        else -> error("Unsupported japicmp member type '${this::class}'")
     }
 
 
 internal
 val JApiClass.isKotlin: Boolean
-    get() = newClass.orNull()?.isKotlin ?: false
+    get() = newClass.orElse(null)?.isKotlin ?: false
 
 
 internal

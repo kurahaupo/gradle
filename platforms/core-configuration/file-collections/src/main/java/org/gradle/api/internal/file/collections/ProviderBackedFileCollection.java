@@ -23,8 +23,7 @@ import org.gradle.api.internal.provider.ProviderResolutionStrategy;
 import org.gradle.api.internal.provider.ValueSupplier;
 import org.gradle.api.internal.tasks.TaskDependencyFactory;
 import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
-import org.gradle.api.tasks.util.PatternSet;
-import org.gradle.internal.Factory;
+import org.gradle.api.tasks.util.internal.PatternSetFactory;
 import org.gradle.internal.file.PathToFileResolver;
 
 import java.util.function.Consumer;
@@ -34,7 +33,7 @@ public class ProviderBackedFileCollection extends CompositeFileCollection {
     private final PathToFileResolver resolver;
     private final ProviderResolutionStrategy providerResolutionStrategy;
 
-    public ProviderBackedFileCollection(ProviderInternal<?> provider, PathToFileResolver resolver, TaskDependencyFactory taskDependencyFactory, Factory<PatternSet> patternSetFactory, ProviderResolutionStrategy providerResolutionStrategy) {
+    public ProviderBackedFileCollection(ProviderInternal<?> provider, PathToFileResolver resolver, TaskDependencyFactory taskDependencyFactory, PatternSetFactory patternSetFactory, ProviderResolutionStrategy providerResolutionStrategy) {
         super(taskDependencyFactory, patternSetFactory);
         this.provider = provider;
         this.resolver = resolver;
@@ -50,7 +49,7 @@ public class ProviderBackedFileCollection extends CompositeFileCollection {
     public void visitDependencies(TaskDependencyResolveContext context) {
         ValueSupplier.ValueProducer producer = provider.getProducer();
         if (producer.isKnown()) {
-            producer.visitProducerTasks(context);
+            producer.visitDependencies(context);
         } else {
             // Producer is unknown, so unpack the value
             UnpackingVisitor unpackingVisitor = new UnpackingVisitor(context::add, resolver, taskDependencyFactory, patternSetFactory);
@@ -66,5 +65,9 @@ public class ProviderBackedFileCollection extends CompositeFileCollection {
 
     public ProviderInternal<?> getProvider() {
         return provider;
+    }
+
+    public PathToFileResolver getResolver() {
+        return resolver;
     }
 }

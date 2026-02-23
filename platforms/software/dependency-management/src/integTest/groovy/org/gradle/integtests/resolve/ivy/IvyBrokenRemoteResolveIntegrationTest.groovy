@@ -27,6 +27,12 @@ import static org.gradle.integtests.fixtures.SuggestionsMessages.repositoryHint
 class IvyBrokenRemoteResolveIntegrationTest extends AbstractHttpDependencyResolutionTest {
     public final static String REPOSITORY_HINT = repositoryHint("ivy.xml")
 
+    def setup() {
+        settingsFile << """
+            rootProject.name = "root"
+        """
+    }
+
     @ToBeFixedForConfigurationCache
     void "reports and recovers from missing module"() {
         given:
@@ -35,7 +41,7 @@ class IvyBrokenRemoteResolveIntegrationTest extends AbstractHttpDependencyResolu
 
         buildFile << """
 repositories {
-    ivy { url "${repo.uri}"}
+    ivy { url = "${repo.uri}"}
 }
 configurations { missing }
 dependencies {
@@ -55,7 +61,7 @@ task showMissing { doLast { println configurations.missing.files } }
 Searched in the following locations:
   - ${module.ivy.uri}
 Required by:
-    project :""")
+    root project 'root'""")
 
         when:
         module.ivy.expectGetMissing()
@@ -68,7 +74,7 @@ Required by:
 Searched in the following locations:
   - ${module.ivy.uri}
 Required by:
-    project :""")
+    root project 'root'""")
         failure.assertHasResolutions(REPOSITORY_HINT,
             STACKTRACE_MESSAGE,
             INFO_DEBUG,
@@ -100,7 +106,7 @@ Required by:
 
         buildFile << """
 repositories {
-    ivy { url "${repo.uri}"}
+    ivy { url = "${repo.uri}"}
 }
 configurations { missing }
 dependencies {
@@ -122,12 +128,12 @@ task showMissing { doLast { println configurations.missing.files } }
 Searched in the following locations:
   - ${moduleA.ivy.uri}
 Required by:
-    project :""")
+    root project 'root'""")
             .assertHasCause("""Could not find group:projectB:1.0-milestone-9.
 Searched in the following locations:
   - ${moduleB.ivy.uri}
 Required by:
-    project :""")
+    root project 'root'""")
         failure.assertHasResolutions(REPOSITORY_HINT,
             STACKTRACE_MESSAGE,
             INFO_DEBUG,
@@ -153,8 +159,9 @@ Required by:
 
     @ToBeFixedForConfigurationCache
     void "reports and recovers from multiple missing transitive modules"() {
-        createDirs("child1")
-        settingsFile << "include 'child1'"
+        settingsFile << """
+            include 'child1'
+        """
 
         given:
         def repo = ivyHttpRepo("repo1")
@@ -168,29 +175,39 @@ Required by:
             .dependsOn(moduleB)
             .publish()
 
+        settingsFile << """
+            dependencyResolutionManagement {
+                repositories {
+                    ivy { url = "${repo.uri}"}
+                }
+            }
+        """
+
         buildFile << """
-allprojects {
-    repositories {
-        ivy { url "${repo.uri}"}
-    }
-    configurations {
-        compile
-        'default' {
-            extendsFrom(compile)
-        }
-    }
-}
-dependencies {
-    compile 'group:projectC:0.99'
-    compile project(':child1')
-}
-project(':child1') {
-    dependencies {
-        compile 'group:projectD:1.0GA'
-    }
-}
-task showMissing { doLast { println configurations.compile.files } }
-"""
+            configurations {
+                compile
+                'default' {
+                    extendsFrom(compile)
+                }
+            }
+            dependencies {
+                compile 'group:projectC:0.99'
+                compile project(':child1')
+            }
+            task showMissing { doLast { println configurations.compile.files } }
+        """
+
+        file("child1/build.gradle") << """
+            configurations {
+                compile
+                'default' {
+                    extendsFrom(compile)
+                }
+            }
+            dependencies {
+                compile 'group:projectD:1.0GA'
+            }
+        """
 
         when:
         moduleA.ivy.expectGetMissing()
@@ -206,13 +223,13 @@ task showMissing { doLast { println configurations.compile.files } }
 Searched in the following locations:
   - ${moduleA.ivy.uri}
 Required by:
-    project : > group:projectC:0.99
-    project : > project :child1 > group:projectD:1.0GA""")
+    root project 'root' > group:projectC:0.99
+    root project 'root' > project :child1 > group:projectD:1.0GA""")
             .assertHasCause("""Could not find group:projectB:1.0-milestone-9.
 Searched in the following locations:
   - ${moduleB.ivy.uri}
 Required by:
-    project : > project :child1 > group:projectD:1.0GA""")
+    root project 'root' > project :child1 > group:projectD:1.0GA""")
         failure.assertHasResolutions(REPOSITORY_HINT,
             STACKTRACE_MESSAGE,
             INFO_DEBUG,
@@ -246,7 +263,7 @@ Required by:
 
         buildFile << """
 repositories {
-    ivy { url "${repo.uri}"}
+    ivy { url = "${repo.uri}"}
 }
 configurations { missing }
 dependencies {
@@ -299,8 +316,8 @@ Required by:
 
         buildFile << """
 repositories {
-    ivy { url "${repo1.uri}"}
-    ivy { url "${repo2.uri}"}
+    ivy { url = "${repo1.uri}"}
+    ivy { url = "${repo2.uri}"}
 }
 configurations { missing }
 dependencies {
@@ -360,7 +377,7 @@ task showMissing { doLast { println configurations.missing.files } }
         def module = ivyHttpRepo.module("group", "projectA", "1.2").publish()
 
         and:
-        buildFile << "repositories { ivy { url '${ivyHttpRepo.uri}' } }"
+        buildFile << "repositories { ivy { url = '${ivyHttpRepo.uri}' } }"
 
         module.ivy.expectGet()
         module.jar.expectGet()
@@ -383,7 +400,7 @@ task showMissing { doLast { println configurations.missing.files } }
         buildFile << """
 repositories {
     ivy {
-        url "${ivyHttpRepo.uri}"
+        url = "${ivyHttpRepo.uri}"
     }
 }
 configurations { broken }
@@ -424,7 +441,7 @@ task showBroken { doLast { println configurations.broken.files } }
         buildFile << """
 repositories {
     ivy {
-        url "${ivyHttpRepo.uri}"
+        url = "${ivyHttpRepo.uri}"
     }
 }
 configurations { compile }
@@ -467,7 +484,7 @@ Searched in the following locations:
         buildFile << """
 repositories {
     ivy {
-        url "${ivyHttpRepo.uri}"
+        url = "${ivyHttpRepo.uri}"
     }
 }
 configurations { compile }

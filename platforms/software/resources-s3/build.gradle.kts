@@ -4,51 +4,42 @@ plugins {
 
 description = "Implementation for interacting with S3 repositories"
 
-errorprone {
-    disabledChecks.addAll(
-        "NotJavadoc", // 1 occurrences
-        "StringCaseLocaleUsage", // 1 occurrences
-        "StringSplitter", // 1 occurrences
-        "UnusedMethod", // 2 occurrences
-        "UnusedVariable", // 1 occurrences
-    )
-}
-
 dependencies {
     api(projects.serviceProvider)
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":resources"))
-    api(project(":resources-http"))
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.resources)
+    api(projects.resourcesHttp)
 
     api(libs.awsS3Core)
     api(libs.awsS3S3)
     api(libs.awsS3Kms) {
         because("Loaded by the AWS libraries with reflection when present")
     }
-    api(libs.awsS3Sts) {
-        because("Loaded by the AWS libraries with reflection when present: https://github.com/gradle/gradle/issues/15332")
-    }
     api(libs.guava)
 
     implementation(projects.baseServices)
-    implementation(project(":hashing"))
+    implementation(projects.hashing)
 
     implementation(libs.commonsLang)
     implementation(libs.slf4jApi)
 
-    testImplementation(testFixtures(project(":core")))
-    testImplementation(testFixtures(project(":dependency-management")))
-    testImplementation(testFixtures(project(":ivy")))
-    testImplementation(testFixtures(project(":maven")))
+    runtimeOnly(libs.awsS3Sts) {
+        because("Loaded by the AWS libraries with reflection when present: https://github.com/gradle/gradle/issues/15332")
+    }
 
-    integTestImplementation(project(":logging"))
+    testImplementation(testFixtures(projects.core))
+    testImplementation(testFixtures(projects.dependencyManagement))
+    testImplementation(testFixtures(projects.ivy))
+    testImplementation(testFixtures(projects.maven))
+
+    integTestImplementation(projects.logging)
     integTestImplementation(libs.commonsIo)
     integTestImplementation(libs.groovyXml)
-    integTestImplementation(libs.littleproxy)
-    integTestImplementation(libs.jetty)
+    integTestImplementation(testLibs.littleproxy)
+    integTestImplementation(testLibs.jetty)
 
-    integTestDistributionRuntimeOnly(project(":distributions-basics"))
+    integTestDistributionRuntimeOnly(projects.distributionsBasics)
 }
 
 
@@ -60,4 +51,7 @@ dependencyAnalysis {
             exclude(libs.awsS3Sts)
         }
     }
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

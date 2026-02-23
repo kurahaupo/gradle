@@ -19,7 +19,7 @@ package org.gradle.internal.problems;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
-import org.gradle.api.NonNullApi;
+import org.gradle.internal.buildtree.BuildModelParameters;
 import org.gradle.internal.code.UserCodeApplicationContext;
 import org.gradle.internal.code.UserCodeSource;
 import org.gradle.internal.problems.failure.Failure;
@@ -28,8 +28,9 @@ import org.gradle.problems.Location;
 import org.gradle.problems.ProblemDiagnostics;
 import org.gradle.problems.buildtree.ProblemDiagnosticsFactory;
 import org.gradle.problems.buildtree.ProblemStream;
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.util.Collections;
 import java.util.List;
@@ -54,6 +55,9 @@ public class DefaultProblemDiagnosticsFactory implements ProblemDiagnosticsFacto
         }
     };
 
+    private static final int MAX_STACKTRACE_COUNT = 50;
+    private static final int ISOLATED_PROJECTS_MAX_STACKTRACE_COUNT = 5000;
+
     private final FailureFactory failureFactory;
     private final ProblemLocationAnalyzer locationAnalyzer;
     private final UserCodeApplicationContext userCodeContext;
@@ -63,9 +67,14 @@ public class DefaultProblemDiagnosticsFactory implements ProblemDiagnosticsFacto
     public DefaultProblemDiagnosticsFactory(
         FailureFactory failureFactory,
         ProblemLocationAnalyzer locationAnalyzer,
-        UserCodeApplicationContext userCodeContext
+        UserCodeApplicationContext userCodeContext,
+        BuildModelParameters buildModelParameters
     ) {
-        this(failureFactory, locationAnalyzer, userCodeContext, 50);
+        this(failureFactory, locationAnalyzer, userCodeContext, getMaxStackTraces(buildModelParameters));
+    }
+
+    private static int getMaxStackTraces(BuildModelParameters buildModelParameters) {
+        return buildModelParameters.isIsolatedProjects() ? ISOLATED_PROJECTS_MAX_STACKTRACE_COUNT : MAX_STACKTRACE_COUNT;
     }
 
     @VisibleForTesting
@@ -118,7 +127,7 @@ public class DefaultProblemDiagnosticsFactory implements ProblemDiagnosticsFacto
         return new DefaultProblemDiagnostics(stackTracingFailure, keepException ? throwable : null, stackTrace, location, source);
     }
 
-    @NonNullApi
+    @NullMarked
     private class DefaultProblemStream implements ProblemStream {
         private final AtomicInteger remainingStackTraces = new AtomicInteger();
 

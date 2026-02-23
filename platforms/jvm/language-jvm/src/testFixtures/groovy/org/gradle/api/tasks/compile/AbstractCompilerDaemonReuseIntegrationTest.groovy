@@ -17,6 +17,7 @@
 package org.gradle.api.tasks.compile
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.ToBeFixedForIsolatedProjects
 import org.gradle.integtests.fixtures.UnsupportedWithConfigurationCache
 import org.gradle.integtests.fixtures.jvm.TestJvmComponent
 import org.gradle.test.fixtures.file.TestFile
@@ -24,6 +25,7 @@ import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
 import org.junit.Assume
 
+@Requires(value = IntegTestPreconditions.NotEmbeddedExecutor, reason = "explicitly requiring a daemon")
 abstract class AbstractCompilerDaemonReuseIntegrationTest extends AbstractIntegrationSpec {
     def compilerDaemonIdentityFileName = "build/compilerId"
     def compilerDaemonIdentityFile = file(compilerDaemonIdentityFileName)
@@ -110,6 +112,8 @@ abstract class AbstractCompilerDaemonReuseIntegrationTest extends AbstractIntegr
     }
 
     @Requires(IntegTestPreconditions.NotParallelExecutor)
+    // IP assumes parallel execution, so these tests shouldn't be run ideally.
+    @ToBeFixedForIsolatedProjects(because = "allprojects, configure projects from root")
     def "starts a new daemon when different options are used"() {
         withMultiProjectSources()
         buildFile << """

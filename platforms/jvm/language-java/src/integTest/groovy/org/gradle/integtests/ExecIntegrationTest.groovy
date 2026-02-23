@@ -17,17 +17,29 @@
 
 package org.gradle.integtests
 
+import org.apache.http.HttpResponse
+import org.apache.http.client.methods.CloseableHttpResponse
+import org.apache.http.client.methods.HttpGet
+import org.apache.http.impl.client.CloseableHttpClient
+import org.apache.http.impl.client.HttpClientBuilder
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.TestResources
 import org.gradle.integtests.fixtures.UnsupportedWithConfigurationCache
+import org.gradle.integtests.fixtures.daemon.DaemonClientFixture
+import org.gradle.process.TestExecHttpServer
+import org.gradle.process.TestJavaMain
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.UnitTestPreconditions
+import org.gradle.util.internal.TextUtil
 import org.junit.Rule
 import spock.lang.Issue
+
+import java.util.concurrent.TimeUnit
 
 class ExecIntegrationTest extends AbstractIntegrationSpec {
     @Rule
     public final TestResources testResources = new TestResources(testDirectoryProvider)
 
-    @UnsupportedWithConfigurationCache(iterationMatchers = ".*javaexecProjectMethod")
     def 'can execute java with #task'() {
         given:
         buildFile << """
@@ -42,22 +54,6 @@ class ExecIntegrationTest extends AbstractIntegrationSpec {
                     assert testFile.exists()
                 }
                 assert delegate instanceof ExtensionAware
-            }
-
-            task javaexecProjectMethod() {
-                def testFile = file("${'$'}buildDir/${'$'}name")
-                dependsOn(sourceSets.main.output)
-                doFirst {
-                    project.javaexec {
-                        assert !(delegate instanceof ExtensionAware)
-                        classpath(sourceSets.main.output.classesDirs)
-                        mainClass = 'org.gradle.TestMain'
-                        args projectDir, testFile
-                    }
-                }
-                doLast {
-                    assert testFile.exists()
-                }
             }
 
             ${
@@ -79,10 +75,9 @@ class ExecIntegrationTest extends AbstractIntegrationSpec {
         succeeds task
 
         where:
-        task << ['javaexecTask', 'javaexecProjectMethod', 'javaexecInjectedTaskAction']
+        task << ['javaexecTask', 'javaexecInjectedTaskAction']
     }
 
-    @UnsupportedWithConfigurationCache(iterationMatchers = ".*execProjectMethod")
     def 'can execute commands with #task'() {
         given:
         buildFile << """
@@ -99,21 +94,6 @@ class ExecIntegrationTest extends AbstractIntegrationSpec {
                     assert testFile.exists()
                 }
                 assert delegate instanceof ExtensionAware
-            }
-
-            task execProjectMethod {
-                dependsOn sourceSets.main.runtimeClasspath
-                def testFile = file("${'$'}buildDir/${'$'}name")
-                doFirst {
-                    project.exec {
-                        executable Jvm.current().getJavaExecutable()
-                        args '-cp', sourceSets.main.runtimeClasspath.asPath, 'org.gradle.TestMain', projectDir, testFile
-                        assert !(delegate instanceof ExtensionAware)
-                    }
-                }
-                doLast {
-                    assert testFile.exists()
-                }
             }
 
             ${
@@ -134,7 +114,7 @@ class ExecIntegrationTest extends AbstractIntegrationSpec {
         succeeds task
 
         where:
-        task << ['execTask', 'execProjectMethod', 'execInjectedTaskAction']
+        task << ['execTask', 'execInjectedTaskAction']
     }
 
     private static String injectedTaskActionTask(String taskName, String taskActionBody) {
@@ -260,7 +240,7 @@ class ExecIntegrationTest extends AbstractIntegrationSpec {
         executedAndNotSkipped ":run"
     }
 
-    @UnsupportedWithConfigurationCache(iterationMatchers = [".*Task", ".*ProjectMethod"])
+    @UnsupportedWithConfigurationCache(iterationMatchers = [".*Task"], because = "Uses ByteArrayOutputStream to capture task output")
     def "can capture output of #task"() {
 
         given:
@@ -284,22 +264,6 @@ class ExecIntegrationTest extends AbstractIntegrationSpec {
                     assert normaliseFileAndLineSeparators(output.toString()) == "Created file \${normaliseFileAndLineSeparators(testFile.canonicalPath)}\\n"
                 }
                 assert delegate instanceof ExtensionAware
-            }
-
-            task execProjectMethod {
-                dependsOn sourceSets.main.runtimeClasspath
-                def testFile = file("${'$'}buildDir/${'$'}name")
-                doLast {
-                    def output = new ByteArrayOutputStream()
-                    project.exec {
-                        executable Jvm.current().getJavaExecutable()
-                        args '-cp', sourceSets.main.runtimeClasspath.asPath, 'org.gradle.TestMain', projectDir, testFile
-                        standardOutput = output
-                        assert !(delegate instanceof ExtensionAware)
-                    }
-                    assert testFile.exists()
-                    assert normaliseFileAndLineSeparators(output.toString()) == "Created file \${normaliseFileAndLineSeparators(testFile.canonicalPath)}\\n"
-                }
             }
 
             ${
@@ -334,23 +298,6 @@ class ExecIntegrationTest extends AbstractIntegrationSpec {
                 assert delegate instanceof ExtensionAware
             }
 
-            task javaexecProjectMethod() {
-                def testFile = file("${'$'}buildDir/${'$'}name")
-                dependsOn(sourceSets.main.output)
-                doLast {
-                    def output = new ByteArrayOutputStream()
-                    project.javaexec {
-                        assert !(delegate instanceof ExtensionAware)
-                        classpath(sourceSets.main.output.classesDirs)
-                        mainClass = 'org.gradle.TestMain'
-                        args projectDir, testFile
-                        standardOutput = output
-                    }
-                    assert testFile.exists()
-                    assert normaliseFileAndLineSeparators(output.toString()) == "Created file \${normaliseFileAndLineSeparators(testFile.canonicalPath)}\\n"
-                }
-            }
-
             ${
             injectedTaskActionTask('javaexecInjectedTaskAction', '''
                 File testFile = layout.buildDirectory.file(name).get().asFile
@@ -375,8 +322,236 @@ class ExecIntegrationTest extends AbstractIntegrationSpec {
 
         where:
         task << [
-            'execTask', 'execProjectMethod', 'execInjectedTaskAction',
-            'javaexecTask', 'javaexecProjectMethod', 'javaexecInjectedTaskAction'
+            'execTask', 'execInjectedTaskAction',
+            'javaexecTask','javaexecInjectedTaskAction'
         ]
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/31282")
+    @Requires(UnitTestPreconditions.NotWindows)
+    def "running multiple tasks that fork processes is multi-thread safe"() {
+        def numOfProjects = 1000
+        numOfProjects.times {
+            settingsFile << """
+                include 'project$it'
+            """
+            file("project${it}/build.gradle") << """
+                abstract class MyExec extends DefaultTask {
+                    @Inject
+                    abstract ExecOperations getExecOperations()
+
+                    @TaskAction
+                    void doIt() {
+                        def script = new File(temporaryDir, "script.sh")
+                        script.text = "#!/bin/bash"
+                        script.executable = true
+                        execOperations.exec {
+                            commandLine script.absolutePath
+                        }
+                        script.delete()
+                    }
+                }
+                tasks.register("run", MyExec)
+            """
+        }
+        expect:
+        succeeds("run", "--max-workers=100", "--parallel")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/31942")
+    def "execOperations.#method uses project dir as working dir by default"() {
+        settingsFile << "include 'a'"
+        file("a/build.gradle") << """
+            def execOperations = services.get(ExecOperations)
+            tasks.register("run") {
+                doLast {
+                    execOperations.${method} {
+                        $configuration
+                    }
+                }
+            }
+        """
+
+        when:
+        succeeds("run")
+
+        then:
+        outputContains("user.dir=${testDirectory.file("a").absolutePath}")
+
+        where:
+        method     | configuration
+        "exec"     | execSpecWithJavaExecutable()
+        "javaexec" | javaExecSpec()
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/31942")
+    def "#task task uses project dir as working dir by default"() {
+        settingsFile << "include 'a'"
+        file("a/build.gradle") << """
+            def execOperations = services.get(ExecOperations)
+            tasks.register("run", $task) {
+                $configuration
+            }
+        """
+
+        when:
+        succeeds("run")
+
+        then:
+        outputContains("user.dir=${testDirectory.file("a").absolutePath}")
+
+        where:
+        task       | configuration
+        "Exec"     | execSpecWithJavaExecutable()
+        "JavaExec" | javaExecSpec()
+    }
+
+    def "produces useful help message when working directory does not exist"() {
+        buildFile << """
+            task run(type: Exec) {
+                ${execSpecWithJavaExecutable()}
+                workingDir = file("does/not/exist")
+            }
+        """
+
+        when:
+        fails("run")
+
+        then:
+        failure.assertHasDescription("Execution failed for task ':run'")
+            .assertHasCause("Working directory '${file("does/not/exist")}' does not exist.")
+            .assertHasNoCause("No such file or directory")
+    }
+
+    def "produces useful help message when working directory is not a directory"() {
+        file("is/not/dir").touch()
+        buildFile << """
+            task run(type: Exec) {
+                ${execSpecWithJavaExecutable()}
+                workingDir = file("is/not/dir")
+            }
+        """
+
+        when:
+        fails("run")
+
+        then:
+        failure.assertHasDescription("Execution failed for task ':run'")
+            .assertHasCause("Working directory '${file("is/not/dir")}' is not a directory.")
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/32213")
+    def "execOperations.#method process is stopped when build is cancelled"() {
+        settingsFile << "include 'a'"
+        file("a/build.gradle") << """
+            tasks.register("appStart") {
+                def execOperations = services.get(ExecOperations)
+                doLast {
+                    // Using a new Thread is important to escape the task lifecycle and reproduce the issue
+                    Thread.start {
+                        execOperations.${method} {
+                            ${configuration(getHttpServerInfoFile())}
+                        }
+                    }.join()
+                }
+            }
+        """
+
+        when:
+        executer
+            .requireDaemon()
+            .requireIsolatedDaemons()
+            .withStackTraceChecksDisabled()
+        // Needed to get client pid
+            .withArgument("--debug")
+            .withTasks("appStart")
+        def client = new DaemonClientFixture(executer.start())
+
+        then:
+        long port = waitForHttpServerPort()
+        callGet("http://127.0.0.1:$port/test").statusLine.statusCode == 200
+
+        when:
+        client.kill()
+        callGet("http://127.0.0.1:$port/test")
+
+        then:
+        def e = thrown(ConnectException)
+        e.message.contains("Connection refused")
+
+        where:
+        method     | configuration
+        "exec"     | { File serverInfoFile -> execSpecWithHttpServerExecutable(serverInfoFile) }
+        "javaexec" | { File serverInfoFile -> javaExecSpecWithHttpServer(serverInfoFile) }
+    }
+
+    private static def execSpecWithJavaExecutable(def owner = "") {
+        """
+            ${prop(owner, "executable")}(org.gradle.internal.jvm.Jvm.current().getJavaExecutable())
+            ${prop(owner, "args")}('-cp',${javaExecClasspath()}, '${TestJavaMain.name}', "Hello")
+        """
+    }
+
+    private static def execSpecWithHttpServerExecutable(File serverInfoFile, def owner = "") {
+        """
+            ${prop(owner, "executable")}(org.gradle.internal.jvm.Jvm.current().getJavaExecutable())
+            ${prop(owner, "args")}('-cp',${javaExecHttpServerClasspath()}, '${TestExecHttpServer.name}', '${TextUtil.normaliseFileSeparators(serverInfoFile.absolutePath)}')
+        """
+    }
+
+    private static def javaExecSpec(def owner = "") {
+        """
+            ${prop(owner, "getMainClass()")}.set("${TestJavaMain.name}");
+            ${prop(owner, "classpath")}(${javaExecClasspath()});
+            ${prop(owner, "args")}("Hello");
+        """
+    }
+
+    private static def javaExecSpecWithHttpServer(File serverInfo, def owner = "") {
+        """
+            ${prop(owner, "getMainClass()")}.set("${TestExecHttpServer.name}");
+            ${prop(owner, "classpath")}(${javaExecHttpServerClasspath()});
+            ${prop(owner, "args")}("${TextUtil.normaliseFileSeparators(serverInfo.absolutePath)}");
+        """
+    }
+
+    private static String prop(String owner, String propertyName) {
+        return owner ? owner + '.' + propertyName : propertyName
+    }
+
+    private static def javaExecClasspath() {
+        """ "${TextUtil.escapeString(TestJavaMain.classLocation)}" """.trim()
+    }
+
+    private static def javaExecHttpServerClasspath() {
+        """ "${TextUtil.escapeString(TestExecHttpServer.classLocation)}" """.trim()
+    }
+
+    private long waitForHttpServerPort(int waitTimeSeconds = 20) {
+        // Server needs some time to start so we wait for the server info file with port to be created
+        File serverInfoFile = getHttpServerInfoFile()
+        long start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < TimeUnit.SECONDS.toMillis(waitTimeSeconds)) {
+            if (serverInfoFile.exists()) {
+                try {
+                    return Long.parseLong(serverInfoFile.text)
+                } catch (Exception ignore) {
+                }
+            }
+            Thread.sleep(25)
+        }
+        throw new IllegalStateException("Cannot get server port. Was the server started?")
+    }
+
+    private File getHttpServerInfoFile() {
+        return testDirectory.file("httpServerInfo")
+    }
+
+    private static HttpResponse callGet(String url) {
+        try (CloseableHttpClient client = HttpClientBuilder.create().build()) {
+            CloseableHttpResponse response = client.execute(new HttpGet(url))
+            response.close()
+            return response
+        }
     }
 }

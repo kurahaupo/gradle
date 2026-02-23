@@ -17,6 +17,7 @@ package org.gradle.internal.extensibility;
 
 import groovy.lang.MissingMethodException;
 import groovy.lang.MissingPropertyException;
+import org.gradle.api.plugins.ExtensionContainer;
 import org.gradle.api.plugins.ExtraPropertiesExtension;
 import org.gradle.internal.instantiation.InstanceGenerator;
 import org.gradle.internal.metaobject.AbstractDynamicObject;
@@ -24,8 +25,8 @@ import org.gradle.internal.metaobject.BeanDynamicObject;
 import org.gradle.internal.metaobject.CompositeDynamicObject;
 import org.gradle.internal.metaobject.DynamicInvokeResult;
 import org.gradle.internal.metaobject.DynamicObject;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,35 +34,39 @@ import java.util.Map;
 /**
  * A {@link DynamicObject} implementation that provides extensibility.
  *
- * This is the dynamic object implementation that “enhanced” objects expose.
+ * This is the dynamic object implementation that "enhanced" objects expose.
  *
  * @see org.gradle.internal.instantiation.generator.MixInExtensibleDynamicObject
  */
-@SuppressWarnings("deprecation")
-public class ExtensibleDynamicObject extends MixInClosurePropertiesAsMethodsDynamicObject implements org.gradle.api.internal.HasConvention {
+public class ExtensibleDynamicObject extends MixInClosurePropertiesAsMethodsDynamicObject {
 
     public enum Location {
-        BeforeConvention, AfterConvention
+        BeforeConventionNotInherited, BeforeConvention, AfterConvention
     }
 
     private final AbstractDynamicObject dynamicDelegate;
+    @Nullable
     private DynamicObject parent;
-    private final org.gradle.api.plugins.Convention convention;
+    private final DefaultExtensionContainer extensionContainer;
+    @Nullable
+    private DynamicObject beforeConventionNotInherited;
+    @Nullable
     private DynamicObject beforeConvention;
+    @Nullable
     private DynamicObject afterConvention;
     private final DynamicObject extraPropertiesDynamicObject;
 
     public ExtensibleDynamicObject(Object delegate, Class<?> publicType, InstanceGenerator instanceGenerator) {
-        this(delegate, createDynamicObject(delegate, publicType), new DefaultConvention(instanceGenerator));
+        this(delegate, createDynamicObject(delegate, publicType), new DefaultExtensionContainer(instanceGenerator));
     }
 
     public ExtensibleDynamicObject(Object delegate, AbstractDynamicObject dynamicDelegate, InstanceGenerator instanceGenerator) {
-        this(delegate, dynamicDelegate, new DefaultConvention(instanceGenerator));
+        this(delegate, dynamicDelegate, new DefaultExtensionContainer(instanceGenerator));
     }
 
-    public ExtensibleDynamicObject(Object delegate, AbstractDynamicObject dynamicDelegate, org.gradle.api.plugins.Convention convention) {
+    public ExtensibleDynamicObject(Object delegate, AbstractDynamicObject dynamicDelegate, DefaultExtensionContainer convention) {
         this.dynamicDelegate = dynamicDelegate;
-        this.convention = convention;
+        this.extensionContainer = convention;
         this.extraPropertiesDynamicObject = new ExtraPropertiesDynamicObjectAdapter(delegate.getClass(), convention.getExtraProperties());
 
         updateDelegates();
@@ -72,16 +77,17 @@ public class ExtensibleDynamicObject extends MixInClosurePropertiesAsMethodsDyna
     }
 
     private void updateDelegates() {
-        DynamicObject[] delegates = new DynamicObject[6];
+        DynamicObject[] delegates = new DynamicObject[7];
         delegates[0] = dynamicDelegate;
         delegates[1] = extraPropertiesDynamicObject;
         int idx = 2;
+        if (beforeConventionNotInherited != null) {
+            delegates[idx++] = beforeConventionNotInherited;
+        }
         if (beforeConvention != null) {
             delegates[idx++] = beforeConvention;
         }
-        if (convention != null) {
-            delegates[idx++] = convention.getExtensionsAsDynamicObject();
-        }
+        delegates[idx++] = extensionContainer.getExtensionsAsDynamicObject();
         if (afterConvention != null) {
             delegates[idx++] = afterConvention;
         }
@@ -119,37 +125,28 @@ public class ExtensibleDynamicObject extends MixInClosurePropertiesAsMethodsDyna
     }
 
     public ExtraPropertiesExtension getDynamicProperties() {
-        return convention.getExtraProperties();
+        return extensionContainer.getExtraProperties();
     }
 
-    public void addProperties(Map<String, ?> properties) {
-        for (Map.Entry<String, ?> entry : properties.entrySet()) {
-            getDynamicProperties().set(entry.getKey(), entry.getValue());
-        }
-    }
-
+    @Nullable
     public DynamicObject getParent() {
         return parent;
     }
 
-    public void setParent(DynamicObject parent) {
+    public void setParent(@Nullable DynamicObject parent) {
         this.parent = parent;
         updateDelegates();
     }
 
-    @Override
-    @Deprecated
-    public org.gradle.api.plugins.Convention getConvention() {
-// TODO nag once KGP doesn't register conventions anymore
-//        DeprecationLogger.deprecateType(org.gradle.api.internal.HasConvention.class)
-//            .willBeRemovedInGradle9()
-//            .withUpgradeGuideSection(8, "deprecated_access_to_conventions")
-//            .nagUser();
-        return convention;
+    public ExtensionContainer getExtensions() {
+        return extensionContainer;
     }
 
     public void addObject(DynamicObject object, Location location) {
         switch (location) {
+            case BeforeConventionNotInherited:
+                beforeConventionNotInherited = object;
+                break;
             case BeforeConvention:
                 beforeConvention = object;
                 break;
@@ -174,7 +171,7 @@ public class ExtensibleDynamicObject extends MixInClosurePropertiesAsMethodsDyna
         if (beforeConvention != null) {
             delegates.add(beforeConvention);
         }
-        delegates.add(convention.getExtensionsAsDynamicObject());
+        delegates.add(extensionContainer.getExtensionsAsDynamicObject());
         if (parent != null) {
             delegates.add(parent);
         }
@@ -219,11 +216,18 @@ public class ExtensibleDynamicObject extends MixInClosurePropertiesAsMethodsDyna
         }
 
         @Override
+        public DynamicInvokeResult trySetPropertyWithoutInstrumentation(String name, @Nullable Object value) {
+            setProperty(name, value);
+            return DynamicInvokeResult.found();
+        }
+
+        @Override
         public boolean hasProperty(String name) {
             return snapshotInheritable().hasProperty(name);
         }
 
         @Override
+        @Nullable
         public Object getProperty(String name) {
             return snapshotInheritable().getProperty(name);
         }
@@ -234,7 +238,7 @@ public class ExtensibleDynamicObject extends MixInClosurePropertiesAsMethodsDyna
         }
 
         @Override
-        public Map<String, ?> getProperties() {
+        public Map<String, ? extends @Nullable Object> getProperties() {
             return snapshotInheritable().getProperties();
         }
 
@@ -249,6 +253,7 @@ public class ExtensibleDynamicObject extends MixInClosurePropertiesAsMethodsDyna
         }
 
         @Override
+        @Nullable
         public Object invokeMethod(String name, @Nullable Object... arguments) {
             return snapshotInheritable().invokeMethod(name, arguments);
         }

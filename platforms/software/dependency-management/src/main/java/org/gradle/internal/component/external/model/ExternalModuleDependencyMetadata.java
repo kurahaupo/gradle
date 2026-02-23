@@ -19,21 +19,12 @@ import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.artifacts.component.ProjectComponentSelector;
-import org.gradle.api.capabilities.Capability;
-import org.gradle.api.internal.attributes.AttributesSchemaInternal;
-import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.local.model.DefaultProjectDependencyMetadata;
-import org.gradle.internal.component.model.ComponentGraphResolveState;
 import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.ExcludeMetadata;
-import org.gradle.internal.component.model.GraphVariantSelectionResult;
-import org.gradle.internal.component.model.GraphVariantSelector;
 import org.gradle.internal.component.model.IvyArtifactName;
-import org.gradle.internal.component.model.VariantGraphResolveState;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -52,40 +43,6 @@ public abstract class ExternalModuleDependencyMetadata implements ModuleDependen
 
     public abstract ExternalDependencyDescriptor getDependencyDescriptor();
 
-    /**
-     * Choose a set of target configurations based on: a) the consumer attributes (with associated schema) and b) the target component.
-     *
-     * Use attribute matching to choose a single variant when the target component has variants,
-     * otherwise revert to legacy selection of target configurations.
-     */
-    @Override
-    public GraphVariantSelectionResult selectVariants(GraphVariantSelector variantSelector, ImmutableAttributes consumerAttributes, ComponentGraphResolveState targetComponentState, AttributesSchemaInternal consumerSchema, Collection<? extends Capability> explicitRequestedCapabilities) {
-        if (!targetComponentState.getCandidatesForGraphVariantSelection().getVariantsForAttributeMatching().isEmpty()) {
-            VariantGraphResolveState selected = variantSelector.selectByAttributeMatching(
-                consumerAttributes,
-                explicitRequestedCapabilities,
-                targetComponentState,
-                consumerSchema,
-                getArtifacts()
-            );
-            return new GraphVariantSelectionResult(Collections.singletonList(selected), true);
-        }
-
-        return selectLegacyConfigurations(variantSelector, consumerAttributes, targetComponentState, consumerSchema);
-    }
-
-    /**
-     * Select target graph variants in an ecosystem-dependent manner.
-     *
-     * This method is called when the target component does not have variants to select from.
-     */
-    protected abstract GraphVariantSelectionResult selectLegacyConfigurations(
-        GraphVariantSelector variantSelector,
-        ImmutableAttributes consumerAttributes,
-        ComponentGraphResolveState targetComponentState,
-        AttributesSchemaInternal consumerSchema
-    );
-
     @Override
     public List<IvyArtifactName> getArtifacts() {
         return artifacts;
@@ -98,7 +55,7 @@ public abstract class ExternalModuleDependencyMetadata implements ModuleDependen
     public DependencyMetadata withTarget(ComponentSelector target) {
         if (target instanceof ModuleComponentSelector) {
             ModuleComponentSelector moduleTarget = (ModuleComponentSelector) target;
-            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(moduleTarget.getModuleIdentifier(), moduleTarget.getVersionConstraint(), moduleTarget.getAttributes(), moduleTarget.getRequestedCapabilities());
+            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(moduleTarget.getModuleIdentifier(), moduleTarget.getVersionConstraint(), moduleTarget.getAttributes(), moduleTarget.getCapabilitySelectors());
             if (newSelector.equals(getSelector())) {
                 return this;
             }
@@ -115,14 +72,14 @@ public abstract class ExternalModuleDependencyMetadata implements ModuleDependen
     public DependencyMetadata withTargetAndArtifacts(ComponentSelector target, List<IvyArtifactName> artifacts) {
         if (target instanceof ModuleComponentSelector) {
             ModuleComponentSelector moduleTarget = (ModuleComponentSelector) target;
-            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(moduleTarget.getModuleIdentifier(), moduleTarget.getVersionConstraint(), moduleTarget.getAttributes(), moduleTarget.getRequestedCapabilities());
+            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(moduleTarget.getModuleIdentifier(), moduleTarget.getVersionConstraint(), moduleTarget.getAttributes(), moduleTarget.getCapabilitySelectors());
             if (newSelector.equals(getSelector()) && getArtifacts().equals(artifacts)) {
                 return this;
             }
             return withRequestedAndArtifacts(newSelector, artifacts);
         } else if (target instanceof ProjectComponentSelector) {
             ProjectComponentSelector projectTarget = (ProjectComponentSelector) target;
-            return new DefaultProjectDependencyMetadata(projectTarget, this);
+            return new DefaultProjectDependencyMetadata(projectTarget, this.withArtifacts(artifacts));
         } else {
             throw new IllegalArgumentException("Unexpected selector provided: " + target);
         }
@@ -134,13 +91,15 @@ public abstract class ExternalModuleDependencyMetadata implements ModuleDependen
         if (requestedVersion.equals(selector.getVersionConstraint())) {
             return this;
         }
-        ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getModuleIdentifier(), requestedVersion, selector.getAttributes(), selector.getRequestedCapabilities());
+        ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getModuleIdentifier(), requestedVersion, selector.getAttributes(), selector.getCapabilitySelectors());
         return withRequested(newSelector);
     }
 
     protected abstract ModuleDependencyMetadata withRequested(ModuleComponentSelector newSelector);
 
-    protected abstract ModuleDependencyMetadata withRequestedAndArtifacts(ModuleComponentSelector newSelector, List<IvyArtifactName> artifacts);
+    protected abstract ModuleDependencyMetadata withArtifacts(List<IvyArtifactName> newArtifacts);
+
+    protected abstract ModuleDependencyMetadata withRequestedAndArtifacts(ModuleComponentSelector newSelector, List<IvyArtifactName> newArtifacts);
 
     @Override
     public ModuleComponentSelector getSelector() {

@@ -16,9 +16,11 @@
 
 package org.gradle.internal.serialize.graph
 
+import org.gradle.api.internal.GeneratedSubclasses.unpackType
 import org.gradle.internal.configuration.problems.DocumentationSection
 import org.gradle.internal.configuration.problems.DocumentationSection.NotYetImplemented
 import org.gradle.internal.configuration.problems.DocumentationSection.RequirementsDisallowedTypes
+import org.gradle.internal.configuration.problems.PropertyKind
 
 import org.gradle.internal.configuration.problems.PropertyProblem
 import org.gradle.internal.configuration.problems.StructuredMessage.Companion.build
@@ -26,6 +28,19 @@ import org.gradle.internal.configuration.problems.StructuredMessageBuilder
 import org.gradle.internal.configuration.problems.propertyDescriptionFor
 
 import kotlin.reflect.KClass
+
+
+fun MutableIsolateContext.reportUnsupportedFieldType(
+    unsupportedType: KClass<*>,
+    action: String,
+    fieldName: String,
+    fieldValue: Any? = null
+) {
+    withPropertyTrace(PropertyKind.Field, fieldName) {
+        if (fieldValue == null) logUnsupported(action, unsupportedType)
+        else logUnsupportedBaseType(action, unsupportedType, unpackType(fieldValue))
+    }
+}
 
 
 fun IsolateContext.logUnsupportedBaseType(
@@ -120,17 +135,17 @@ fun IsolateContext.logPropertyProblem(action: String, problem: PropertyProblem) 
 }
 
 
-inline fun <T : WriteContext, R> T.withDebugFrame(name: () -> String, writeAction: T.() -> R): R {
+inline fun <T : WriteContext, R> T.withDebugFrame(name: () -> String, instance: Any? = null, writeAction: T.() -> R): R {
     val tracer = this.tracer
     return if (tracer == null) {
         writeAction()
     } else {
         val frameName = name()
         try {
-            tracer.open(frameName)
+            tracer.open(frameName, instance)
             writeAction()
         } finally {
-            tracer.close(frameName)
+            tracer.close(frameName, instance)
         }
     }
 }

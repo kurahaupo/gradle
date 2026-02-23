@@ -15,10 +15,12 @@ repositories {
     mavenCentral()
 }
 
+// tag::java-block[]
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
 }
+// end::java-block[]
 
 // tag::test_fixtures_deps[]
 dependencies {
@@ -48,7 +50,7 @@ javaComponent.withVariantsFromConfiguration(configurations["testFixturesApiEleme
 javaComponent.withVariantsFromConfiguration(configurations["testFixturesRuntimeElements"]) { skip() }
 // end::disable-test-fixtures-publishing[]
 
-tasks.create("usages") {
+tasks.register("usages") {
     val javaComponentUsages = (components["java"] as SoftwareComponentInternal).usages.map { it.name }
     doLast {
         javaComponentUsages.forEach { println(it) }

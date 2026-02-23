@@ -16,86 +16,141 @@
 
 package org.gradle.tooling.internal.consumer;
 
-import org.gradle.internal.Factory;
+import com.google.common.annotations.VisibleForTesting;
 import org.gradle.internal.concurrent.DefaultExecutorFactory;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.operations.BuildOperationIdFactory;
 import org.gradle.internal.operations.DefaultBuildOperationIdFactory;
-import org.gradle.internal.service.DefaultServiceRegistry;
+import org.gradle.internal.service.CloseableServiceRegistry;
+import org.gradle.internal.service.Provides;
+import org.gradle.internal.service.ServiceRegistrationProvider;
+import org.gradle.internal.service.ServiceRegistryBuilder;
 import org.gradle.internal.time.Clock;
 import org.gradle.internal.time.Time;
 import org.gradle.tooling.CancellationTokenSource;
+import org.gradle.tooling.GradleConnector;
 import org.gradle.tooling.internal.consumer.loader.CachingToolingImplementationLoader;
 import org.gradle.tooling.internal.consumer.loader.DefaultToolingImplementationLoader;
 import org.gradle.tooling.internal.consumer.loader.SynchronizedToolingImplementationLoader;
 import org.gradle.tooling.internal.consumer.loader.ToolingImplementationLoader;
+import org.jspecify.annotations.NullMarked;
 
+/**
+ * Internal API that is used for cross-version TAPI client testing.
+ */
+@NullMarked
 public class ConnectorServices {
-    private static DefaultServiceRegistry singletonRegistry;
 
-    static {
-        singletonRegistry = new ConnectorServiceRegistry();
-    }
-
-    public static DefaultGradleConnector createConnector() {
-        return singletonRegistry.getFactory(DefaultGradleConnector.class).create();
-    }
+    private static GradleConnectorFactory sharedConnectorFactory = createConnectorFactory();
 
     public static CancellationTokenSource createCancellationTokenSource() {
         return new DefaultCancellationTokenSource();
     }
 
+    public static GradleConnector createConnector() {
+        return sharedConnectorFactory.createConnector();
+    }
+
     public static void close() {
-        singletonRegistry.close();
+        sharedConnectorFactory.close();
     }
 
     /**
-     * Resets the state of connector services. Meant to be used only for testing!
+     * Resets the state of connector services.
+     * <p>
+     * Used for cross-version testing of the lifecycle of the connector services.
      */
+    @VisibleForTesting
     public static void reset() {
-        singletonRegistry.close();
-        singletonRegistry = new ConnectorServiceRegistry();
+        close();
+        sharedConnectorFactory = createConnectorFactory();
     }
 
-    @SuppressWarnings("UnusedMethod")
-    private static class ConnectorServiceRegistry extends DefaultServiceRegistry {
-        protected Factory<DefaultGradleConnector> createConnectorFactory(final ConnectionFactory connectionFactory, final DistributionFactory distributionFactory) {
-            return new Factory<DefaultGradleConnector>() {
+    /**
+     * Used for cross-version testing of the lifecycle of the connector services.
+     */
+    @VisibleForTesting
+    public static GradleConnectorFactory createConnectorFactory() {
+        return new DefaultGradleConnectorFactory();
+    }
+
+    private static class DefaultGradleConnectorFactory implements GradleConnectorFactory {
+        private final CloseableServiceRegistry ownerRegistry = ConnectorServiceRegistry.create();
+
+        @Override
+        public GradleConnector createConnector() {
+            return ownerRegistry.get(GradleConnectorFactory.class).createConnector();
+        }
+
+        @Override
+        public void close() {
+            ownerRegistry.close();
+        }
+    }
+
+    /**
+     * Exists for the purpose of creating {@link GradleConnectorFactory}.
+     * <p>
+     * The service registry is used to simplify setting up and tearing down the dependencies.
+     */
+    private static class ConnectorServiceRegistry implements ServiceRegistrationProvider {
+
+        private static CloseableServiceRegistry create() {
+            return ServiceRegistryBuilder.builder()
+                .displayName("connector services")
+                .provider(new ConnectorServiceRegistry())
+                .build();
+        }
+
+        @Provides
+        protected GradleConnectorFactory createConnectorFactory(ConnectionFactory connectionFactory, DistributionFactory distributionFactory) {
+            return new GradleConnectorFactory() {
                 @Override
-                public DefaultGradleConnector create() {
+                public GradleConnector createConnector() {
                     return new DefaultGradleConnector(connectionFactory, distributionFactory);
                 }
+
+                @Override
+                public void close() {}
             };
         }
 
+        @Provides
         protected ExecutorFactory createExecutorFactory() {
             return new DefaultExecutorFactory();
         }
 
+        @Provides
         protected ExecutorServiceFactory createExecutorServiceFactory() {
             return new DefaultExecutorServiceFactory();
         }
 
+        @Provides
         protected Clock createTimeProvider() {
             return Time.clock();
         }
 
+        @Provides
         protected DistributionFactory createDistributionFactory(Clock clock) {
             return new DistributionFactory(clock);
         }
 
+        @Provides
         protected ToolingImplementationLoader createToolingImplementationLoader() {
             return new SynchronizedToolingImplementationLoader(new CachingToolingImplementationLoader(new DefaultToolingImplementationLoader()));
         }
 
+        @Provides
         protected BuildOperationIdFactory createBuildOperationIdFactory() {
             return new DefaultBuildOperationIdFactory();
         }
 
+        @Provides
         protected LoggingProvider createLoggingProvider(Clock clock, BuildOperationIdFactory buildOperationIdFactory) {
             return new SynchronizedLogging(clock, buildOperationIdFactory);
         }
 
+        @Provides
         protected ConnectionFactory createConnectionFactory(ToolingImplementationLoader toolingImplementationLoader, ExecutorFactory executorFactory, LoggingProvider loggingProvider) {
             return new ConnectionFactory(toolingImplementationLoader, executorFactory, loggingProvider);
         }

@@ -31,18 +31,26 @@ class ReleasedVersionsDetails(currentBaseVersion: GradleVersion, releasedVersion
     val allTestedVersions: List<GradleVersion>
 
     val mainTestedVersions: List<GradleVersion>
+    val lowestInterestingVersion: GradleVersion = GradleVersion.version("0.8")
+    val lowestTestedVersion: GradleVersion = GradleVersion.version("4.0")
 
     init {
-        val lowestInterestingVersion = GradleVersion.version("0.8")
-        val lowestTestedVersion = GradleVersion.version("3.0")
-
         val releasedVersions = releasedVersionsFile.asFile.reader().use {
             Gson().fromJson(it, ReleasedVersions::class.java)
         }
 
         val latestFinalRelease = releasedVersions.finalReleases.first()
-        val latestRelease = listOf(releasedVersions.latestReleaseSnapshot, releasedVersions.latestRc).filter { it.gradleVersion() > latestFinalRelease.gradleVersion() }.maxByOrNull { it.buildTimeStamp() } ?: latestFinalRelease
-        val previousVersions = (listOf(latestRelease) + releasedVersions.finalReleases).filter { it.gradleVersion() >= lowestInterestingVersion && it.gradleVersion().baseVersion < currentBaseVersion }.distinct()
+        val latestRelease =
+            listOf(releasedVersions.latestReleaseSnapshot, releasedVersions.latestRc)
+                .filter {
+                    it.gradleVersion() > latestFinalRelease.gradleVersion()
+                }.maxByOrNull { it.buildTimeStamp() }
+                ?: latestFinalRelease
+        val previousVersions = (listOf(latestRelease) + releasedVersions.finalReleases)
+            .filter {
+                it.gradleVersion() >= lowestInterestingVersion &&
+                    it.gradleVersion().baseVersion < currentBaseVersion
+            }.distinct()
         allPreviousVersions = previousVersions.map { it.gradleVersion() }
         mostRecentRelease = previousVersions.first().gradleVersion()
         mostRecentSnapshot = releasedVersions.latestReleaseSnapshot.gradleVersion()
@@ -56,11 +64,12 @@ class ReleasedVersionsDetails(currentBaseVersion: GradleVersion, releasedVersion
         // Limit to first and last release of each major version
         mainTestedVersions = testedVersions.map { VersionNumber.parse(it.gradleVersion().version) }
             .groupBy { it.major }
-            .map { (_, v) -> listOf(v.minOrNull()!!.format(), v.maxOrNull()!!.format()) }.flatten()
+            .map { (_, v) -> listOf(v.maxOrNull()!!.format()) }.flatten()
     }
 
     private
     fun VersionNumber.format() =
         // reformat according to our versioning scheme, since toString() would typically convert 1.0 to 1.0.0
-        GradleVersion.version("$major.${minor}${if (micro > 0) ".$micro" else ""}${if (qualifier != null) "-$qualifier" else ""}")
+        // starting with Gradle 9.0, the version number is always 3 digits (SemVer)
+        GradleVersion.version("$major.${minor}${if (micro > 0 || major >= 9) ".$micro" else ""}${if (qualifier != null) "-$qualifier" else ""}")
 }

@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
+@file:Suppress("DEPRECATION")
+
 package org.gradle.kotlin.dsl.resolver
 
-import com.nhaarman.mockito_kotlin.doReturn
-import com.nhaarman.mockito_kotlin.mock
-import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
+import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
 import org.gradle.kotlin.dsl.fixtures.AbstractKotlinIntegrationTest
 import org.gradle.test.fixtures.Flaky
 import org.gradle.test.precondition.Requires
@@ -34,6 +34,9 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.experimental.categories.Category
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
 import java.io.File
 import kotlin.reflect.KClass
 import kotlin.script.dependencies.KotlinScriptExternalDependencies
@@ -42,7 +45,7 @@ import kotlin.script.dependencies.ScriptContents.Position
 import kotlin.script.dependencies.ScriptDependenciesResolver.ReportSeverity
 
 
-@Flaky(because = "https://github.com/gradle/gradle-private/issues/3717")
+@Category(Flaky::class) // https://github.com/gradle/gradle-private/issues/3717
 class KotlinScriptDependenciesResolverTest : AbstractKotlinIntegrationTest() {
 
     @Before
@@ -352,9 +355,10 @@ class KotlinScriptDependenciesResolverTest : AbstractKotlinIntegrationTest() {
     fun environment(vararg entries: Pair<String, Any?>) =
         mapOf(
             "projectRoot" to projectRoot,
+            "gradleHome" to buildContext.gradleHomeDir,
             "gradleUserHome" to buildContext.gradleUserHomeDir.canonicalPath
         ) + (
-            if (GradleContextualExecuter.isEmbedded()) emptyMap() else mapOf("gradleHome" to distribution.gradleHomeDir)
+            if (IntegrationTestBuildContext.isEmbedded()) emptyMap() else mapOf("gradleHome" to distribution.gradleHomeDir)
             ) + entries.toMap()
 
     private

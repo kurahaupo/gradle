@@ -18,24 +18,32 @@ package org.gradle.integtests.tooling.fixture
 
 import groovy.transform.stc.ClosureParams
 import groovy.transform.stc.SimpleType
+import org.gradle.integtests.fixtures.AvailableJavaHomes
+import org.gradle.integtests.fixtures.CommonTestFilesFixture
+import org.gradle.integtests.fixtures.LanguageSpecificTestFileFixture
+import org.gradle.integtests.fixtures.ProjectDirectoryCreator
 import org.gradle.integtests.fixtures.RepoScriptBlockUtil
 import org.gradle.integtests.fixtures.build.BuildTestFile
 import org.gradle.integtests.fixtures.build.BuildTestFixture
 import org.gradle.integtests.fixtures.build.KotlinDslTestProjectInitiation
 import org.gradle.integtests.fixtures.daemon.DaemonsFixture
+import org.gradle.integtests.fixtures.executer.DocumentationUtils
 import org.gradle.integtests.fixtures.executer.ExecutionFailure
+import org.gradle.integtests.fixtures.executer.ExecutionFailureWithThrowable
 import org.gradle.integtests.fixtures.executer.ExecutionResult
+import org.gradle.integtests.fixtures.executer.ExpectedDeprecationWarning
 import org.gradle.integtests.fixtures.executer.GradleDistribution
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
 import org.gradle.integtests.fixtures.executer.OutputScrapingExecutionFailure
 import org.gradle.integtests.fixtures.executer.OutputScrapingExecutionResult
 import org.gradle.integtests.fixtures.executer.ResultAssertion
 import org.gradle.integtests.fixtures.executer.UnderDevelopmentGradleDistribution
+import org.gradle.internal.jvm.Jvm
+import org.gradle.internal.jvm.SupportedJavaVersionsExpectations
 import org.gradle.test.fixtures.file.CleanupTestDirectory
 import org.gradle.test.fixtures.file.TestDistributionDirectoryProvider
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
-import org.gradle.tooling.GradleConnectionException
 import org.gradle.tooling.GradleConnector
 import org.gradle.tooling.ModelBuilder
 import org.gradle.tooling.ProjectConnection
@@ -46,7 +54,10 @@ import org.junit.rules.RuleChain
 import spock.lang.Retry
 import spock.lang.Specification
 
+import java.util.function.Supplier
+
 import static org.gradle.integtests.fixtures.RetryConditions.onIssueWithReleasedGradleVersion
+import static org.junit.Assume.assumeNotNull
 import static spock.lang.Retry.Mode.SETUP_FEATURE_CLEANUP
 
 /**
@@ -66,10 +77,10 @@ import static spock.lang.Retry.Mode.SETUP_FEATURE_CLEANUP
  */
 @ToolingApiTest
 @CleanupTestDirectory
-@ToolingApiVersion('>=7.0')
-@TargetGradleVersion('>=3.0')
+@ToolingApiVersion('>=8.0')
+@TargetGradleVersion('>=4.0')
 @Retry(condition = { onIssueWithReleasedGradleVersion(instance, failure) }, mode = SETUP_FEATURE_CLEANUP, count = 2)
-abstract class ToolingApiSpecification extends Specification implements KotlinDslTestProjectInitiation {
+abstract class ToolingApiSpecification extends Specification implements CommonTestFilesFixture, LanguageSpecificTestFileFixture, KotlinDslTestProjectInitiation, ProjectDirectoryCreator {
     /**
      * See https://github.com/gradle/gradle-private/issues/3216
      * To avoid flakiness when reusing daemons between CLI and TAPI
@@ -79,7 +90,6 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
     @Rule
     public final SetSystemProperties sysProperties = new SetSystemProperties()
 
-    GradleConnectionException caughtGradleConnectionException
     TestOutputStream stderr = new TestOutputStream()
     TestOutputStream stdout = new TestOutputStream()
 
@@ -89,15 +99,20 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
     private GradleDistribution targetGradleDistribution
 
     TestDistributionDirectoryProvider temporaryDistributionFolder = new TestDistributionDirectoryProvider(getClass())
+
     @Delegate
     final ToolingApi toolingApi = new ToolingApi(null, temporaryFolder, stdout, stderr)
 
-    // TODO: react to the isolatedProejcts prop coming from build settings
+    // TODO: react to the isolatedProjects prop coming from build settings
 
     @Rule
     public RuleChain cleanupRule = RuleChain.outerRule(temporaryFolder).around(temporaryDistributionFolder).around(toolingApi)
 
     private List<String> expectedDeprecations = []
+    private boolean stackTraceChecksOn = true
+
+    private ExecutionResult result
+    private ExecutionFailure failure
 
     // used reflectively by retry rule
     String getReleasedGradleVersion() {
@@ -105,9 +120,10 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
     }
 
     // reflectively invoked by ToolingApiExecution
-    void setTargetDist(GradleDistribution targetDist) {
-        targetGradleDistribution = targetDist
-        toolingApi.setDist(targetGradleDistribution)
+    void setTargetDistAndToolingApiVersion(GradleDistribution targetDist, GradleVersion toolingApiVersion) {
+        this.targetGradleDistribution = targetDist
+        this.toolingApi.setDist(targetGradleDistribution)
+        this.toolingApi.setToolingApiVersion(toolingApiVersion)
     }
 
     GradleDistribution getTargetDist() {
@@ -118,9 +134,18 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
     }
 
     def setup() {
+        // These properties are set on CI. Reset them to allow tests to configure toolchains explicitly.
+        System.setProperty("org.gradle.java.installations.auto-download", "false")
+        System.setProperty("org.gradle.java.installations.auto-detect", "false")
+        System.clearProperty("org.gradle.java.installations.paths")
+
         // this is to avoid the working directory to be the Gradle directory itself
         // which causes isolation problems for tests. This one is for _embedded_ mode
-        System.setProperty("user.dir", temporaryFolder.testDirectory.absolutePath)
+        System.setProperty("user.dir", projectDir.absolutePath)
+
+        // Enable deprecation logging for all tests
+        System.setProperty("org.gradle.warning.mode", "all")
+
         settingsFile.touch()
     }
 
@@ -130,6 +155,11 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
 
     TestFile getProjectDir() {
         temporaryFolder.testDirectory
+    }
+
+    @Override
+    TestFile getUserActionRootDir() {
+        projectDir
     }
 
     @Override
@@ -176,51 +206,132 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
     }
 
     void withConnector(@DelegatesTo(GradleConnector) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.GradleConnector"]) Closure cl) {
-        try {
-            toolingApi.withConnector(cl)
-        } catch (GradleConnectionException e) {
-            caughtGradleConnectionException = e
-            throw e
-        }
+        toolingApi.withConnector(cl)
     }
 
-    def <T> T withConnection(connector, @DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
-        try {
-            return toolingApi.withConnection(connector, cl)
-        } catch (GradleConnectionException e) {
-            caughtGradleConnectionException = e
-            throw e
-        }
+    def <T> T withConnection(ToolingApiConnector connector, @DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
+        return toolingApi.withConnection(connector, cl)
     }
 
     ToolingApiConnector connector() {
         toolingApi.connector()
     }
 
-    def <T> T withConnection(@DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
-        try {
-            toolingApi.withConnection(cl)
-        } catch (GradleConnectionException e) {
-            caughtGradleConnectionException = e
-            throw e
+    ToolingApiConnector connectorWithoutOutputRedirection() {
+        toolingApi.connectorWithoutOutputRedirection()
+    }
+
+    /**
+     * Prefer {@link #succeeds(Closure)} and {@link #fails(Closure)} over this method, as they automatically verify build output.
+     */
+    <T> T withConnection(@DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
+        return toolingApi.withConnection(cl)
+    }
+
+    /**
+     * Open a new project connection and execute the given closure against it, closing the connection afterwards.
+     * Then, verify that the build succeeded and verify emitted deprecation warnings.
+     */
+    <T> T succeeds(@DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure<T> cl) {
+        runSuccessfully {
+            withConnection(cl)
+        }
+    }
+
+    /**
+     * Open a new project connection and execute the given closure against it, closing the connection afterwards.
+     * Then, verify that the build failed and verify emitted deprecation warnings.
+     */
+    void fails(@DelegatesTo(ProjectConnection) @ClosureParams(value = SimpleType, options = ["org.gradle.tooling.ProjectConnection"]) Closure cl) {
+        runUnsuccessfully {
+            withConnection(cl)
+        }
+    }
+
+    def <T> T loadToolingModel(Class<T> modelClass, @DelegatesTo(ModelBuilder<T>) Closure cl = {}) {
+        return loadToolingModel(modelClass, null, cl)
+    }
+
+    def <T> T loadToolingModel(Class<T> modelClass, Jvm jvm, @DelegatesTo(ModelBuilder<T>) Closure cl = {}) {
+        runSuccessfully {
+            withConnection {
+                def builder = it.model(modelClass)
+                if (jvm) {
+                    builder.javaHome = jvm.javaHome
+                }
+                builder.tap(cl)
+                builder.get()
+            }
         }
     }
 
     ConfigurableOperation withModel(Class modelType, Closure cl = {}) {
-        withConnection {
-            def model = it.model(modelType)
-            cl(model)
-            new ConfigurableOperation(model).buildModel()
+        runSuccessfully {
+            withConnection {
+                def model = it.model(modelType)
+                cl(model)
+                new ConfigurableOperation(model).buildModel()
+            }
         }
     }
 
     ConfigurableOperation withBuild(Closure cl = {}) {
-        withConnection {
-            def build = it.newBuild()
-            cl(build)
-            def out = new ConfigurableOperation(build)
-            build.run()
-            out
+        runSuccessfully {
+            withConnection {
+                def build = it.newBuild()
+                cl(build)
+                def out = new ConfigurableOperation(build)
+                build.run()
+                out
+            }
+        }
+    }
+
+    /**
+     * Runs some action that presumably executes a tooling API request. Afterwards,
+     * verify the request was successful by scanning the output streams. Finally,
+     * reset this integration spec to prepare to run another action.
+     *
+     * TODO: We should migrate almost all of the methods in this class to use this method
+     *       and runUnsuccessfully() instead of the raw withConnection methods
+     */
+    private <T> T runSuccessfully(Supplier<T> action) {
+        // While there are still other tests that do not reset the streams after execution
+        // we will need to do this ourselves here.
+        stdout.reset()
+        stderr.reset()
+
+        try {
+            T value
+            try {
+                value = action.get()
+            } catch (Exception e) {
+                throw new AssertionError("Expected action to not throw an exception", e)
+            }
+            this.result = assertSuccessful()
+            return value
+        } finally {
+            reset()
+        }
+    }
+
+    // Same as above but for the failure case
+    private void runUnsuccessfully(Runnable action) {
+        // While there are still other tests that do not reset the streams after execution
+        // we will need to do this ourselves here.
+        stdout.reset()
+        stderr.reset()
+
+        try {
+            try {
+                action.run()
+                throw new AssertionError("Expected action to throw an exception" as Object)
+            } catch (Exception e) {
+                this.failure = assertFailure(e)
+                throw e
+            }
+        } finally {
+            reset()
         }
     }
 
@@ -228,7 +339,11 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
      * Returns the set of implicit task names expected for any project for the target Gradle version.
      */
     Set<String> getImplicitTasks() {
-        if (targetVersion >= GradleVersion.version("7.5")) {
+        if (targetVersion >= GradleVersion.version("9.0")) {
+            return ['artifactTransforms', 'buildEnvironment', 'dependencies', 'dependencyInsight', 'help', 'javaToolchains', 'projects', 'properties', 'tasks', 'outgoingVariants', 'resolvableConfigurations']
+        } else if (targetVersion >= GradleVersion.version("8.13")) {
+            return ['artifactTransforms', 'buildEnvironment', 'components', 'dependencies', 'dependencyInsight', 'dependentComponents', 'help', 'javaToolchains', 'projects', 'properties', 'tasks', 'model', 'outgoingVariants', 'resolvableConfigurations']
+        } else if (targetVersion >= GradleVersion.version("7.5")) {
             return ['buildEnvironment', 'components', 'dependencies', 'dependencyInsight', 'dependentComponents', 'help', 'javaToolchains', 'projects', 'properties', 'tasks', 'model', 'outgoingVariants', 'resolvableConfigurations']
         } else if (targetVersion >= GradleVersion.version("6.8")) {
             return ['buildEnvironment', 'components', 'dependencies', 'dependencyInsight', 'dependentComponents', 'help', 'javaToolchains', 'projects', 'properties', 'tasks', 'model', 'outgoingVariants']
@@ -261,7 +376,9 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
      * Returns the set of invisible implicit task names expected for a root project for the target Gradle version.
      */
     Set<String> getRootProjectImplicitInvisibleTasks() {
-        if (targetVersion >= GradleVersion.version("6.8")) {
+        if (targetVersion >= GradleVersion.version("9.0")) {
+            return ['prepareKotlinBuildScriptModel']
+        } else if (targetVersion >= GradleVersion.version("6.8")) {
             return ['prepareKotlinBuildScriptModel', 'components', 'dependentComponents', 'model']
         } else if (targetVersion >= GradleVersion.version("5.3")) {
             return ['prepareKotlinBuildScriptModel']
@@ -306,34 +423,74 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
         rootProjectImplicitTasks
     }
 
+    ExecutionResult assertSuccessful() {
+        def result = OutputScrapingExecutionResult.from(stdout.toString(), stderr.toString())
+
+        // We get BUILD SUCCESSFUL when we run tasks, and CONFIGURE SUCCESSFUL when we fetch models without requesting tasks
+        assert result.output.contains("BUILD SUCCESSFUL") || result.output.contains("CONFIGURE SUCCESSFUL")
+
+        validateOutput(result)
+        return result
+    }
+
+    ExecutionFailure assertFailure(Exception exception) {
+        def failure = new ExecutionFailureWithThrowable(
+            OutputScrapingExecutionFailure.from(stdout.toString(), stderr.toString()),
+            exception
+        )
+
+        // We get BUILD FAILED when we run tasks, and CONFIGURE FAILED when we fetch models without requesting tasks
+        String failureOutput = targetDist.selectOutputWithFailureLogging(failure.output, failure.error)
+        boolean hasFailureLog = failureOutput.contains("BUILD FAILED") || failureOutput.contains("CONFIGURE FAILED")
+        if (!hasFailureLog) {
+            // The build failed, but the failure is not in the output. We must have failed before the build could
+            // even start. Make sure we at least do not emit a BUILD SUCCESSFUL message.
+            assert !failure.output.contains("BUILD SUCCESSFUL") && !failure.output.contains("CONFIGURE SUCCESSFUL")
+        }
+
+        validateOutput(failure)
+        return failure
+    }
+
     void assertHasBuildSuccessfulLogging() {
-        assertHasNoUnexpectedDeprecationWarnings()
         assert stdout.toString().contains("BUILD SUCCESSFUL")
+        validateOutput(getResult())
     }
 
     void assertHasBuildFailedLogging() {
-        assertHasNoUnexpectedDeprecationWarnings()
         def failureOutput = targetDist.selectOutputWithFailureLogging(stdout, stderr).toString()
         assert failureOutput.contains("BUILD FAILED")
+        validateOutput(getFailure())
     }
 
     void assertHasConfigureSuccessfulLogging() {
-        assertHasNoUnexpectedDeprecationWarnings()
-        if (targetDist.isToolingApiLogsConfigureSummary()) {
-            assert stdout.toString().contains("CONFIGURE SUCCESSFUL")
-        } else {
-            assert stdout.toString().contains("BUILD SUCCESSFUL")
-        }
+        assert stdout.toString().contains("CONFIGURE SUCCESSFUL")
+        validateOutput(getResult())
     }
 
     void assertHasConfigureFailedLogging() {
-        assertHasNoUnexpectedDeprecationWarnings()
         def failureOutput = targetDist.selectOutputWithFailureLogging(stdout, stderr).toString()
-        if (targetDist.isToolingApiLogsConfigureSummary()) {
-            assert failureOutput.contains("CONFIGURE FAILED")
-        } else {
-            assert failureOutput.contains("BUILD FAILED")
-        }
+        assert failureOutput.contains("CONFIGURE FAILED")
+        validateOutput(getFailure())
+    }
+
+    /**
+     * Gets a JVM different from the one running the tests that is compatible with the target Gradle distribution,
+     * then checks it is not null via {@link org.junit.Assume#assumeNotNull(Object, String)}.
+     *
+     * @return the JVM with a different version that can run the target Gradle distribution
+     */
+    Jvm requireDifferentVersionJvmCompatibleWithTargetDist() {
+        def otherJvm = AvailableJavaHomes.getDifferentDaemonVersionFor(targetDist)
+        assumeNotNull(otherJvm, "No suitable alternative JVM found that can run Gradle ${targetDist}.")
+        return otherJvm
+    }
+
+    private void reset() {
+        stdout.reset()
+        stderr.reset()
+        expectedDeprecations.clear()
+        stackTraceChecksOn = true
     }
 
     def shouldCheckForDeprecationWarnings() {
@@ -341,43 +498,46 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
         GradleVersion.version("6.9") < targetVersion
     }
 
-    private void assertHasNoUnexpectedDeprecationWarnings() {
-        // Clear all expected warnings first
-        String rawOutput = stdout.toString()
-        if (!expectedDeprecations.isEmpty()) {
-            expectedDeprecations.each { expectedDeprecation ->
-                assert rawOutput.contains(expectedDeprecation)
-                rawOutput = rawOutput.replace(expectedDeprecation, "")
-            }
-        }
-        // Then proceed as before
-        if (shouldCheckForDeprecationWarnings()) {
-            assert !rawOutput
-                .replace("[deprecated]", "IGNORE") // don't check deprecated command-line argument
-                .containsIgnoreCase("deprecated")
-        }
+    private boolean filterJavaVersionDeprecation = true
+    boolean disableDaemonJavaVersionDeprecationFiltering() {
+        filterJavaVersionDeprecation = false
     }
 
     ExecutionResult getResult() {
+        if (result != null) {
+            return result
+        }
+
+        // Legacy path. Tests should instead use methods that call runSuccessfully
         return OutputScrapingExecutionResult.from(stdout.toString(), stderr.toString())
     }
 
     ExecutionFailure getFailure() {
+        if (failure != null) {
+            return failure
+        }
+
+        // Legacy path. Tests should instead use methods that call runUnsuccessfully
         return OutputScrapingExecutionFailure.from(stdout.toString(), stderr.toString())
     }
 
-    def validateOutput() {
-        def assertion = new ResultAssertion(0, [], false, shouldCheckForDeprecationWarnings(), true)
-        assertion.validate(stdout.toString(), "stdout")
-        assertion.validate(stderr.toString(), "stderr")
-        true
-    }
+    void validateOutput(ExecutionResult result) {
+        List<String> maybeExpectedDeprecations = []
+        if (filterJavaVersionDeprecation) {
+            maybeExpectedDeprecations.add(
+                normalizeDeprecationWarning(SupportedJavaVersionsExpectations.getExpectedDaemonDeprecationWarning(targetDist.version))
+            )
+        }
 
-    def <T> T loadToolingModel(Class<T> modelClass, @DelegatesTo(ModelBuilder<T>) Closure cl = {}) {
-        def result = loadToolingLeanModel(modelClass, cl)
-        assertHasConfigureSuccessfulLogging()
-        validateOutput()
-        return result
+        // Check for deprecation warnings.
+        new ResultAssertion(
+                expectedDeprecations.collect { ExpectedDeprecationWarning.withMessage(it) },
+            maybeExpectedDeprecations.collect { ExpectedDeprecationWarning.withMessage(it) },
+            Collections.emptyList(),
+            !stackTraceChecksOn,
+            shouldCheckForDeprecationWarnings(),
+            true
+        ).execute(result)
     }
 
     protected GradleVersion getTargetVersion() {
@@ -388,7 +548,17 @@ abstract class ToolingApiSpecification extends Specification implements KotlinDs
         RepoScriptBlockUtil.mavenCentralRepository()
     }
 
-    void expectDeprecation(String message) {
-        expectedDeprecations << message
+    boolean withStackTraceChecksDisabled() {
+        stackTraceChecksOn = false
+    }
+
+    void expectDocumentedDeprecationWarning(String message) {
+        expectedDeprecations << normalizeDeprecationWarning(message)
+    }
+
+    private String normalizeDeprecationWarning(String message) {
+        def normalizedLink = DocumentationUtils.normalizeDocumentationLink(message, targetDist.version)
+
+        return normalizedLink
     }
 }

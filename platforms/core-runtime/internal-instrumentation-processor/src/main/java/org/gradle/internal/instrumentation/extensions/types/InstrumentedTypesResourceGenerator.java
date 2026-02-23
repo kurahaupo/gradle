@@ -17,14 +17,15 @@
 package org.gradle.internal.instrumentation.extensions.types;
 
 
+import org.gradle.internal.UncheckedException;
 import org.gradle.internal.instrumentation.model.CallInterceptionRequest;
 import org.gradle.internal.instrumentation.processor.codegen.InstrumentationResourceGenerator;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.stream.Collectors;
 
@@ -59,10 +60,10 @@ public class InstrumentedTypesResourceGenerator implements InstrumentationResour
                     .distinct()
                     .sorted()
                     .collect(Collectors.joining("\n"));
-                try (Writer writer = new OutputStreamWriter(outputStream)) {
+                try (Writer writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
                     writer.write(types);
                 } catch (IOException e) {
-                    throw new UncheckedIOException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
             }
         };

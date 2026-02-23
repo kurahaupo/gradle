@@ -20,20 +20,20 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.BuildOperationTreeQueries
 import org.gradle.integtests.fixtures.BuildOperationsFixture
 import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
-import org.gradle.integtests.fixtures.ToBeFixedForIsolatedProjects
 import org.gradle.integtests.fixtures.daemon.DaemonLogsAnalyzer
 import org.gradle.integtests.fixtures.daemon.DaemonsFixture
 import org.gradle.internal.scripts.CompileScriptBuildOperationType
 import org.gradle.test.fixtures.ConcurrentTestUtil
+import org.gradle.test.fixtures.Flaky
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.IntegTestPreconditions
 import org.gradle.util.GradleVersion
 import org.junit.Rule
 import spock.lang.Issue
 
 import java.util.regex.Pattern
-
-import static org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache.Skip.INVESTIGATE
 
 class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
 
@@ -81,6 +81,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
     }
 
     @ToBeFixedForConfigurationCache(because = "test expect script evaluation")
+    @Requires(value = IntegTestPreconditions.NotEmbeddedExecutor, reason = "explicitly requests a daemon")
     def "identical build files are compiled once for distinct invocations"() {
         given:
         root {
@@ -163,6 +164,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
         getCompileBuildFileOperationsCount() == 6 // classpath + body for settings and for each build.gradle file
     }
 
+    @Flaky(because = "https://github.com/gradle/gradle-private/issues/5065")
     def "reuses scripts when build file changes in a way that does not affect behaviour"() {
         given:
         root {
@@ -221,7 +223,6 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
         outputContains 'Greetings from Two!'
     }
 
-    @ToBeFixedForIsolatedProjects(because = "Investigate")
     def "reports errors at the correct location when 2 scripts are identical"() {
         given:
         root {
@@ -509,47 +510,48 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
         getCompileBuildFileOperationsCount() == 8 // classpath and body for the common script + identical script x 3 targets
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
     def "remapped classes have script origin"() {
         root {
             'build.gradle'('''
 
-                void assertScriptOrigin(Object o, Set<String> seen) {
-                    assert (o instanceof org.gradle.internal.scripts.ScriptOrigin)
-                    // need to get through reflection to bypass the Groovy MOP on closures, which would cause calling the method on the owner instead of the closure itself
-                    def originalClassName = o.class.getMethod('getOriginalClassName').invoke(o)
-                    def contentHash = o.class.getMethod('getContentHash').invoke(o)
-                    assert originalClassName
-                    assert contentHash
-                    println "Action type: ${originalClassName} (remapped name: ${o.class})"
-                    println "Action hash: ${contentHash}"
-                    if (!seen.add(contentHash)) {
-                       throw new AssertionError("Expected a unique hash, but found duplicate: ${o.contentHash} in $seen")
+                class Asserter {
+                    static void assertScriptOrigin(Object o, Set<String> seen) {
+                        assert (o instanceof org.gradle.internal.scripts.ScriptOrigin)
+                        // need to get through reflection to bypass the Groovy MOP on closures, which would cause calling the method on the owner instead of the closure itself
+                        def originalClassName = o.class.getMethod('getOriginalClassName').invoke(o)
+                        def contentHash = o.class.getMethod('getContentHash').invoke(o)
+                        assert originalClassName
+                        assert contentHash
+                        println "Action type: ${originalClassName} (remapped name: ${o.class})"
+                        println "Action hash: ${contentHash}"
+                        if (!seen.add(contentHash)) {
+                           throw new AssertionError("Expected a unique hash, but found duplicate: ${o.contentHash} in $seen")
+                        }
                     }
                 }
 
                 Set<String> seen = []
 
-                assertScriptOrigin(this, seen)
+                Asserter.assertScriptOrigin(this, seen)
 
                 task one {
                     doLast {
                         { ->
-                            assertScriptOrigin(owner, seen) // hack to get a handle on the parent closure
+                            Asserter.assertScriptOrigin(owner, seen) // hack to get a handle on the parent closure
                         }()
                     }
                 }
 
                 task two {
                     def v
-                    v = { assertScriptOrigin(v, seen) }
+                    v = { Asserter.assertScriptOrigin(v, seen) }
                     doFirst(v)
                 }
 
                 task three {
                     doLast(new Action() {
                         void execute(Object o) {
-                            assertScriptOrigin(this, seen)
+                            Asserter.assertScriptOrigin(this, seen)
                         }
                     })
                 }
@@ -557,7 +559,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
                 task four {
                     doLast {
                         def a = new A()
-                        assertScriptOrigin(a, seen)
+                        Asserter.assertScriptOrigin(a, seen)
                     }
                 }
 
@@ -604,6 +606,7 @@ class CrossBuildScriptCachingIntegrationSpec extends AbstractIntegrationSpec {
     }
 
     @ToBeFixedForConfigurationCache(because = "test expect script evaluation")
+    @Requires(value = IntegTestPreconditions.NotEmbeddedExecutor, reason = "explicitly requests a daemon")
     def "script doesn't get recompiled if daemon disappears"() {
         root {
             buildSrc {

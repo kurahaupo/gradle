@@ -15,7 +15,6 @@
  */
 package org.gradle.plugins.ide.eclipse
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.integtests.fixtures.TestResources
 import org.junit.Rule
 import org.junit.Test
@@ -25,7 +24,6 @@ class EclipseDependencySubstitutionIntegrationTest extends AbstractEclipseIntegr
     public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Test
-    @ToBeFixedForConfigurationCache
     void "external dependency substituted with project dependency"() {
         createDirs("project1", "project2")
         runEclipseTask("include 'project1', 'project2'", """
@@ -36,7 +34,7 @@ allprojects {
 
 project(":project2") {
     dependencies {
-        implementation group: "junit", name: "junit", version: "4.7"
+        implementation("junit:junit:4.7")
     }
 
     configurations.all {
@@ -53,7 +51,6 @@ project(":project2") {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void "transitive external dependency substituted with project dependency"() {
         mavenRepo.module("org.gradle", "module1").dependsOnModules("module2").publish()
         mavenRepo.module("org.gradle", "module2").publish()
@@ -67,7 +64,7 @@ allprojects {
 
 project(":project2") {
     repositories {
-        maven { url "${mavenRepo.uri}" }
+        maven { url = "${mavenRepo.uri}" }
     }
 
     dependencies {
@@ -89,7 +86,6 @@ project(":project2") {
 
 
     @Test
-    @ToBeFixedForConfigurationCache
     void "project dependency substituted with external dependency"() {
         createDirs("project1", "project2")
         runEclipseTask("include 'project1', 'project2'", """

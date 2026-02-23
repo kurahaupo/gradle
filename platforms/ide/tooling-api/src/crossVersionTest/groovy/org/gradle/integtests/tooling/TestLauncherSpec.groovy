@@ -72,14 +72,28 @@ abstract class TestLauncherSpec extends ToolingApiSpecification implements WithO
         }
     }
 
+    void launchFailingTests(Collection<TestOperationDescriptor> testsToLaunch) {
+        launchFailingTests { TestLauncher testLauncher ->
+            testLauncher.withTests(testsToLaunch)
+        }
+    }
+
+    void launchFailingTests(Closure configurationClosure) {
+        launchFailingTests(null, configurationClosure)
+    }
+
+    void launchFailingTests(ResultHandler<Void> resultHandler, Closure configurationClosure) {
+        fails { ProjectConnection connection ->
+            launchTests(connection, resultHandler, cancellationTokenSource.token(), configurationClosure)
+        }
+    }
+
     void launchTests(ProjectConnection connection, ResultHandler<Void> resultHandler, CancellationToken cancellationToken, Closure configurationClosure) {
         TestLauncher testLauncher = connection.newTestLauncher()
             .withCancellationToken(cancellationToken)
             .addProgressListener(events, OperationType.TASK, OperationType.TEST)
 
-        collectOutputs(testLauncher)
-
-        configurationClosure.call(testLauncher)
+        configurationClosure(testLauncher)
 
         events.clear()
         if (resultHandler == null) {
@@ -328,6 +342,8 @@ abstract class TestLauncherSpec extends ToolingApiSpecification implements WithO
 
         void test(String name, @DelegatesTo(value = TestEventSpec, strategy = Closure.DELEGATE_FIRST) Closure<?> spec)
 
+        void test(String name, String className, @DelegatesTo(value = TestEventSpec, strategy = Closure.DELEGATE_FIRST) Closure<?> spec)
+
         void testMethodSuite(String name, @DelegatesTo(value = TestEventSpec, strategy = Closure.DELEGATE_FIRST) Closure<?> spec)
     }
 
@@ -426,18 +442,23 @@ abstract class TestLauncherSpec extends ToolingApiSpecification implements WithO
         void test(String name, @DelegatesTo(value = TestEventSpec, strategy = Closure.DELEGATE_FIRST) Closure<?> spec) {
             def expectedClassName = ((JvmTestOperationDescriptor) parent).className
             assert expectedClassName != null
+            test(name, expectedClassName, spec)
+        }
+
+        @Override
+        void test(String name, String className, @DelegatesTo(value = TestEventSpec, strategy = Closure.DELEGATE_FIRST) Closure<?> spec) {
             def child = testEvents.find {
                 it.parent == parent &&
                     it.jvmTestKind == JvmTestKind.ATOMIC &&
                     it.suiteName == null &&
-                    it.className == expectedClassName &&
+                    it.className == className &&
                     it.methodName == name &&
                     it.name == name
             }
             if (child == null) {
                 failWith("test", name)
             }
-            assertSpec(child, testEvents, verifiedEvents, "Test $name($expectedClassName)", spec)
+            assertSpec(child, testEvents, verifiedEvents, "Test $name($className)", spec)
         }
 
         @Override

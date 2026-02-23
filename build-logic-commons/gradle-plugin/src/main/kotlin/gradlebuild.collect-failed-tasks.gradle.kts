@@ -13,27 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import com.gradle.develocity.agent.gradle.scan.BuildScanConfiguration
 import gradlebuild.AbstractBuildScanInfoCollectingService
 import gradlebuild.registerBuildScanInfoCollectingService
+import io.gitlab.arturbosch.detekt.Detekt
 import org.gradle.tooling.events.task.TaskFailureResult
 import org.gradle.tooling.events.task.TaskOperationResult
-import org.jlleitschuh.gradle.ktlint.tasks.GenerateReportsTask
 import java.io.Serializable
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Register a build service that monitors compilation tasks and code quality tasks (Checkstyle/CodeNarc/ktlint)
+ * Register a build service that monitors compilation tasks and code quality tasks (Checkstyle/CodeNarc/detekt)
  * and reports them as TeamCity build problems.
  */
-registerBuildScanInfoCollectingService(CollectFailedTaskPathsBuildService::class.java, ::shouldBeReportedAsTeamCityBuildProblem) { failedTasksInBuildLogic, failedTasksInMainBuild ->
-    buildScanPublished {
-        ((failedTasksInBuildLogic as List<*>) + (failedTasksInMainBuild as List<*>)).forEach {
-            println("##teamcity[buildProblem description='${buildScanUri}/console-log?task=$it']")
+registerBuildScanInfoCollectingService(CollectFailedTaskPathsBuildService::class.java, ::shouldBeReportedAsTeamCityBuildProblem) { gradleRootProject, failedTasksInBuildLogic, failedTasksInMainBuild ->
+    gradleRootProject.extensions.findByType<BuildScanConfiguration>()?.run {
+        buildScanPublished {
+            ((failedTasksInBuildLogic as List<*>) + (failedTasksInMainBuild as List<*>)).forEach {
+                println("##teamcity[buildProblem description='${buildScanUri}/console-log?task=$it']")
+            }
         }
     }
 }
 
-fun shouldBeReportedAsTeamCityBuildProblem(task: Task) = task is Checkstyle || task is GenerateReportsTask || task is AbstractCompile || task is CodeNarc
+fun shouldBeReportedAsTeamCityBuildProblem(task: Task) = task is Checkstyle || task is Detekt || task is AbstractCompile || task is CodeNarc
 
 abstract class CollectFailedTaskPathsBuildService : AbstractBuildScanInfoCollectingService() {
     private val failedTaskPaths = CopyOnWriteArrayList<String>()
@@ -41,7 +44,7 @@ abstract class CollectFailedTaskPathsBuildService : AbstractBuildScanInfoCollect
 
     override fun shouldInclude(taskPath: String): Boolean {
         // https://github.com/gradle/gradle/issues/21351
-        return super.shouldInclude(taskPath) || taskPath.contains("ktlintMainSourceSetCheck")
+        return super.shouldInclude(taskPath) || taskPath.contains("detekt")
     }
 
     override fun action(taskPath: String, taskResult: TaskOperationResult) {

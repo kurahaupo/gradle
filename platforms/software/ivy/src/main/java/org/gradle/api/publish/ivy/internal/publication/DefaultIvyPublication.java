@@ -25,9 +25,8 @@ import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.component.SoftwareComponent;
 import org.gradle.api.internal.CollectionCallbackActionDecorator;
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier;
-import org.gradle.api.internal.artifacts.Module;
+import org.gradle.api.internal.attributes.AttributesFactory;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.component.SoftwareComponentInternal;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.project.ProjectInternal;
@@ -61,9 +60,9 @@ import org.gradle.internal.DisplayName;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.typeconversion.NotationParser;
 import org.gradle.util.internal.GUtil;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.util.HashSet;
@@ -74,11 +73,13 @@ import java.util.stream.Stream;
 
 public abstract class DefaultIvyPublication implements IvyPublicationInternal {
 
+    public static final String DEFAULT_STATUS = "integration";
+
     private final String name;
     private final IvyPublicationCoordinates publicationCoordinates;
     private final VersionMappingStrategyInternal versionMappingStrategy;
     private final TaskDependencyFactory taskDependencyFactory;
-    private final ImmutableAttributesFactory immutableAttributesFactory;
+    private final AttributesFactory attributesFactory;
 
     private final IvyModuleDescriptorSpecInternal descriptor;
     private final IvyConfigurationContainer configurations;
@@ -86,8 +87,7 @@ public abstract class DefaultIvyPublication implements IvyPublicationInternal {
     private final PublicationArtifactSet<IvyArtifact> metadataArtifacts;
     private final PublicationArtifactSet<IvyArtifact> derivedArtifacts;
     private final PublicationArtifactSet<IvyArtifact> publishableArtifacts;
-    private final SetProperty<IvyArtifact> componentArtifacts;
-    private final SetProperty<IvyConfiguration> componentConfigurations;
+
     private final Set<String> silencedVariants = new HashSet<>();
     private IvyArtifact ivyDescriptorArtifact;
     private TaskProvider<? extends Task> moduleDescriptorGenerator;
@@ -106,7 +106,7 @@ public abstract class DefaultIvyPublication implements IvyPublicationInternal {
         IvyPublicationCoordinates publicationCoordinates,
         NotationParser<Object, IvyArtifact> ivyArtifactNotationParser,
         FileCollectionFactory fileCollectionFactory,
-        ImmutableAttributesFactory immutableAttributesFactory,
+        AttributesFactory attributesFactory,
         CollectionCallbackActionDecorator collectionCallbackActionDecorator,
         VersionMappingStrategyInternal versionMappingStrategy,
         TaskDependencyFactory taskDependencyFactory,
@@ -114,19 +114,17 @@ public abstract class DefaultIvyPublication implements IvyPublicationInternal {
     ) {
         this.name = name;
         this.publicationCoordinates = publicationCoordinates;
-        this.immutableAttributesFactory = immutableAttributesFactory;
+        this.attributesFactory = attributesFactory;
         this.versionMappingStrategy = versionMappingStrategy;
         this.taskDependencyFactory = taskDependencyFactory;
 
         IvyComponentParser ivyComponentParser = objectFactory.newInstance(IvyComponentParser.class, ivyArtifactNotationParser);
 
-        this.componentArtifacts = objectFactory.setProperty(IvyArtifact.class);
-        this.componentArtifacts.convention(getComponent().map(ivyComponentParser::parseArtifacts));
-        this.componentArtifacts.finalizeValueOnRead();
+        getComponentArtifacts().convention(getComponent().map(ivyComponentParser::parseArtifacts));
+        getComponentArtifacts().finalizeValueOnRead();
 
-        this.componentConfigurations = objectFactory.setProperty(IvyConfiguration.class);
-        this.componentConfigurations.convention(getComponent().map(ivyComponentParser::parseConfigurations));
-        this.componentConfigurations.finalizeValueOnRead();
+        getComponentConfigurations().convention(getComponent().map(ivyComponentParser::parseConfigurations));
+        getComponentConfigurations().finalizeValueOnRead();
 
         this.mainArtifacts = instantiator.newInstance(DefaultIvyArtifactSet.class, name, ivyArtifactNotationParser, fileCollectionFactory, collectionCallbackActionDecorator);
         this.metadataArtifacts = new DefaultPublicationArtifactSet<>(IvyArtifact.class, "metadata artifacts for " + name, fileCollectionFactory, collectionCallbackActionDecorator);
@@ -136,7 +134,7 @@ public abstract class DefaultIvyPublication implements IvyPublicationInternal {
         this.configurations = instantiator.newInstance(DefaultIvyConfigurationContainer.class, instantiator, collectionCallbackActionDecorator);
 
         this.descriptor = objectFactory.newInstance(DefaultIvyModuleDescriptorSpec.class, objectFactory, publicationCoordinates);
-        this.descriptor.setStatus(Module.DEFAULT_STATUS);
+        this.descriptor.setStatus(DEFAULT_STATUS);
         this.descriptor.getWriteGradleMetadataMarker().set(providerFactory.provider(this::writeGradleMetadataMarker));
         this.descriptor.getGlobalExcludes().set(getComponent().map(ivyComponentParser::parseGlobalExcludes));
         this.descriptor.getConfigurations().set(this.configurations);
@@ -154,7 +152,7 @@ public abstract class DefaultIvyPublication implements IvyPublicationInternal {
     }
 
     @Override
-    @Nonnull
+    @NonNull
     public String getName() {
         return name;
     }
@@ -258,13 +256,16 @@ public abstract class DefaultIvyPublication implements IvyPublicationInternal {
             return;
         }
         populated = true;
-        if (!artifactsOverridden && componentArtifacts.isPresent()) {
-            mainArtifacts.addAll(componentArtifacts.get());
+        if (!artifactsOverridden && getComponentArtifacts().isPresent()) {
+            mainArtifacts.addAll(getComponentArtifacts().get());
         }
-        if (componentConfigurations.isPresent()) {
-            configurations.addAll(componentConfigurations.get());
+        if (getComponentConfigurations().isPresent()) {
+            configurations.addAll(getComponentConfigurations().get());
         }
     }
+
+    protected abstract SetProperty<IvyArtifact> getComponentArtifacts();
+    protected abstract SetProperty<IvyConfiguration> getComponentConfigurations();
 
     @Override
     public void configurations(Action<? super IvyConfigurationContainer> config) {
@@ -467,7 +468,7 @@ public abstract class DefaultIvyPublication implements IvyPublicationInternal {
 
     @Override
     public ImmutableAttributes getAttributes() {
-        return immutableAttributesFactory.of(ProjectInternal.STATUS_ATTRIBUTE, getDescriptor().getStatus());
+        return attributesFactory.of(ProjectInternal.STATUS_ATTRIBUTE, getDescriptor().getStatus());
     }
 
     private String getPublishedUrl(PublishArtifact source) {

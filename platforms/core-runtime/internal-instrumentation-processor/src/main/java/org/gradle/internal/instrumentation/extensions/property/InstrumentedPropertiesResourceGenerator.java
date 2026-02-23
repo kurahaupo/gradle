@@ -19,6 +19,7 @@ package org.gradle.internal.instrumentation.extensions.property;
 
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.gradle.internal.UncheckedException;
 import org.gradle.internal.instrumentation.api.annotations.ReplacesEagerProperty.BinaryCompatibility;
 import org.gradle.internal.instrumentation.model.CallInterceptionRequest;
 import org.gradle.internal.instrumentation.model.CallableInfo;
@@ -29,8 +30,8 @@ import org.objectweb.asm.Type;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
-import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -71,10 +72,10 @@ public class InstrumentedPropertiesResourceGenerator implements InstrumentationR
                 Map<String, List<CallInterceptionRequest>> requests = filteredRequests.stream()
                     .collect(groupingBy(InstrumentedPropertiesResourceGenerator::getFqName));
                 List<UpgradedProperty> entries = toPropertyEntries(requests);
-                try (Writer writer = new OutputStreamWriter(outputStream)) {
+                try (Writer writer = new OutputStreamWriter(outputStream, StandardCharsets.UTF_8)) {
                     writer.write(mapper.writeValueAsString(entries));
                 } catch (IOException e) {
-                    throw new UncheckedIOException(e);
+                    throw UncheckedException.throwAsUncheckedException(e);
                 }
             }
         };

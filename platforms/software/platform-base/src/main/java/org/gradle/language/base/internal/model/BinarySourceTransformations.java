@@ -36,7 +36,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import static org.apache.commons.lang.StringUtils.capitalize;
+import static org.apache.commons.lang3.StringUtils.capitalize;
 
 /**
  * Creates source 'transformation' tasks based on the available {@link LanguageTransform}s.
@@ -74,6 +74,7 @@ public class BinarySourceTransformations {
 
                 final SourceTransformTaskConfig taskConfig = languageTransform.getTransformTask();
                 String taskName = getTransformTaskName(languageTransform, taskConfig, binary, sourceSetToCompile);
+                @SuppressWarnings("deprecation")
                 Task task = tasks.create(taskName, taskConfig.getTaskType());
                 taskConfig.configureTask(task, binary, sourceSetToCompile, serviceRegistry);
 

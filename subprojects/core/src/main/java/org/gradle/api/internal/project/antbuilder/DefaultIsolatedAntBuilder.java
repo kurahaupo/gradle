@@ -16,11 +16,8 @@
 package org.gradle.api.internal.project.antbuilder;
 
 import com.google.common.collect.Lists;
-import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.internal.ClassPathRegistry;
-import org.gradle.api.internal.classloading.GroovySystemLoader;
-import org.gradle.api.internal.classloading.GroovySystemLoaderFactory;
 import org.gradle.api.internal.classpath.ModuleRegistry;
 import org.gradle.api.internal.project.IsolatedAntBuilder;
 import org.gradle.api.logging.LogLevel;
@@ -36,9 +33,11 @@ import org.gradle.internal.classloader.VisitableURLClassLoader;
 import org.gradle.internal.classpath.ClassPath;
 import org.gradle.internal.classpath.DefaultClassPath;
 import org.gradle.internal.concurrent.Stoppable;
+import org.gradle.internal.groovyloader.GroovySystemLoader;
+import org.gradle.internal.groovyloader.GroovySystemLoaderFactory;
 import org.gradle.internal.jvm.Jvm;
-import org.gradle.util.internal.ClosureBackedAction;
 
+import javax.inject.Inject;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -59,6 +58,7 @@ public class DefaultIsolatedAntBuilder implements IsolatedAntBuilder, Stoppable 
     private final GroovySystemLoader gradleApiGroovyLoader;
     private final GroovySystemLoader antAdapterGroovyLoader;
 
+    @Inject
     public DefaultIsolatedAntBuilder(ClassPathRegistry classPathRegistry, ClassLoaderFactory classLoaderFactory, ModuleRegistry moduleRegistry) {
         this.classPathRegistry = classPathRegistry;
         this.classLoaderFactory = classLoaderFactory;
@@ -90,13 +90,13 @@ public class DefaultIsolatedAntBuilder implements IsolatedAntBuilder, Stoppable 
         gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("gradle-core").getImplementationClasspath());
         gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("gradle-logging-api").getImplementationClasspath());
         gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("gradle-logging").getImplementationClasspath());
-        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getExternalModule("groovy").getClasspath());
-        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getExternalModule("groovy-ant").getClasspath());
-        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getExternalModule("groovy-datetime").getClasspath());
-        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getExternalModule("groovy-groovydoc").getClasspath());
-        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getExternalModule("groovy-json").getClasspath());
-        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getExternalModule("groovy-templates").getClasspath());
-        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getExternalModule("groovy-xml").getClasspath());
+        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("groovy").getImplementationClasspath());
+        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("groovy-ant").getImplementationClasspath());
+        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("groovy-datetime").getImplementationClasspath());
+        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("groovy-groovydoc").getImplementationClasspath());
+        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("groovy-json").getImplementationClasspath());
+        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("groovy-templates").getImplementationClasspath());
+        gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("groovy-xml").getImplementationClasspath());
 
         // Need Transformer (part of AntBuilder API) from base services
         gradleCoreUrls = gradleCoreUrls.plus(moduleRegistry.getModule("gradle-base-services").getImplementationClasspath());
@@ -129,11 +129,6 @@ public class DefaultIsolatedAntBuilder implements IsolatedAntBuilder, Stoppable 
             LOG.debug("Forking a new isolated ant builder for classpath : {}", classpath);
         }
         return new DefaultIsolatedAntBuilder(this, classpath);
-    }
-
-    @Override
-    public void execute(Closure antClosure) {
-        execute(delegate -> ClosureBackedAction.execute(delegate, antClosure));
     }
 
     @Override

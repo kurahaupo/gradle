@@ -30,8 +30,8 @@ import spock.lang.Issue
 class NestedInputKotlinImplementationTrackingIntegrationTest extends AbstractIntegrationSpec implements DirectoryBuildCacheFixture {
 
     @Override
-    protected String getDefaultBuildFileName() {
-        return 'build.gradle.kts'
+    TestFile getBuildFile() {
+        return super.getBuildKotlinFile()
     }
 
     def "implementations in nested Action property in Kotlin build script is tracked"() {
@@ -191,8 +191,8 @@ class NestedInputKotlinImplementationTrackingIntegrationTest extends AbstractInt
         """
 
         when:
-        if (['1.4', '1.5', '1.6'].contains(kotlinLanguageVersion)) {
-            executer.expectDeprecationWarning("w: Language version $kotlinLanguageVersion is deprecated and its support will be removed in a future version of Kotlin")
+        if (['1.8', '1.9', '2.0'].contains(kotlinLanguageVersion)) {
+            executer.expectExternalDeprecatedMessage("w: Language version $kotlinLanguageVersion is deprecated and its support will be removed in a future version of Kotlin")
         }
         run "myTask"
 
@@ -200,7 +200,7 @@ class NestedInputKotlinImplementationTrackingIntegrationTest extends AbstractInt
         executedAndNotSkipped(":myTask")
 
         where:
-        kotlinLanguageVersion << KotlinGradlePluginVersions.LANGUAGE_VERSIONS
+        kotlinLanguageVersion << new KotlinGradlePluginVersions().languageVersionsSupportedByLatestStableOrRc()
     }
 
     private void setupTaskWithNestedAction(String actionType, String actionInvocation, TestFile projectDir = temporaryFolder.testDirectory) {

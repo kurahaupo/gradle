@@ -60,6 +60,7 @@ class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecificatio
         file('sysProperty.txt').text.contains('welcomeToTheJungle')
     }
 
+    @TargetGradleVersion('<9.0') // -b removed in Gradle 9.0
     def "can use custom build file"() {
         given:
         file("foo.gradle") << """
@@ -73,7 +74,6 @@ class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecificatio
 
         then:
         noExceptionThrown()
-
     }
 
     def "can use custom log level"() {
@@ -87,18 +87,18 @@ class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecificatio
 """
 
         when:
-        String debug = withBuild { it.withArguments('-d') }.standardOutput
-
-        and:
-        String info = withBuild { it.withArguments('-i') }.standardOutput
+        withBuild { it.withArguments('-d') }
 
         then:
-        debug.count("debugging stuff") == 1
-        debug.count("infoing stuff") == 1
+        result.output.count("debugging stuff") == 1
+        result.output.count("infoing stuff") == 1
 
-        and:
-        info.count("debugging stuff") == 0
-        info.count("infoing stuff") == 1
+        when:
+        withBuild { it.withArguments('-i') }
+
+        then:
+        result.output.count("debugging stuff") == 0
+        result.output.count("infoing stuff") == 1
     }
 
     def "gives decent feedback for invalid option"() {
@@ -157,7 +157,7 @@ class PassingCommandLineArgumentsCrossVersionSpec extends ToolingApiSpecificatio
         noExceptionThrown()
     }
 
-    @TargetGradleVersion(">=3.0 <5.0")
+    @TargetGradleVersion(">=4.0 <5.0")
     def "can configure searchUpwards via build arguments"() {
         given:
         file('build.gradle') << "assert !gradle.startParameter.searchUpwards"

@@ -57,11 +57,11 @@ public class KotlinGradlePluginProjectInitDescriptor extends JvmGradlePluginProj
         super.generateProjectBuildScript(projectName, settings, buildScriptBuilder);
 
         String kotlinVersion = libraryVersionProvider.getVersion("kotlin");
-        buildScriptBuilder.plugin("Apply the Kotlin JVM plugin to add support for Kotlin.", "org.jetbrains.kotlin.jvm", kotlinVersion);
+        buildScriptBuilder.plugin("Apply the Kotlin JVM plugin to add support for Kotlin.", "org.jetbrains.kotlin.jvm", kotlinVersion, "kotlin-jvm");
 
         if (!settings.isUseTestSuites()) {
-            buildScriptBuilder.testImplementationDependency("Use the Kotlin JUnit 5 integration.",
-                BuildInitDependency.of("org.jetbrains.kotlin:kotlin-test-junit5"));
+            buildScriptBuilder.testImplementationDependency("Use the Kotlin Test integration.",
+                BuildInitDependency.of("org.jetbrains.kotlin:kotlin-test"));
             buildScriptBuilder.testRuntimeOnlyDependency(null,
                 BuildInitDependency.of("org.junit.platform:junit-platform-launcher"));
         }

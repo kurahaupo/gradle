@@ -16,18 +16,17 @@
 package org.gradle.util.internal;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.StringUtils;
-import org.gradle.api.UncheckedIOException;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.gradle.internal.IoActions;
+import org.gradle.internal.UncheckedException;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
@@ -60,7 +59,7 @@ public class GFileUtils {
                 touchExisting(file);
             }
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -99,7 +98,7 @@ public class GFileUtils {
         try {
             FileUtils.moveFile(source, destination);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -119,7 +118,7 @@ public class GFileUtils {
         try {
             FileUtils.copyFile(source, destination);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -127,7 +126,7 @@ public class GFileUtils {
         try {
             FileUtils.copyDirectory(source, destination);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -135,7 +134,7 @@ public class GFileUtils {
         try {
             FileUtils.moveDirectory(source, destination);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -154,7 +153,7 @@ public class GFileUtils {
         try {
             return FileUtils.readFileToString(file, encoding);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -169,7 +168,7 @@ public class GFileUtils {
         try {
             return readFile(file);
         } catch (Exception e) {
-            return "Unable to read file '" + file + "' due to: " + e.toString();
+            return "Unable to read file '" + file + "' due to: " + e;
         }
     }
 
@@ -181,7 +180,7 @@ public class GFileUtils {
         try {
             FileUtils.writeStringToFile(destination, content, encoding);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -201,7 +200,7 @@ public class GFileUtils {
         try {
             FileUtils.copyURLToFile(source, destination);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -209,7 +208,7 @@ public class GFileUtils {
         try {
             FileUtils.deleteDirectory(directory);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -217,45 +216,11 @@ public class GFileUtils {
         return FileUtils.deleteQuietly(file);
     }
 
-    public static class TailReadingException extends RuntimeException {
-        public TailReadingException(Throwable throwable) {
-            super(throwable);
-        }
-    }
-
-    /**
-     * @param file to read from tail
-     * @param maxLines max lines to read
-     * @return tail content
-     * @throws GFileUtils.TailReadingException when reading failed
-     */
-    public static String tail(File file, int maxLines) throws TailReadingException {
-        BufferedReader reader = null;
-        FileReader fileReader = null;
-        try {
-            fileReader = new FileReader(file);
-            reader = new BufferedReader(fileReader);
-
-            LimitedDescription description = new LimitedDescription(maxLines);
-            String line = reader.readLine();
-            while (line != null) {
-                description.append(line);
-                line = reader.readLine();
-            }
-            return description.toString();
-        } catch (Exception e) {
-            throw new TailReadingException(e);
-        } finally {
-            IoActions.closeQuietly(fileReader);
-            IoActions.closeQuietly(reader);
-        }
-    }
-
     public static void forceDelete(File file) {
         try {
             FileUtils.forceDelete(file);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -263,7 +228,7 @@ public class GFileUtils {
         try {
             return FileUtils.checksum(file, checksum);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw UncheckedException.throwAsUncheckedException(e);
         }
     }
 
@@ -292,7 +257,7 @@ public class GFileUtils {
         }
 
         if (dir.exists() && !dir.isDirectory()) {
-            throw new UncheckedIOException(String.format("Cannot create directory '%s' as it already exists, but is not a directory", dir));
+            throw UncheckedException.throwAsUncheckedException(new IOException(String.format("Cannot create directory '%s' as it already exists, but is not a directory", dir)), true);
         }
 
         List<File> toCreate = new LinkedList<File>();
@@ -310,16 +275,16 @@ public class GFileUtils {
 
             File parentDirToCreateParent = parentDirToCreate.getParentFile();
             if (!parentDirToCreateParent.isDirectory()) {
-                throw new UncheckedIOException(String.format("Cannot create parent directory '%s' when creating directory '%s' as '%s' is not a directory", parentDirToCreate, dir, parentDirToCreateParent));
+                throw UncheckedException.throwAsUncheckedException(new IOException(String.format("Cannot create parent directory '%s' when creating directory '%s' as '%s' is not a directory", parentDirToCreate, dir, parentDirToCreateParent)), true);
             }
 
             if (!parentDirToCreate.mkdir() && !parentDirToCreate.isDirectory()) {
-                throw new UncheckedIOException(String.format("Failed to create parent directory '%s' when creating directory '%s'", parentDirToCreate, dir));
+                throw UncheckedException.throwAsUncheckedException(new IOException(String.format("Failed to create parent directory '%s' when creating directory '%s'", parentDirToCreate, dir)), true);
             }
         }
 
         if (!dir.mkdir() && !dir.isDirectory()) {
-            throw new UncheckedIOException(String.format("Failed to create directory '%s'", dir));
+            throw UncheckedException.throwAsUncheckedException(new IOException(String.format("Failed to create directory '%s'", dir)), true);
         }
     }
 

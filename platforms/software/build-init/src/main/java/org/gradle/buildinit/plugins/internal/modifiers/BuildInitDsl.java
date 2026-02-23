@@ -16,12 +16,13 @@
 package org.gradle.buildinit.plugins.internal.modifiers;
 
 import com.google.common.collect.ImmutableList;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.gradle.api.GradleException;
 import org.gradle.internal.logging.text.TreeFormatter;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.util.List;
+import java.util.Locale;
 
 public enum BuildInitDsl implements WithIdentifier {
 
@@ -72,6 +73,6 @@ public enum BuildInitDsl implements WithIdentifier {
 
     @Override
     public String toString() {
-        return StringUtils.capitalize(name().toLowerCase());
+        return StringUtils.capitalize(name().toLowerCase(Locale.ROOT));
     }
 }

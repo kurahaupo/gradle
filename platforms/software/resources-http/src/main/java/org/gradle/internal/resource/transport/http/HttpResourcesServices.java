@@ -25,7 +25,9 @@ import org.gradle.internal.authentication.DefaultBasicAuthentication;
 import org.gradle.internal.authentication.DefaultDigestAuthentication;
 import org.gradle.internal.authentication.DefaultHttpHeaderAuthentication;
 import org.gradle.internal.resource.connector.ResourceConnectorFactory;
+import org.gradle.internal.service.Provides;
 import org.gradle.internal.service.ServiceRegistration;
+import org.gradle.internal.service.ServiceRegistrationProvider;
 import org.gradle.internal.service.scopes.AbstractGradleModuleServices;
 
 public class HttpResourcesServices extends AbstractGradleModuleServices {
@@ -39,25 +41,31 @@ public class HttpResourcesServices extends AbstractGradleModuleServices {
         registration.addProvider(new AuthenticationSchemeAction());
     }
 
-    private static class GlobalScopeServices {
+    private static class GlobalScopeServices implements ServiceRegistrationProvider {
+        @Provides
         SslContextFactory createSslContextFactory() {
             return new DefaultSslContextFactory();
         }
 
-        HttpClientHelper.Factory createHttpClientHelperFactory(DocumentationRegistry documentationRegistry) {
-            return HttpClientHelper.Factory.createFactory(documentationRegistry);
+        @Provides
+        HttpClientFactory createHttpClientHelperFactory(DocumentationRegistry documentationRegistry) {
+            return new ApacheCommonsHttpClientFactory(documentationRegistry);
         }
 
-        ResourceConnectorFactory createHttpConnectorFactory(SslContextFactory sslContextFactory, HttpClientHelper.Factory httpClientHelperFactory) {
+        @Provides
+        ResourceConnectorFactory createHttpConnectorFactory(SslContextFactory sslContextFactory, HttpClientFactory httpClientHelperFactory) {
             return new HttpConnectorFactory(sslContextFactory, httpClientHelperFactory);
         }
     }
 
-    private static class AuthenticationSchemeAction {
+    private static class AuthenticationSchemeAction implements ServiceRegistrationProvider {
+        @SuppressWarnings("UnusedVariable")
+        @Provides
         public void configure(ServiceRegistration registration, AuthenticationSchemeRegistry authenticationSchemeRegistry) {
             authenticationSchemeRegistry.registerScheme(BasicAuthentication.class, DefaultBasicAuthentication.class);
             authenticationSchemeRegistry.registerScheme(DigestAuthentication.class, DefaultDigestAuthentication.class);
             authenticationSchemeRegistry.registerScheme(HttpHeaderAuthentication.class, DefaultHttpHeaderAuthentication.class);
         }
     }
+
 }

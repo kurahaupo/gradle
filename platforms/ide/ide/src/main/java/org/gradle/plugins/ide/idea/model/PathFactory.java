@@ -16,13 +16,14 @@
 package org.gradle.plugins.ide.idea.model;
 
 import com.google.common.base.Objects;
-import org.gradle.api.UncheckedIOException;
+import org.gradle.internal.UncheckedException;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -106,9 +107,9 @@ public class PathFactory {
             for (Variable variable : variables) {
                 expandedUrl = expandedUrl.replace(variable.getName(), variable.getPrefix());
             }
-            if (expandedUrl.toLowerCase().startsWith("file://")) {
+            if (expandedUrl.toLowerCase(Locale.ROOT).startsWith("file://")) {
                 expandedUrl = toUrl("file", new File(expandedUrl.substring(7)).getCanonicalFile());
-            } else if (expandedUrl.toLowerCase().startsWith("jar://")) {
+            } else if (expandedUrl.toLowerCase(Locale.ROOT).startsWith("jar://")) {
                 String[] parts = expandedUrl.substring(6).split("!");
                 if (parts.length == 2) {
                     expandedUrl = toUrl("jar", new File(parts[0]).getCanonicalFile()) + "!" + parts[1];
@@ -116,7 +117,7 @@ public class PathFactory {
             }
             return new Path(url, expandedUrl, relPath);
         } catch (IOException ex) {
-            throw new UncheckedIOException(ex);
+            throw UncheckedException.throwAsUncheckedException(ex);
         }
     }
 
@@ -152,7 +153,7 @@ public class PathFactory {
             }
             return list;
         } catch (IOException ex) {
-            throw new UncheckedIOException(ex);
+            throw UncheckedException.throwAsUncheckedException(ex);
         }
     }
 

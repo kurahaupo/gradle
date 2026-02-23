@@ -17,6 +17,7 @@ package org.gradle.api.internal.initialization;
 
 import groovy.lang.Closure;
 import org.gradle.api.Action;
+import org.gradle.api.InvalidUserCodeException;
 import org.gradle.api.NonExtensible;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
@@ -27,7 +28,6 @@ import org.gradle.api.artifacts.dsl.RepositoryHandler;
 import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.api.internal.artifacts.DependencyResolutionServices;
 import org.gradle.api.internal.artifacts.JavaEcosystemSupport;
-import org.gradle.api.internal.artifacts.configurations.ConfigurationRolesForMigration;
 import org.gradle.api.internal.artifacts.configurations.RoleBasedConfigurationContainerInternal;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
@@ -58,15 +58,18 @@ public class DefaultScriptHandler implements ScriptHandler, ScriptHandlerInterna
     private final ResourceLocation scriptResource;
     private final ClassLoaderScope classLoaderScope;
     private final DependencyResolutionServices dependencyResolutionServices;
-    private final DependencyLockingHandler dependencyLockingHandler;
     private final BuildLogicBuilder buildLogicBuilder;
+
     // The following values are relatively expensive to create, so defer creation until required
-    private ClassPath resolvedClasspath;
     private RepositoryHandler repositoryHandler;
     private DependencyHandler dependencyHandler;
-    private ScriptClassPathResolutionContext resolutionContext;
+    private DependencyLockingHandler dependencyLockingHandler;
     private RoleBasedConfigurationContainerInternal configContainer;
+
+    // Lazy classpath state
+    private ScriptClassPathResolutionContext resolutionContext;
     private Configuration classpathConfiguration;
+    private ClassPath resolvedClasspath;
 
     @Inject
     public DefaultScriptHandler(
@@ -78,14 +81,19 @@ public class DefaultScriptHandler implements ScriptHandler, ScriptHandlerInterna
         this.dependencyResolutionServices = dependencyResolutionServices;
         this.scriptResource = scriptSource.getResource().getLocation();
         this.classLoaderScope = classLoaderScope;
-        this.dependencyLockingHandler = dependencyResolutionServices.getDependencyLockingHandler();
         this.buildLogicBuilder = buildLogicBuilder;
-        JavaEcosystemSupport.configureSchema(dependencyResolutionServices.getAttributesSchema(), dependencyResolutionServices.getObjectFactory());
+        JavaEcosystemSupport.configureServices(dependencyResolutionServices.getAttributesSchema(), dependencyResolutionServices.getAttributeDescribers(), dependencyResolutionServices.getObjectFactory());
     }
 
     @Override
     public void dependencies(Closure configureClosure) {
-        ConfigureUtil.configure(configureClosure, getDependencies());
+        dependencies(ConfigureUtil.configureUsing(configureClosure));
+    }
+
+    // TODO: This cannot be made part of the public API for ScriptHandler yet
+    // because Kotlin DSL relies on creating a DependencyHandlerScope to back dependencies {}
+    public void dependencies(Action<? super DependencyHandler> action) {
+        action.execute(getDependencies());
     }
 
     @Override
@@ -132,7 +140,12 @@ public class DefaultScriptHandler implements ScriptHandler, ScriptHandlerInterna
 
     @Override
     public void repositories(Closure configureClosure) {
-        ConfigureUtil.configure(configureClosure, getRepositories());
+        repositories(ConfigureUtil.configureUsing(configureClosure));
+    }
+
+    @Override
+    public void repositories(Action<? super RepositoryHandler> action) {
+        action.execute(getRepositories());
     }
 
     @Override
@@ -142,8 +155,8 @@ public class DefaultScriptHandler implements ScriptHandler, ScriptHandlerInterna
     }
 
     @Override
-    public void configurations(Action<? super ConfigurationContainer> configureClosure) {
-        configureClosure.execute(getConfigurations());
+    public void configurations(Action<? super ConfigurationContainer> action) {
+        action.execute(getConfigurations());
     }
 
     @SuppressWarnings("deprecation")
@@ -157,18 +170,32 @@ public class DefaultScriptHandler implements ScriptHandler, ScriptHandlerInterna
             resolutionContext = buildLogicBuilder.prepareDependencyHandler(dependencyHandler);
         }
         if (classpathConfiguration == null) {
-            classpathConfiguration = configContainer.migratingUnlocked(CLASSPATH_CONFIGURATION, ConfigurationRolesForMigration.LEGACY_TO_RESOLVABLE_DEPENDENCY_SCOPE);
+            classpathConfiguration = configContainer.resolvableDependencyScopeLocked(CLASSPATH_CONFIGURATION);
+            configContainer.beforeCollectionChanges(methodName -> {
+                throw new InvalidUserCodeException(
+                    "Cannot mutate " + configContainer.getDisplayName() + " using " + methodName + ". " +
+                        "Configurations cannot be added or removed from the buildscript configuration container."
+                );
+            });
             buildLogicBuilder.prepareClassPath(classpathConfiguration, resolutionContext);
         }
     }
 
     @Override
     public void dependencyLocking(Closure configureClosure) {
-        ConfigureUtil.configure(configureClosure, getDependencyLocking());
+        dependencyLocking(ConfigureUtil.configureUsing(configureClosure));
+    }
+
+    @Override
+    public void dependencyLocking(Action<? super DependencyLockingHandler> action) {
+        action.execute(getDependencyLocking());
     }
 
     @Override
     public DependencyLockingHandler getDependencyLocking() {
+        if (dependencyLockingHandler == null) {
+            dependencyLockingHandler = dependencyResolutionServices.getDependencyLockingHandler();
+        }
         return dependencyLockingHandler;
     }
 

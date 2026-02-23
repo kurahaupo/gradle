@@ -23,9 +23,9 @@ import org.gradle.test.fixtures.Flaky
 import org.gradle.test.fixtures.server.http.BlockingHttpServer
 import org.gradle.tooling.BuildActionFailureException
 import org.gradle.tooling.GradleConnectionException
-import org.gradle.tooling.StreamedValueListener
 import org.gradle.tooling.IntermediateResultHandler
 import org.gradle.tooling.ResultHandler
+import org.gradle.tooling.StreamedValueListener
 import org.gradle.tooling.UnsupportedVersionException
 import org.gradle.tooling.model.GradleProject
 import org.gradle.tooling.model.eclipse.EclipseProject
@@ -54,9 +54,8 @@ class StreamingBuildActionCrossVersionTest extends ToolingApiSpecification {
             finished.countDown()
         } as ResultHandler
 
-        withConnection {
-            def builder = it.action(new ModelStreamingBuildAction())
-            collectOutputs(builder)
+        withConnection { connection ->
+            def builder = connection.action(new ModelStreamingBuildAction())
             builder.setStreamedValueListener(listener)
             builder.run(handler)
             finished.await()
@@ -84,12 +83,11 @@ class StreamingBuildActionCrossVersionTest extends ToolingApiSpecification {
         def listener = { model -> models.add(model) } as StreamedValueListener
         def handler = { model -> models.add(model) } as IntermediateResultHandler
 
-        withConnection {
-            def builder = it.action()
+        withConnection { connection ->
+            def builder = connection.action()
                 .projectsLoaded(new CustomModelStreamingBuildAction(GradleProject, 1), handler)
                 .buildFinished(new CustomModelStreamingBuildAction(EclipseProject, 2), handler)
                 .build()
-            collectOutputs(builder)
             builder.setStreamedValueListener(listener)
             builder.run()
         }
@@ -131,9 +129,8 @@ class StreamingBuildActionCrossVersionTest extends ToolingApiSpecification {
             finished.countDown()
         } as ResultHandler
 
-        withConnection {
-            def builder = it.action(new BlockingModelSendingBuildAction(server.uri("action")))
-            collectOutputs(builder)
+        withConnection { connection ->
+            def builder = connection.action(new BlockingModelSendingBuildAction(server.uri("action")))
             builder.setStreamedValueListener(listener)
             builder.run(handler)
 
@@ -153,9 +150,8 @@ class StreamingBuildActionCrossVersionTest extends ToolingApiSpecification {
         when:
         def listener = { throw new RuntimeException("broken") } as StreamedValueListener
 
-        withConnection {
-            def builder = it.action(new ModelStreamingBuildAction())
-            collectOutputs(builder)
+        withConnection { connection ->
+            def builder = connection.action(new ModelStreamingBuildAction())
             builder.setStreamedValueListener(listener)
             builder.run()
         }
@@ -170,10 +166,8 @@ class StreamingBuildActionCrossVersionTest extends ToolingApiSpecification {
 
     def "build fails when build action streams value when no listener is registered"() {
         when:
-        withConnection {
-            def builder = it.action(new ModelStreamingBuildAction())
-            collectOutputs(builder)
-            builder.run()
+        withConnection { connection ->
+            connection.action(new ModelStreamingBuildAction()).run()
         }
 
         then:
@@ -184,14 +178,13 @@ class StreamingBuildActionCrossVersionTest extends ToolingApiSpecification {
         assertHasConfigureSuccessfulLogging()
     }
 
-    @TargetGradleVersion(">=3.0 <8.6")
+    @TargetGradleVersion(">=4.0 <8.6")
     def "streaming fails when build action is running in a Gradle version that does not support streaming"() {
         when:
         def listener = { } as StreamedValueListener
 
-        withConnection {
-            def builder = it.action(new ModelStreamingBuildAction())
-            collectOutputs(builder)
+        withConnection { connection ->
+            def builder = connection.action(new ModelStreamingBuildAction())
             builder.setStreamedValueListener(listener)
             builder.run()
         }

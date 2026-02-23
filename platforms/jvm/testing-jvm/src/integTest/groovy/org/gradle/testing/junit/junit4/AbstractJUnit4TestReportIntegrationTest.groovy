@@ -16,6 +16,7 @@
 
 package org.gradle.testing.junit.junit4
 
+import org.gradle.api.internal.tasks.testing.report.generic.GenericTestExecutionResult.TestFramework
 import org.gradle.integtests.fixtures.JUnitXmlTestExecutionResult
 import org.gradle.testing.AbstractTestReportIntegrationTest
 import org.gradle.util.internal.VersionNumber
@@ -24,12 +25,17 @@ import org.junit.Assume
 import static org.hamcrest.CoreMatchers.is
 
 abstract class AbstractJUnit4TestReportIntegrationTest extends AbstractTestReportIntegrationTest implements JUnit4CommonTestSources {
+    @Override
+    TestFramework getTestFramework() {
+        return TestFramework.JUNIT4
+    }
+
     def "outputs over lifecycle"() {
         // This test checks behavior that was introduced in JUnit 4.13
         Assume.assumeTrue(VersionNumber.parse(version) >= VersionNumber.parse("4.13"))
 
         when:
-        buildScript """
+        buildFile """
             $junitSetup
             test.reports.junitXml.outputPerTestCase = true
         """

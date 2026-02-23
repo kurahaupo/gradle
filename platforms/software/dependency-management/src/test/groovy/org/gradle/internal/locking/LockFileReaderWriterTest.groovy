@@ -20,14 +20,17 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.internal.DomainObjectContext
 import org.gradle.api.internal.file.FileResolver
 import org.gradle.api.internal.file.TestFiles
+import org.gradle.api.internal.project.ProjectIdentity
 import org.gradle.internal.resource.local.FileResourceListener
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+
+import java.nio.charset.StandardCharsets
+import org.gradle.util.GradleVersion
 import org.gradle.util.Path
 import org.junit.Rule
 import spock.lang.Specification
 import spock.lang.Subject
-import org.gradle.util.GradleVersion
 
 class LockFileReaderWriterTest extends Specification {
     @Rule
@@ -38,12 +41,16 @@ class LockFileReaderWriterTest extends Specification {
     @Subject
     LockFileReaderWriter lockFileReaderWriter
     FileResolver resolver = Mock()
-    DomainObjectContext context = Mock()
+    ProjectIdentity identity = ProjectIdentity.forSubproject(Path.ROOT, Path.path(":foo"))
+    DomainObjectContext context = Mock() {
+        identityPath(_) >> { String value -> Path.path(value) }
+        getProjectIdentity() >> identity
+        getDisplayName() >> identity.displayName
+    }
     FileResourceListener listener = Mock()
     RegularFileProperty lockFile = TestFiles.filePropertyFactory().newFileProperty()
 
     def setup() {
-        context.identityPath(_) >> { String value -> Path.path(value) }
         resolver.canResolveRelativePath() >> true
         resolver.resolve(LockFileReaderWriter.DEPENDENCY_LOCKING_FOLDER) >> lockDir
         resolver.resolve(LockFileReaderWriter.UNIQUE_LOCKFILE_NAME) >> tmpDir.file(LockFileReaderWriter.UNIQUE_LOCKFILE_NAME)
@@ -60,7 +67,7 @@ class LockFileReaderWriterTest extends Specification {
 bar=a
 foo=a,b
 empty=c
-""".denormalize()
+"""
         !lockDir.exists()
     }
 
@@ -87,7 +94,7 @@ bar=b,d
 foo=a,b
 foobar=d
 empty=c,e,f
-""".denormalize()
+"""
     }
 
     def 'writes a unique lock file to a custom location'() {
@@ -104,7 +111,7 @@ empty=c,e,f
 bar=a
 foo=a,b
 empty=c
-""".denormalize()
+"""
         !lockDir.exists()
     }
 
@@ -133,6 +140,20 @@ bar=a,c
 foo=a,b,c
 empty=d
 """
+
+        when:
+        def result = lockFileReaderWriter.readUniqueLockFile()
+
+        then:
+        result == [a: ['bar', 'foo'], b: ['foo'], c: ['bar', 'foo'], d: []]
+
+        1 * listener.fileObserved(lockFile)
+    }
+
+    def 'reads a unique lock file with CRLF line endings'() {
+        given:
+        def lockFile = tmpDir.file('gradle.lockfile')
+        lockFile.bytes = "#ignored\r\nbar=a,c\r\nfoo=a,b,c\r\nempty=d\r\n".getBytes(StandardCharsets.UTF_8)
 
         when:
         def result = lockFileReaderWriter.readUniqueLockFile()
@@ -192,7 +213,7 @@ empty=d
 bar=a
 foo=a,b
 empty=c
-""".denormalize()
+"""
 
     }
 
@@ -263,9 +284,7 @@ empty=d
 
         then:
         def ex = thrown(IllegalStateException)
-        1 * context.getProjectPath() >> Path.path('foo')
-        ex.getMessage().contains('Dependency locking cannot be used for project')
-        ex.getMessage().contains('foo')
+        ex.getMessage().contains("Dependency locking cannot be used for project :foo")
     }
 
     def 'fails to read a legacy lockfile if root could not be determined'() {
@@ -278,9 +297,7 @@ empty=d
 
         then:
         def ex = thrown(IllegalStateException)
-        1 * context.getProjectPath() >> Path.path('bar')
-        ex.getMessage().contains('Dependency locking cannot be used for project')
-        ex.getMessage().contains('bar')
+        ex.getMessage().contains("Dependency locking cannot be used for project :foo")
     }
 
     def 'fails to write a unique lockfile if root could not be determined'() {
@@ -293,8 +310,6 @@ empty=d
 
         then:
         def ex = thrown(IllegalStateException)
-        1 * context.getProjectPath() >> Path.path('foo')
-        ex.getMessage().contains('Dependency locking cannot be used for project')
-        ex.getMessage().contains('foo')
+        ex.getMessage().contains("Dependency locking cannot be used for project :foo")
     }
 }

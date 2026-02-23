@@ -20,16 +20,21 @@ plugins {
 
 description = "Logging API"
 
-gradlebuildJava.usedInWorkers()
-
-errorprone {
-    disabledChecks.addAll(
-        "ImmutableEnumChecker", // 1 occurrences
-    )
+gradleModule {
+    targetRuntimes {
+        usedInWorkers = true
+    }
 }
 
 dependencies {
-    api(libs.slf4jApi)
+    api(projects.stdlibJavaExtensions)
 
-    implementation(projects.javaLanguageExtensions)
+    api(libs.slf4jApi)
+    compileOnly(libs.jspecify)
+
+    implementation(projects.internalInstrumentationApi)
+}
+
+errorprone {
+    nullawayEnabled = true
 }

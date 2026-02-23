@@ -17,17 +17,19 @@
 package org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution;
 
 import com.google.common.base.Objects;
+import com.google.common.collect.ImmutableSet;
 import org.gradle.api.artifacts.ModuleIdentifier;
+import org.gradle.api.artifacts.capability.CapabilitySelector;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
-import org.gradle.api.artifacts.component.ComponentSelector;
-import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.capabilities.Capability;
+import org.gradle.api.internal.artifacts.component.ComponentSelectorInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 
 import java.util.Collections;
 import java.util.List;
 
-class UnversionedModuleComponentSelector implements ComponentSelector {
+class UnversionedModuleComponentSelector implements ComponentSelectorInternal {
+
     private final ModuleIdentifier moduleIdentifier;
 
     UnversionedModuleComponentSelector(ModuleIdentifier id) {
@@ -49,13 +51,18 @@ class UnversionedModuleComponentSelector implements ComponentSelector {
     }
 
     @Override
-    public AttributeContainer getAttributes() {
+    public ImmutableAttributes getAttributes() {
         return ImmutableAttributes.EMPTY;
     }
 
     @Override
     public List<Capability> getRequestedCapabilities() {
         return Collections.emptyList();
+    }
+
+    @Override
+    public ImmutableSet<CapabilitySelector> getCapabilitySelectors() {
+        return ImmutableSet.of();
     }
 
     @Override
@@ -74,4 +81,5 @@ class UnversionedModuleComponentSelector implements ComponentSelector {
     public int hashCode() {
         return Objects.hashCode(moduleIdentifier);
     }
+
 }

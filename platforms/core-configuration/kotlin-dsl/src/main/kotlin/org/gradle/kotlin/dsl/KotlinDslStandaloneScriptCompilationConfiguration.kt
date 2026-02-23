@@ -27,21 +27,20 @@ import kotlin.script.experimental.api.isStandalone
 /**
  * Common script compilation configuration for Kotlin DSL standalone scripts.
  */
-internal
 abstract class KotlinDslStandaloneScriptCompilationConfiguration protected constructor(
     body: Builder.() -> Unit
 ) : ScriptCompilationConfiguration({
 
     isStandalone(true)
     compilerOptions.put(listOf(
-        "-language-version", "1.8",
-        "-api-version", "1.8",
+        "-language-version", "2.2",
+        "-api-version", "2.2",
         "-Xjvm-default=all",
         "-Xjsr305=strict",
+        "-Xjspecify-annotations=strict",
         "-Xskip-prerelease-check",
         "-Xallow-unstable-dependencies",
-        "-XXLanguage:+DisableCompatibilityModeForNewInference",
-        "-XXLanguage:-TypeEnhancementImprovementsInStrictMode",
+        "-P=plugin:org.jetbrains.kotlin.assignment:annotation=org.gradle.api.SupportsKotlinAssignmentOverloading",
     ))
     annotationsForSamWithReceivers.put(listOf(
         KotlinType(HasImplicitReceiver::class),

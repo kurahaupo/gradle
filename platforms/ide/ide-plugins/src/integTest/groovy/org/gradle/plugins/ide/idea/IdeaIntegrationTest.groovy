@@ -22,8 +22,9 @@ import org.custommonkey.xmlunit.Diff
 import org.custommonkey.xmlunit.ElementNameAndAttributeQualifier
 import org.custommonkey.xmlunit.XMLAssert
 import org.gradle.api.internal.artifacts.ivyservice.CacheLayout
+import org.gradle.integtests.fixtures.StableConfigurationCacheDeprecations
 import org.gradle.integtests.fixtures.TestResources
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
+import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.plugins.ide.AbstractIdeIntegrationTest
 import org.gradle.test.fixtures.file.TestFile
 import org.junit.ComparisonFailure
@@ -32,12 +33,11 @@ import org.junit.Test
 
 import java.util.regex.Pattern
 
-class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
+class IdeaIntegrationTest extends AbstractIdeIntegrationTest implements StableConfigurationCacheDeprecations {
     @Rule
     public final TestResources testResources = new TestResources(testDirectoryProvider)
 
     @Test
-    @ToBeFixedForConfigurationCache
     void mergesMetadataFilesCorrectly() {
         file("settings.gradle") << """
             rootProject.name = "master"
@@ -65,7 +65,6 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void canCreateAndDeleteMetaData() {
         executer.withTasks('idea').run()
 
@@ -74,12 +73,13 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
         assertHasExpectedContents('root.iml')
         assertHasExpectedContents('api/api.iml')
         assertHasExpectedContents('webservice/webservice.iml')
-
+        if (!GradleContextualExecuter.isConfigCache()) {
+            expectTaskGetProjectDeprecations(3)
+        }
         executer.withTasks('cleanIdea').run()
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void worksWithAnEmptyProject() {
         executer.withTasks('idea').run()
 
@@ -88,7 +88,6 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void worksWithASubProjectThatDoesNotHaveTheIdeaPluginApplied() {
         createDirs("a", "b")
         executer.withTasks('idea').run()
@@ -97,7 +96,6 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void worksWithNonStandardLayout() {
         createDirs("a child project")
         executer.inDirectory(testDirectory.file('root')).withTasks('idea').run()
@@ -108,7 +106,6 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void overwritesExistingDependencies() {
         executer.withTasks('idea').run()
 
@@ -116,7 +113,6 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void addsScalaSdkAndCompilerLibraries() {
         executer.withTasks('idea').run()
 
@@ -142,7 +138,6 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void addsScalaFacetAndCompilerLibraries() {
         executer.withTasks('idea').run()
 
@@ -168,7 +163,6 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void outputDirsDefaultToToIdeaDefaults() {
         runIdeaTask("apply plugin: 'java'; apply plugin: 'idea'")
 
@@ -177,7 +171,6 @@ class IdeaIntegrationTest extends AbstractIdeIntegrationTest {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void canHandleCircularModuleDependencies() {
         def repoDir = file("repo")
         def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").dependsOnModules("myArtifact2").publish().artifactFile
@@ -188,7 +181,7 @@ apply plugin: "java"
 apply plugin: "idea"
 
 repositories {
-    maven { url "${repoDir.toURI()}" }
+    maven { url = "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -203,7 +196,6 @@ dependencies {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void libraryReferenceSubstitutesPathVariable() {
         def repoDir = file("repo")
         def artifact1 = maven(repoDir).module("myGroup", "myArtifact1").publish().artifactFile
@@ -213,7 +205,7 @@ dependencies {
     apply plugin: "idea"
 
     repositories {
-        maven { url "${repoDir.toURI()}" }
+        maven { url = "${repoDir.toURI()}" }
     }
 
     idea {
@@ -234,7 +226,6 @@ dependencies {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void onlyAddsSourceDirsThatExistOnFileSystem() {
         runIdeaTask """
 apply plugin: "java"
@@ -260,7 +251,6 @@ sourceSets.test.groovy.srcDirs.each { it.mkdirs() }
 
 
     @Test
-    @ToBeFixedForConfigurationCache
     void triggersWithXmlConfigurationHooks() {
         runIdeaTask '''
 apply plugin: 'java'
@@ -281,7 +271,6 @@ tasks.idea {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void respectsPerConfigurationExcludes() {
         def repoDir = file("repo")
         maven(repoDir).module("myGroup", "myArtifact1").dependsOnModules("myArtifact2").publish()
@@ -292,7 +281,7 @@ apply plugin: 'java'
 apply plugin: 'idea'
 
 repositories {
-    maven { url "${repoDir.toURI()}" }
+    maven { url = "${repoDir.toURI()}" }
 }
 
 configurations {
@@ -310,7 +299,6 @@ dependencies {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void respectsPerDependencyExcludes() {
         def repoDir = file("repo")
         maven(repoDir).module("myGroup", "myArtifact1").dependsOnModules("myArtifact2").publish()
@@ -321,7 +309,7 @@ apply plugin: 'java'
 apply plugin: 'idea'
 
 repositories {
-    maven { url "${repoDir.toURI()}" }
+    maven { url = "${repoDir.toURI()}" }
 }
 
 dependencies {
@@ -337,7 +325,6 @@ dependencies {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void allowsCustomOutputFolders() {
         runIdeaTask """
 apply plugin: 'java'
@@ -358,7 +345,6 @@ idea.module {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void dslSupportsShortFormsForModule() {
         runTask('idea', """
 apply plugin: 'idea'
@@ -380,7 +366,6 @@ idea.module {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void dslSupportsShortFormsForProject() {
         runTask('idea', """
 apply plugin: 'idea'
@@ -402,7 +387,6 @@ idea.project {
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void showDecentMessageWhenInputFileWasTinkeredWith() {
         //given
         file('root.iml') << 'messed up iml file'
@@ -421,7 +405,6 @@ apply plugin: "idea"
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void hasDefaultProjectLanguageLevelIfNoJavaPluginApplied() {
         //given
         file('build.gradle') << '''
@@ -444,7 +427,6 @@ apply plugin: "idea"
     }
 
     @Test
-    @ToBeFixedForConfigurationCache
     void canAddProjectLibraries() {
         runTask("idea", """
 apply plugin: 'idea'

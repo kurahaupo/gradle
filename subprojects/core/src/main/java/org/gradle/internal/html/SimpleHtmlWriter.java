@@ -17,26 +17,29 @@
 package org.gradle.internal.html;
 
 import org.gradle.internal.xml.SimpleMarkupWriter;
-import org.gradle.util.internal.TextUtil;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 /**
  * <p>A streaming HTML writer.</p>
  */
 public class SimpleHtmlWriter extends SimpleMarkupWriter {
+    private final Path htmlDirectory;
 
     public SimpleHtmlWriter(Writer writer) throws IOException {
-        this(writer, null);
+        this(writer, null, null);
     }
 
-    public SimpleHtmlWriter(Writer writer, String indent) throws IOException {
+    public SimpleHtmlWriter(Writer writer, Path htmlDirectory, String indent) throws IOException {
         super(writer, indent);
+        this.htmlDirectory = htmlDirectory;
         writeHtmlHeader();
     }
 
@@ -52,6 +55,19 @@ public class SimpleHtmlWriter extends SimpleMarkupWriter {
         return super.startElement(name);
     }
 
+    /**
+     * Construct a path to another file that is relative to the directory of this HTML file.
+     *
+     * This can be used to create links to other files without requiring absolute paths to be
+     * embedded in the HTML file.
+     */
+    public String relativeLink(Path otherFile) {
+        if (htmlDirectory == null) {
+            throw new UnsupportedOperationException();
+        }
+        return htmlDirectory.relativize(otherFile).toString();
+    }
+
     // All valid tags should be in lowercase
     // Add more tags as necessary
     private final static Set<String> VALID_HTML_TAGS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
@@ -61,13 +77,15 @@ public class SimpleHtmlWriter extends SimpleMarkupWriter {
         "body",
         "h1", "h2", "h3", "h4", "h5",
         "table", "thead", "tbody", "th", "td", "tr",
+        "img", "video",
         "ul", "li",
         "a", "p",
         "pre", "div", "span",
-        "label", "input"
+        "label", "input",
+        "button"
     )));
 
     private static boolean isValidHtmlTag(String name) {
-        return VALID_HTML_TAGS.contains(TextUtil.toLowerCaseLocaleSafe(name));
+        return VALID_HTML_TAGS.contains(name.toLowerCase(Locale.ROOT));
     }
 }

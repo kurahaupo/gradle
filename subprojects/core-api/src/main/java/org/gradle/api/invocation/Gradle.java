@@ -26,15 +26,17 @@ import org.gradle.api.Project;
 import org.gradle.api.ProjectEvaluationListener;
 import org.gradle.api.UnknownDomainObjectException;
 import org.gradle.api.execution.TaskExecutionGraph;
-import org.gradle.api.flow.FlowProviders;
 import org.gradle.api.initialization.IncludedBuild;
 import org.gradle.api.initialization.Settings;
 import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.plugins.PluginAware;
+import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.services.BuildServiceRegistry;
 import org.gradle.internal.HasInternalProtocol;
+import org.gradle.internal.service.scopes.Scope;
+import org.gradle.internal.service.scopes.ServiceScope;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Collection;
 
@@ -44,7 +46,16 @@ import java.util.Collection;
  * <p>You can obtain a {@code Gradle} instance by calling {@link Project#getGradle()}.</p>
  */
 @HasInternalProtocol
+@ServiceScope(Scope.Build.class)
 public interface Gradle extends PluginAware, ExtensionAware {
+
+    /**
+     * Get the path of this build relative to the root build.
+     *
+     * @since 9.1.0
+     */
+    String getBuildPath();
+
     /**
      * Returns the current Gradle version.
      *
@@ -66,9 +77,9 @@ public interface Gradle extends PluginAware, ExtensionAware {
      *
      * This directory is the directory containing the Gradle distribution executing this build.
      * <p>
-     * When using the “Gradle Daemon”, this may not be the same Gradle distribution that the build was started with.
+     * When using the "Gradle Daemon", this may not be the same Gradle distribution that the build was started with.
      * If an existing daemon process is running that is deemed compatible (e.g. has the desired JVM characteristics)
-     * then this daemon may be used instead of starting a new process and it may have been started from a different “gradle home”.
+     * then this daemon may be used instead of starting a new process and it may have been started from a different "gradle home".
      * However, it is guaranteed to be the same version of Gradle. For more information on the Gradle Daemon, please consult the
      * <a href="https://docs.gradle.org/current/userguide/gradle_daemon.html" target="_top">User Manual</a>.
      *
@@ -281,7 +292,7 @@ public interface Gradle extends PluginAware, ExtensionAware {
      * A {@link BuildResult} instance is passed to the closure as a parameter.
      *
      * @param closure The closure to execute.
-     * @see FlowProviders#getBuildWorkResult()
+     * @see org.gradle.api.flow.FlowProviders#getBuildWorkResult()
      * @deprecated This method is not supported when configuration caching is enabled.
      */
     @Deprecated
@@ -293,7 +304,7 @@ public interface Gradle extends PluginAware, ExtensionAware {
      * All selected tasks have been executed.
      *
      * @param action The action to execute.
-     * @see FlowProviders#getBuildWorkResult()
+     * @see org.gradle.api.flow.FlowProviders#getBuildWorkResult()
      * @since 3.4
      * @deprecated This method is not supported when configuration caching is enabled.
      */
@@ -352,7 +363,9 @@ public interface Gradle extends PluginAware, ExtensionAware {
      * provides with your own implementation, for certain types of events.
      *
      * @param logger The logger to use.
+     * @deprecated Will be removed in Gradle 10. Logging customization through listeners is no longer supported.
      */
+    @Deprecated
     void useLogger(Object logger);
 
     /**
@@ -388,4 +401,13 @@ public interface Gradle extends PluginAware, ExtensionAware {
      * @since 3.1
      */
     IncludedBuild includedBuild(String name) throws UnknownDomainObjectException;
+
+    /**
+     * Provides access to methods to create various kinds of {@link org.gradle.api.provider.Provider} instances.
+     *
+     * @return the provider factory. Never returns null.
+     * @since 9.4.0
+     */
+    @Incubating
+    ProviderFactory getProviders();
 }

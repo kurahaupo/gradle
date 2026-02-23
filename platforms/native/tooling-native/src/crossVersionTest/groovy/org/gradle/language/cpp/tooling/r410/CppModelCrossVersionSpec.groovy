@@ -19,8 +19,6 @@ package org.gradle.language.cpp.tooling.r410
 import org.gradle.integtests.tooling.fixture.TargetGradleVersion
 import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.nativeplatform.fixtures.AvailableToolChains
-import org.gradle.test.precondition.Requires
-import org.gradle.test.preconditions.UnitTestPreconditions
 import org.gradle.tooling.model.cpp.CppApplication
 import org.gradle.tooling.model.cpp.CppExecutable
 import org.gradle.tooling.model.cpp.CppLibrary
@@ -30,7 +28,6 @@ import org.gradle.tooling.model.cpp.CppStaticLibrary
 import org.gradle.tooling.model.cpp.CppTestSuite
 
 @TargetGradleVersion(">=4.10")
-@Requires(UnitTestPreconditions.NotMacOsM1) // TODO KM how to limit non-backwards compatible checks when aarch64 is not available on Gradle 7.5 and prior?
 class CppModelCrossVersionSpec extends ToolingApiSpecification {
     def toolchain = AvailableToolChains.defaultToolChain
 
@@ -116,11 +113,11 @@ class CppModelCrossVersionSpec extends ToolingApiSpecification {
         releaseBinary.linkageDetails.outputLocation == toolchain.executable(file("build/exe/main/release/app")).strippedRuntimeFile
         releaseBinary.linkageDetails.additionalArgs.empty
         if (toolchain.visualCpp) {
-            releaseBinary.linkageDetails.linkTask.path == ":linkRelease"
-            releaseBinary.linkageDetails.linkTask.name == "linkRelease"
+            assert releaseBinary.linkageDetails.linkTask.path == ":linkRelease"
+            assert releaseBinary.linkageDetails.linkTask.name == "linkRelease"
         } else {
-            releaseBinary.linkageDetails.linkTask.path == ":stripSymbolsRelease"
-            releaseBinary.linkageDetails.linkTask.name == "stripSymbolsRelease"
+            assert releaseBinary.linkageDetails.linkTask.path == ":stripSymbolsRelease"
+            assert releaseBinary.linkageDetails.linkTask.name == "stripSymbolsRelease"
         }
 
         project.testComponent == null
@@ -185,11 +182,11 @@ class CppModelCrossVersionSpec extends ToolingApiSpecification {
         releaseBinary.linkageDetails.outputLocation == toolchain.sharedLibrary(file("build/lib/main/release/lib")).strippedLinkFile
         releaseBinary.linkageDetails.additionalArgs.empty
         if (toolchain.visualCpp) {
-            releaseBinary.linkageDetails.linkTask.path == ":linkRelease"
-            releaseBinary.linkageDetails.linkTask.name == "linkRelease"
+            assert releaseBinary.linkageDetails.linkTask.path == ":linkRelease"
+            assert releaseBinary.linkageDetails.linkTask.name == "linkRelease"
         } else {
-            releaseBinary.linkageDetails.linkTask.path == ":stripSymbolsRelease"
-            releaseBinary.linkageDetails.linkTask.name == "stripSymbolsRelease"
+            assert releaseBinary.linkageDetails.linkTask.path == ":stripSymbolsRelease"
+            assert releaseBinary.linkageDetails.linkTask.name == "stripSymbolsRelease"
         }
 
         project.testComponent == null
@@ -413,18 +410,14 @@ class CppModelCrossVersionSpec extends ToolingApiSpecification {
         releaseSharedBinary.linkageDetails.outputLocation == toolchain.sharedLibrary(file("build/lib/main/release/shared/some-lib")).strippedLinkFile
         releaseSharedBinary.linkageDetails.additionalArgs == ["--link=mainReleaseShared"]
         if (toolchain.visualCpp) {
-            releaseSharedBinary.linkageDetails.linkTask.path == ":linkReleaseShared"
+            assert releaseSharedBinary.linkageDetails.linkTask.path == ":linkReleaseShared"
         } else {
-            releaseSharedBinary.linkageDetails.linkTask.path == ":stripSymbolsReleaseShared"
+            assert releaseSharedBinary.linkageDetails.linkTask.path == ":stripSymbolsReleaseShared"
         }
     }
 
     def "can query the models for each project in a build"() {
-        settingsFile << """
-            include 'app'
-            include 'lib'
-            include 'other'
-        """
+        includeProjects('app', 'lib', 'other')
         buildFile << """
             project(':app') {
                 apply plugin: 'cpp-application'
@@ -474,6 +467,7 @@ class CppModelCrossVersionSpec extends ToolingApiSpecification {
     }
 
     def "can query the models for each project in a composite build"() {
+        createProjectSubDirs('app', 'lib')
         settingsFile << """
             include 'app'
             includeBuild 'lib'

@@ -17,22 +17,24 @@ package org.gradle.internal.component.external.model;
 
 import com.google.common.base.Objects;
 import org.gradle.api.InvalidUserDataException;
-import org.gradle.api.Project;
 import org.gradle.api.capabilities.Capability;
 import org.gradle.api.internal.capabilities.CapabilityInternal;
+import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.util.internal.TextUtil;
-
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 
 public class ProjectDerivedCapability implements CapabilityInternal {
-    private final Project project;
+
+    private final ProjectInternal project;
     private final String featureName;
 
-    public ProjectDerivedCapability(Project project) {
+    private volatile String capabilityName;
+
+    public ProjectDerivedCapability(ProjectInternal project) {
         this(project, null);
     }
 
-    public ProjectDerivedCapability(Project project, @Nullable String featureName) {
+    public ProjectDerivedCapability(ProjectInternal project, @Nullable String featureName) {
         this.project = project;
         this.featureName = featureName;
     }
@@ -44,8 +46,18 @@ public class ProjectDerivedCapability implements CapabilityInternal {
 
     @Override
     public String getName() {
-        String name = notNull("name", project.getName());
-        return featureName == null ? name : name + "-" + TextUtil.camelToKebabCase(featureName);
+        if (capabilityName == null) {
+            capabilityName = computeCapabilityName(project, featureName);
+        }
+        return capabilityName;
+    }
+
+    private static String computeCapabilityName(ProjectInternal project, @Nullable String featureName) {
+        String projectName = project.getOwner().getIdentity().getProjectName();
+        if (featureName == null) {
+            return projectName;
+        }
+        return projectName + "-" + TextUtil.camelToKebabCase(featureName);
     }
 
     @Override
@@ -55,7 +67,11 @@ public class ProjectDerivedCapability implements CapabilityInternal {
 
     @Override
     public int hashCode() {
-        return 31 * project.hashCode() + featureName.hashCode();
+        // See DefaultImmutableCapability#computeHashcode
+        int hash = getVersion().hashCode();
+        hash = 31 * hash + getName().hashCode();
+        hash = 31 * hash + getGroup().hashCode();
+        return  hash;
     }
 
     @Override

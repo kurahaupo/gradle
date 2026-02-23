@@ -2,10 +2,22 @@ plugins {
     id("gradlebuild.distribution.implementation-java")
 }
 
-description = "An API for providing internal services for Gradle modules"
+description = "Internal API to declare services provided by Gradle modules"
 
-gradlebuildJava.usedInWorkers()
+gradleModule {
+    targetRuntimes {
+        usedInWorkers = true
+    }
+}
 
 dependencies {
-    api(projects.javaLanguageExtensions)
+    api(projects.serviceLookup)
+    api(projects.stdlibJavaExtensions)
+
+    api(libs.jspecify)
+    api(libs.errorProneAnnotations)
+}
+
+errorprone {
+    nullawayEnabled = true
 }

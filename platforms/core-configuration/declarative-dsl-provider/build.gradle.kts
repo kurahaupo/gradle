@@ -19,30 +19,46 @@ plugins {
 }
 
 dependencies {
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.declarativeDslApi)
+    api(projects.declarativeDslCore)
+    api(projects.declarativeDslEvaluator)
+    api(projects.declarativeDslToolingModels)
     api(projects.serviceProvider)
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":declarative-dsl-api"))
-    api(project(":declarative-dsl-core"))
-    api(project(":declarative-dsl-tooling-models"))
+    api(projects.projectFeatures)
+    api(projects.stdlibJavaExtensions)
+
     api(libs.kotlinStdlib)
+    api(libs.inject)
 
-
-    implementation(libs.inject)
-    testImplementation(libs.mockitoKotlin2)
-
-    implementation(projects.javaLanguageExtensions)
-    implementation(project(":base-services"))
-    implementation(project(":resources"))
-    implementation(project(":model-core"))
-
+    implementation(projects.buildDiscoveryImpl)
+    implementation(projects.concurrent)
+    implementation(projects.baseServices)
+    implementation(projects.modelCore)
+    implementation(projects.messaging)
+    implementation(projects.projectFeaturesApi)
+    implementation(projects.resources)
+    implementation(projects.serviceLookup)
     implementation(libs.guava)
     implementation(libs.kotlinReflect)
+    implementation(libs.jspecify)
 
-    integTestImplementation(project(":internal-testing"))
-    integTestImplementation(project(":logging"))
+    testImplementation(testLibs.mockitoKotlin)
+    testImplementation(testFixtures(projects.declarativeDslCore))
+    testImplementation(testFixtures(projects.declarativeDslEvaluator))
 
-    integTestDistributionRuntimeOnly(project(":distributions-full"))
+    integTestImplementation(projects.internalTesting)
+    integTestImplementation(projects.logging)
+    integTestImplementation(testFixtures(projects.declarativeDslProvider))
+    integTestImplementation(testFixtures(projects.toolingApi))
 
-    integTestImplementation(testFixtures(project(":tooling-api")))
+    testFixturesImplementation(projects.internalTesting)
+    testFixturesImplementation(projects.internalIntegTesting)
+    testFixturesImplementation(testFixtures(projects.declarativeDslCore))
+
+    integTestDistributionRuntimeOnly(projects.distributionsFull)
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

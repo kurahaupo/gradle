@@ -23,13 +23,12 @@ import org.gradle.internal.service.scopes.Scope.Global;
 import java.util.EnumSet;
 
 /**
- * Registered via {@link WorkInputListeners}.
+ * Registered via {@link WorkInputListeners}. These events are not sent through {@code ListenerManager}.
  */
 @EventScope(Global.class)
 public interface WorkInputListener {
     /**
      * Called when the execution of the given work item is imminent, or would have been if the primary inputs would not have been empty.
-     * <p>
      *
      * @param work the identity of the unit of work to be executed
      * @param relevantBehaviors the file system inputs relevant to the task execution

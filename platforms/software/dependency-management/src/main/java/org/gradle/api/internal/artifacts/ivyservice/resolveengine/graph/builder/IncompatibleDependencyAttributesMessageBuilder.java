@@ -24,8 +24,6 @@ import org.gradle.internal.logging.text.TreeFormatter;
 
 import java.util.Set;
 
-import static org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder.MessageBuilderHelper.pathTo;
-
 class IncompatibleDependencyAttributesMessageBuilder {
     static String buildMergeErrorMessage(ModuleResolveState module, AttributeMergingException e) {
         Attribute<?> attribute = e.getAttribute();
@@ -36,10 +34,10 @@ class IncompatibleDependencyAttributesMessageBuilder {
         fmt.append("' are requested");
         fmt.startChildren();
         Set<EdgeState> incomingEdges = module.getIncomingEdges();
-        incomingEdges.addAll(module.getUnattachedDependencies());
+        incomingEdges.addAll(module.getUnattachedEdges());
         for (EdgeState incomingEdge : incomingEdges) {
             SelectorState selector = incomingEdge.getSelector();
-            for (String path : pathTo(incomingEdge, false)) {
+            for (String path : MessageBuilderHelper.formattedPathsTo(incomingEdge)) {
                 String requestedAttribute = formatAttributeQuery(selector, attribute);
                 fmt.node(path + " " + requestedAttribute);
             }

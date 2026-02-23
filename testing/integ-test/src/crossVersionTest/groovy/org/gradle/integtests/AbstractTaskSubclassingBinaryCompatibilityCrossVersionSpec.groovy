@@ -102,7 +102,7 @@ abstract class AbstractTaskSubclassingBinaryCompatibilityCrossVersionSpec extend
 
         Map<String, String> subclasses = taskClasses.collectEntries { ["custom" + it.name.replace(".", "_"), it.name] }
         def apiDepConf = "implementation"
-        if (targetVersion < GradleVersion.version("7.0-rc-1")) {
+        if (targetVersion < GradleVersion.version("6.0")) {
             apiDepConf = "compile"
         }
         def groovyDepConf
@@ -111,8 +111,16 @@ abstract class AbstractTaskSubclassingBinaryCompatibilityCrossVersionSpec extend
         } else {
             groovyDepConf = apiDepConf
         }
+        def targetCompatibility = "java { sourceCompatibility = targetCompatibility = JavaVersion.VERSION_1_8 }"
+        if (targetVersion < GradleVersion.version("5.0")) {
+            targetCompatibility = "sourceCompatibility = targetCompatibility = 1.8"
+        }
+
         file("producer/build.gradle") << """
             apply plugin: 'groovy'
+
+            ${targetCompatibility}
+
             dependencies {
                 ${groovyDepConf} localGroovy()
                 ${apiDepConf} gradleApi()
@@ -157,7 +165,7 @@ apply plugin: SomePlugin
         file("someDir").createDir()
 
         def apiDepConf = "implementation"
-        if (targetVersion < GradleVersion.version("7.0-rc-1")) {
+        if (targetVersion < GradleVersion.version("6.0")) {
             apiDepConf = "compile"
         }
         def groovyDepConf
@@ -166,8 +174,16 @@ apply plugin: SomePlugin
         } else {
             groovyDepConf = apiDepConf
         }
+        def targetCompatibility = "java { sourceCompatibility = targetCompatibility = JavaVersion.VERSION_1_8 }"
+        if (targetVersion < GradleVersion.version("5.0")) {
+            targetCompatibility = "sourceCompatibility = targetCompatibility = 1.8"
+        }
+
         file("producer/build.gradle") << """
             apply plugin: 'groovy'
+
+            ${targetCompatibility}
+
             dependencies {
                 ${groovyDepConf} localGroovy()
                 ${apiDepConf} gradleApi()

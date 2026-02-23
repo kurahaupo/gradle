@@ -46,7 +46,7 @@ class WrapperProjectIntegrationTest extends AbstractWrapperIntegrationSpec {
 
     void "has non-zero exit code on build failure"() {
         given:
-        prepareWrapper()
+        prepareWrapper().run()
 
         when:
         def failure = wrapperExecuter.withTasks('unknown').runWithFailure()
@@ -62,7 +62,7 @@ class WrapperProjectIntegrationTest extends AbstractWrapperIntegrationSpec {
         projectDir.mkdirs()
         prepareWrapper(distribution.binDistribution.toURI()) {
             it.inDirectory(projectDir)
-        }
+        }.run()
         projectDir.file("build.gradle") << """
             task assertProjectDirHasMeta {
                 def dirName = provider { projectDir.name }
@@ -74,13 +74,13 @@ class WrapperProjectIntegrationTest extends AbstractWrapperIntegrationSpec {
         when:
         def result = wrapperExecuter.inDirectory(projectDir).withTasks('assertProjectDirHasMeta').run()
         then:
-        result.assertTaskExecuted(":assertProjectDirHasMeta")
+        result.assertTaskScheduled(":assertProjectDirHasMeta")
     }
 
     @Issue("https://issues.gradle.org/browse/GRADLE-1871")
     void "can specify project properties containing D"() {
         given:
-        prepareWrapper()
+        prepareWrapper().run()
 
         when:
         def result = wrapperExecuter.withArguments("-PfooD=bar").withTasks('echoProperty').run()

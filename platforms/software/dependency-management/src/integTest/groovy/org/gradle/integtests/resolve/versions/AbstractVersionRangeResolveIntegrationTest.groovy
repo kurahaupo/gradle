@@ -17,7 +17,6 @@
 package org.gradle.integtests.resolve.versions
 
 import org.gradle.integtests.fixtures.AbstractDependencyResolutionTest
-import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
 import org.gradle.resolve.scenarios.VersionRangeResolveTestScenarios
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
@@ -36,23 +35,25 @@ embedded mode
 """
     def baseBuild
     def baseSettings
-    def resolve = new ResolveTestFixture(buildFile, "conf").expectDefaultConfiguration("runtime")
 
     def setup() {
         (9..13).each {
             mavenRepo.module("org", "foo", "${it}").publish()
         }
 
-        settingsFile << "rootProject.name = 'test'"
+        settingsFile << """
+            rootProject.name = 'test'
+        """
+
         buildFile << """
             repositories {
-                maven { url '${mavenRepo.uri}' }
+                maven { url = '${mavenRepo.uri}' }
             }
             configurations {
                 conf
             }
-"""
-        resolve.prepare()
+        """
+
         baseBuild = buildFile.text
         baseSettings = settingsFile.text
     }
@@ -72,9 +73,7 @@ embedded mode
         }
 
         buildFile.text = baseBuild + """
-            allprojects {
-                configurations { conf }
-            }
+            configurations { conf }
 
             configurations {
                 ${singleProjectConfs.join('\n')}
@@ -102,18 +101,18 @@ embedded mode
         for (int i = 1; i <= versions.size(); i++) {
             VersionRangeResolveTestScenarios.RenderableVersion version = versions.get(i - 1);
             def nextProjectDependency = i < versions.size() ? "conf project(path: ':p${i + 1}', configuration: 'conf')" : ""
-            buildFile << """
-                project('p${i}') {
-                    dependencies {
-                        conf ${version.render()}
-                        ${nextProjectDependency}
-                    }
+            file("p${i}/build.gradle") << """
+                configurations {
+                    conf
                 }
-"""
-            createDirs("p${i}")
+                dependencies {
+                    conf ${version.render()}
+                    ${nextProjectDependency}
+                }
+                """
             settingsFile << """
                 include ':p${i}'
-"""
+            """
         }
 
         boolean expectFailureSingle = expectedSingle == VersionRangeResolveTestScenarios.REJECTED || expectedSingle == VersionRangeResolveTestScenarios.FAILED

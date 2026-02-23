@@ -16,7 +16,6 @@
 
 package org.gradle.nativeplatform.toolchain
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
@@ -36,10 +35,10 @@ class GccToolChainCustomisationIntegrationTest extends AbstractInstalledToolChai
         buildFile << """
 apply plugin: 'c'
 
-model {
     toolChains {
         ${toolChain.buildScriptConfig}
     }
+model {
     components {
         main(NativeExecutableSpec) {
             binaries.all {
@@ -56,11 +55,9 @@ model {
     }
 
     @RequiresInstalledToolChain(SUPPORTS_32)
-    @ToBeFixedForConfigurationCache
     def "can configure platform specific args"() {
         when:
         buildFile << """
-model {
     toolChains {
         ${toolChain.id} {
             target("arm"){
@@ -75,6 +72,7 @@ model {
             target("sparc")
         }
     }
+model {
     platforms {
         arm {
             architecture "arm"
@@ -110,7 +108,6 @@ model {
     }
 
     @Requires(UnitTestPreconditions.NotWindows)
-    @ToBeFixedForConfigurationCache
     def "can configure tool executables"() {
         def binDir = testDirectory.createDir("bin")
         wrapperTool(binDir, "c-compiler", toolChain.CCompiler, "-DFRENCH")
@@ -119,7 +116,6 @@ model {
 
         when:
         buildFile << """
-model {
     toolChains {
         ${toolChain.id} {
             path file('${binDir.toURI()}')
@@ -130,7 +126,6 @@ model {
             }
         }
     }
-}
 """
         succeeds "mainExecutable"
 
@@ -139,7 +134,6 @@ model {
     }
 
     @Requires(UnitTestPreconditions.NotWindows)
-    @ToBeFixedForConfigurationCache
     def "can configure platform specific executables"() {
         def binDir = testDirectory.createDir("bin")
         wrapperTool(binDir, "french-c-compiler", toolChain.CCompiler, "-DFRENCH")
@@ -161,7 +155,6 @@ model {
         """
         and:
         buildFile << """
-model {
     toolChains {
         ${toolChain.id} {
             target("alwaysFrench"){
@@ -179,7 +172,7 @@ model {
             }
         }
     }
-
+model {
     platforms {
         alwaysFrench
         alwaysCPlusPlus
@@ -209,7 +202,6 @@ model {
     }
 
     @Requires(UnitTestPreconditions.NotWindows)
-    @ToBeFixedForConfigurationCache
     def "can configure setTargets with alternate toolchain"() {
         def binDir = testDirectory.createDir("bin")
         wrapperTool(binDir, "french-c-compiler", toolChain.CCompiler, "-DFRENCH")
@@ -218,19 +210,7 @@ model {
 
         when:
         buildFile << """
-model {
-    platforms {
-        x86 {
-            architecture 'x86'
-        }
-        x86_64 {
-            architecture 'x64'
-        }
-        custom {
-            architecture 'foo'
-        }
-    }
-    toolChains {
+toolChains {
         ${toolChain.id} {
             target('x86')
             target('x86_64')
@@ -242,6 +222,18 @@ model {
                 staticLibArchiver.executable = '${binDir.absolutePath}/static-lib'
                 linker.executable = '${binDir.absolutePath}/linker'
             }
+        }
+    }
+model {
+    platforms {
+        x86 {
+            architecture 'x86'
+        }
+        x86_64 {
+            architecture 'x64'
+        }
+        custom {
+            architecture 'foo'
         }
     }
     components {

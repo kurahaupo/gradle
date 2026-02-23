@@ -13,25 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import gradlebuild.commons.configureJavaToolChain
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id("java-library")
     id("org.gradle.kotlin.kotlin-dsl") // this is 'kotlin-dsl' without version
     id("gradlebuild.code-quality")
-    id("gradlebuild.ktlint")
+    id("gradlebuild.detekt")
     id("gradlebuild.ci-reporting")
     id("gradlebuild.test-retry")
+    id("gradlebuild.private-javadoc")
 }
 
-java.configureJavaToolChain()
+val testLibs = project.versionCatalogs.named("testLibs")
 
 dependencies {
     api(platform("gradlebuild:build-platform"))
     implementation("gradlebuild:gradle-plugin")
 
-    testImplementation("org.junit.vintage:junit-vintage-engine")
+    testImplementation(testLibs.findLibrary("junit5Vintage").get())
+
+    testRuntimeOnly(testLibs.findLibrary("junitPlatform").get())
 }
 
 tasks.withType<KotlinCompile>().configureEach {
@@ -40,19 +42,13 @@ tasks.withType<KotlinCompile>().configureEach {
     }
 }
 
-ktlint {
-    filter {
-        exclude("gradle/kotlin/dsl/accessors/_*/**")
-    }
-}
-
-tasks.runKtlintCheckOverKotlinScripts {
-    // Only check the build files, not all *.kts files in the project
-    includes += listOf("*.gradle.kts")
+detekt {
+    // overwrite the config file's location
+    config.convention(project.isolated.rootProject.projectDirectory.file("../gradle/detekt.yml"))
 }
 
 tasks.named("codeQuality") {
-    dependsOn("ktlintCheck")
+    dependsOn("detekt")
 }
 
 tasks.validatePlugins {

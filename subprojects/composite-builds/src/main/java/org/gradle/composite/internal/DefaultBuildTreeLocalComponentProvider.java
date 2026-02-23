@@ -16,136 +16,139 @@
 
 package org.gradle.composite.internal;
 
-import org.gradle.api.artifacts.component.BuildIdentifier;
+import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier;
+import org.gradle.api.internal.artifacts.DefaultBuildIdentifier;
+import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
+import org.gradle.api.internal.artifacts.Module;
+import org.gradle.api.internal.artifacts.configurations.ConfigurationsProvider;
+import org.gradle.api.internal.artifacts.configurations.DefaultConfigurationContainer;
+import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider;
 import org.gradle.api.internal.artifacts.ivyservice.projectmodule.BuildTreeLocalComponentProvider;
 import org.gradle.api.internal.artifacts.ivyservice.projectmodule.LocalComponentCache;
-import org.gradle.api.internal.artifacts.ivyservice.projectmodule.LocalComponentProvider;
+import org.gradle.api.internal.attributes.AttributesSchemaInternal;
+import org.gradle.api.internal.attributes.immutable.ImmutableAttributesSchema;
+import org.gradle.api.internal.attributes.immutable.ImmutableAttributesSchemaFactory;
 import org.gradle.api.internal.project.HoldsProjectState;
+import org.gradle.api.internal.project.ProjectIdentity;
+import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.project.ProjectState;
 import org.gradle.api.internal.project.ProjectStateRegistry;
 import org.gradle.internal.Describables;
-import org.gradle.internal.Factory;
-import org.gradle.internal.build.CompositeBuildParticipantBuildState;
-import org.gradle.internal.build.IncludedBuildState;
+import org.gradle.internal.build.BuildState;
+import org.gradle.internal.build.BuildStateRegistry;
+import org.gradle.internal.component.local.model.LocalComponentGraphResolveMetadata;
 import org.gradle.internal.component.local.model.LocalComponentGraphResolveState;
-import org.gradle.internal.model.CalculatedValueContainer;
-import org.gradle.internal.model.CalculatedValueContainerFactory;
+import org.gradle.internal.component.local.model.LocalComponentGraphResolveStateFactory;
+import org.gradle.internal.model.InMemoryCacheFactory;
+import org.gradle.internal.model.InMemoryLoadingCache;
 import org.gradle.util.Path;
 
 import javax.inject.Inject;
-import java.io.File;
-import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Default implementation of {@link BuildTreeLocalComponentProvider}.
- *
- * <p>Currently, the metadata for a component is different based on whether it is consumed from the
- * producing build or from another build. This distinction can go away in Gradle 9.0.</p>
  */
 public class DefaultBuildTreeLocalComponentProvider implements BuildTreeLocalComponentProvider, HoldsProjectState {
 
-    private final ProjectStateRegistry projectStateRegistry;
     private final LocalComponentCache localComponentCache;
-    private final LocalComponentProvider localComponentProvider;
+    private final ProjectStateRegistry projectStateRegistry;
+    private final BuildStateRegistry buildStateRegistry;
+    private final ImmutableAttributesSchemaFactory attributesSchemaFactory;
+    private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
+    private final LocalComponentGraphResolveStateFactory resolveStateFactory;
 
     /**
-     * Caches the "true" metadata instances for local components.
+     * Caches the component state instances for each project.
      */
-    private final ConcurrentMetadataCache originalComponents;
+    private final InMemoryLoadingCache<Path, LocalComponentGraphResolveState> components;
 
     /**
-     * Contains copies of metadata instances in {@link #originalComponents}, except
-     * with the component identifier replaced with the foreign counterpart.
+     * All builds which are known to be configured already.
      */
-    private final ConcurrentMetadataCache foreignIdentifiedComponents;
+    private final Set<Path> configuredBuilds = ConcurrentHashMap.newKeySet();
 
     @Inject
     public DefaultBuildTreeLocalComponentProvider(
-        ProjectStateRegistry projectStateRegistry,
-        CalculatedValueContainerFactory calculatedValueContainerFactory,
+        InMemoryCacheFactory cacheFactory,
         LocalComponentCache localComponentCache,
-        LocalComponentProvider localComponentProvider
+        ProjectStateRegistry projectStateRegistry,
+        BuildStateRegistry buildStateRegistry,
+        ImmutableAttributesSchemaFactory attributesSchemaFactory,
+        ImmutableModuleIdentifierFactory moduleIdentifierFactory,
+        LocalComponentGraphResolveStateFactory resolveStateFactory
     ) {
-        this.projectStateRegistry = projectStateRegistry;
         this.localComponentCache = localComponentCache;
-        this.localComponentProvider = localComponentProvider;
+        this.projectStateRegistry = projectStateRegistry;
+        this.buildStateRegistry = buildStateRegistry;
+        this.attributesSchemaFactory = attributesSchemaFactory;
+        this.moduleIdentifierFactory = moduleIdentifierFactory;
+        this.resolveStateFactory = resolveStateFactory;
 
-        this.originalComponents = new ConcurrentMetadataCache(calculatedValueContainerFactory);
-        this.foreignIdentifiedComponents = new ConcurrentMetadataCache(calculatedValueContainerFactory);
+        this.components = cacheFactory.createCalculatedValueCache(Describables.of("project components"), this::loadOrCreateLocalComponentState);
     }
 
     @Override
-    public LocalComponentGraphResolveState getComponent(ProjectComponentIdentifier projectIdentifier, Path currentBuildPath) {
-        boolean isLocalProject = projectIdentifier.getBuild().getBuildPath().equals(currentBuildPath.getPath());
-        if (isLocalProject) {
-            return getLocalComponent(projectIdentifier, projectStateRegistry.stateFor(projectIdentifier));
-        } else {
-            return getLocalComponentWithForeignId(projectIdentifier);
-        }
+    public LocalComponentGraphResolveState getComponent(ProjectIdentity targetProjectId, Path sourceBuild) {
+        Path projectIdentityPath = targetProjectId.getBuildTreePath();
+        ensureBuildConfigured(targetProjectId.getBuildPath(), sourceBuild);
+        return components.get(projectIdentityPath);
     }
 
-    private LocalComponentGraphResolveState getLocalComponent(ProjectComponentIdentifier projectIdentifier, ProjectState projectState) {
-        return originalComponents.computeIfAbsent(projectIdentifier, () -> localComponentCache.computeIfAbsent(projectState, localComponentProvider::getComponent));
-    }
+    private LocalComponentGraphResolveState loadOrCreateLocalComponentState(Path projectIdentityPath) {
+        return localComponentCache.computeIfAbsent(projectIdentityPath, path -> {
+            ProjectState projectState = projectStateRegistry.stateFor(path);
 
-    private LocalComponentGraphResolveState getLocalComponentWithForeignId(ProjectComponentIdentifier projectIdentifier) {
-        return foreignIdentifiedComponents.computeIfAbsent(projectIdentifier, () -> copyComponentWithForeignId(projectIdentifier));
-    }
+            // The project may not have been configured yet if configure-on-demand is enabled,
+            // or if a parent project resolves a dependency on this project during configuration-time.
+            projectState.ensureConfigured();
 
-    /**
-     * Copes the component identified by {@code projectIdentifier}, except with its identifier replaced with the foreign counterpart.
-     *
-     * <p>Eventually, in Gradle 9.0, when {@link BuildIdentifier#isCurrentBuild()} is removed, all this logic can disappear.</p>
-     */
-    private LocalComponentGraphResolveState copyComponentWithForeignId(ProjectComponentIdentifier projectIdentifier) {
-        ProjectState projectState = projectStateRegistry.stateFor(projectIdentifier);
-        CompositeBuildParticipantBuildState buildState = (CompositeBuildParticipantBuildState) projectState.getOwner();
-        if (buildState instanceof IncludedBuildState) {
-            // Make sure the build is configured now (not do this for the root build, as we are already configuring it right now)
-            buildState.ensureProjectsConfigured();
-        }
-
-        // Get the local component, then transform it to have a foreign identifier
-        // This accesses project state.
-        return projectState.fromMutableState(p -> {
-            LocalComponentGraphResolveState originalComponent = getLocalComponent(projectIdentifier, projectState);
-            ProjectComponentIdentifier foreignIdentifier = buildState.idToReferenceProjectFromAnotherBuild(projectIdentifier);
-            return originalComponent.copy(foreignIdentifier, originalArtifact -> {
-                // Currently need to resolve the file, so that the artifact can be used in both a script classpath and the main build. Instead, this should be resolved as required
-                File file = originalArtifact.getFile();
-                return new CompositeProjectComponentArtifactMetadata(foreignIdentifier, originalArtifact, file);
-            });
+            return projectState.fromMutableState(this::createLocalComponentState);
         });
+    }
+
+    private LocalComponentGraphResolveState createLocalComponentState(ProjectInternal project) {
+        ProjectState projectState = project.getOwner();
+        Module module = project.getServices().get(DependencyMetaDataProvider.class).getModule();
+        ModuleVersionIdentifier moduleVersionIdentifier = moduleIdentifierFactory.moduleWithVersion(module.getGroup(), module.getName(), module.getVersion());
+        ProjectComponentIdentifier componentIdentifier = projectState.getComponentIdentifier();
+        AttributesSchemaInternal mutableSchema = (AttributesSchemaInternal) project.getDependencies().getAttributesSchema();
+        ImmutableAttributesSchema schema = attributesSchemaFactory.create(mutableSchema);
+
+        LocalComponentGraphResolveMetadata metadata = new LocalComponentGraphResolveMetadata(
+            moduleVersionIdentifier,
+            componentIdentifier,
+            module.getStatus(),
+            schema
+        );
+
+        ConfigurationsProvider configurations = (DefaultConfigurationContainer) project.getConfigurations();
+        return resolveStateFactory.stateFor(projectState, metadata, configurations);
     }
 
     @Override
     public void discardAll() {
-        originalComponents.clear();
-        foreignIdentifiedComponents.clear();
+        components.invalidate();
     }
 
-    private static class ConcurrentMetadataCache {
-
-        private final CalculatedValueContainerFactory calculatedValueContainerFactory;
-        private final Map<ProjectComponentIdentifier, CalculatedValueContainer<LocalComponentGraphResolveState, ?>> cache = new ConcurrentHashMap<>();
-
-        public ConcurrentMetadataCache(CalculatedValueContainerFactory calculatedValueContainerFactory) {
-            this.calculatedValueContainerFactory = calculatedValueContainerFactory;
-        }
-
-        private LocalComponentGraphResolveState computeIfAbsent(ProjectComponentIdentifier projectIdentifier, Factory<LocalComponentGraphResolveState> factory) {
-            CalculatedValueContainer<LocalComponentGraphResolveState, ?> valueContainer = cache.computeIfAbsent(projectIdentifier, projectComponentIdentifier ->
-                calculatedValueContainerFactory.create(Describables.of("metadata of", projectIdentifier), context -> Objects.requireNonNull(factory.create())));
-            // Calculate the value after adding the entry to the map, so that the value container can take care of thread synchronization
-            valueContainer.finalizeIfNotAlready();
-            return valueContainer.get();
-        }
-
-        public void clear() {
-            cache.clear();
+    /**
+     * Configure the target build, if necessary.
+     */
+    private void ensureBuildConfigured(Path targetBuild, Path sourceBuild) {
+        if (!configuredBuilds.contains(targetBuild)) {
+            if (!sourceBuild.equals(targetBuild)) {
+                // Only configure the target build if it is not the same as the source build.
+                // Otherwise, we are in the process of configuring the source build right now.
+                // TODO: This check should not be necessary. `ensureProjectsConfigured` should
+                //       be able to handle the case where the source build ensures that itself is configured, but
+                //       at the moment it deadlocks in that case.
+                BuildState buildState = buildStateRegistry.getBuild(new DefaultBuildIdentifier(targetBuild));
+                buildState.ensureProjectsConfigured();
+            }
+            configuredBuilds.add(targetBuild);
         }
     }
+
 }

@@ -18,12 +18,17 @@ package org.gradle.internal.extensions.core
 
 import org.gradle.api.Project
 import org.gradle.api.plugins.ExtraPropertiesExtension
-import org.gradle.configurationcache.extensions.uncheckedCast
+import org.gradle.internal.extensions.stdlib.uncheckedCast
 
 
 inline fun <reified T : Any> Project.setSingletonProperty(value: T) {
     extra[T::class.java.name] = value
 }
+
+
+inline fun <reified T> Project.peekSingletonProperty(): T? =
+    if (extra.has(T::class.java.name)) extra[T::class.java.name]?.uncheckedCast()
+    else null
 
 
 inline fun <reified T> Project.popSingletonProperty(): T? =

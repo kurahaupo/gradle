@@ -1,12 +1,17 @@
 plugins {
     id("gradlebuild.collect-failed-tasks")
     id("gradlebuild.cache-miss-monitor")
+    id("gradlebuild.ci-reporting")
 }
 
 description = "Provides plugins that are used by Gradle subprojects"
 
 tasks.register("check") {
     dependsOn(subprojects.map { "${it.name}:check" })
+}
+
+tasks.register("test") {
+    dependsOn(subprojects.map { "${it.name}:test" })
 }
 
 val clean by tasks.registering {

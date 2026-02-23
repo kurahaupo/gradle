@@ -22,7 +22,11 @@ import org.gradle.integtests.fixtures.AvailableJavaHomes
 import org.gradle.integtests.fixtures.jvm.JavaToolchainFixture
 import org.gradle.internal.jvm.Jvm
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.test.precondition.Requires
+import org.gradle.test.preconditions.UnitTestPreconditions
 import org.gradle.util.internal.TextUtil
+
+import static org.gradle.api.tasks.JavaExecToolchainFixture.writeJavaWrapperThatCannotBeProbed
 
 class JavaExecToolchainIntegrationTest extends AbstractIntegrationSpec implements JavaToolchainFixture {
 
@@ -59,11 +63,11 @@ class JavaExecToolchainIntegrationTest extends AbstractIntegrationSpec implement
         outputContains("Command: ${jdk.javaHome.absolutePath}")
 
         where:
-        type           | jdk                             | plugin
-        'differentJdk' | AvailableJavaHomes.differentJdk | 'java-base'
-        'current'      | Jvm.current()                   | 'java-base'
-        'differentJdk' | AvailableJavaHomes.differentJdk | 'jvm-toolchains'
-        'current'      | Jvm.current()                   | 'jvm-toolchains'
+        type           | jdk                                 | plugin
+        'differentJdk' | AvailableJavaHomes.differentVersion | 'java-base'
+        'current'      | Jvm.current()                       | 'java-base'
+        'differentJdk' | AvailableJavaHomes.differentVersion | 'jvm-toolchains'
+        'current'      | Jvm.current()                       | 'jvm-toolchains'
     }
 
     def "fails on toolchain and executable mismatch (with application plugin)"() {
@@ -172,6 +176,91 @@ class JavaExecToolchainIntegrationTest extends AbstractIntegrationSpec implement
         "assigned tool" | "when configured"                    | "other"  | null           | "other"
     }
 
+    @Requires(UnitTestPreconditions.Unix)
+    def "can specify executable that cannot be probed"() {
+        Jvm currentJdk = Jvm.current()
+        Jvm otherJdk = AvailableJavaHomes.differentVersion
+
+        def javaWrapper = writeJavaWrapperThatCannotBeProbed(testDirectory, otherJdk.javaExecutable)
+
+        configureProjectWithoutApplicationPlugin()
+        configureExecutable(javaWrapper)
+
+        when:
+        withInstallations(currentJdk, otherJdk).run(":run", "--info")
+
+        then:
+        executedAndNotSkipped(":run")
+        outputContains("Command: ${javaWrapper.absolutePath}")
+        outputContains("Task is untracked because: Java launcher cannot be probed")
+    }
+
+    @Requires(UnitTestPreconditions.Unix)
+    def "task is not incremental when outputs are declared but executable cannot be probed"() {
+        Jvm currentJdk = Jvm.current()
+        Jvm otherJdk = AvailableJavaHomes.differentVersion
+
+        def javaWrapper = writeJavaWrapperThatCannotBeProbed(testDirectory, otherJdk.javaExecutable)
+
+        configureProjectWithoutApplicationPlugin()
+        configureExecutable(javaWrapper)
+        buildFile << """
+            run {
+                def someOutput = file("someOutput.txt")
+                outputs.file(someOutput)
+                doLast {
+                    someOutput.text = "output"
+                }
+            }
+        """
+
+        when:
+        withInstallations(currentJdk, otherJdk).run(":run", "--info")
+
+        then:
+        executedAndNotSkipped(":run")
+        outputContains("Command: ${javaWrapper.absolutePath}")
+        outputContains("Task is untracked because: Java launcher cannot be probed")
+
+        when:
+        withInstallations(currentJdk, otherJdk).run(":run", "--info")
+
+        then:
+        executedAndNotSkipped(":run")
+        outputContains("Command: ${javaWrapper.absolutePath}")
+        outputContains("Task is untracked because: Java launcher cannot be probed")
+    }
+
+    def "task is incremental when outputs are declared and executable can be probed"() {
+        Jvm currentJdk = Jvm.current()
+        Jvm otherJdk = AvailableJavaHomes.differentVersion
+
+        configureProjectWithoutApplicationPlugin()
+        configureExecutable(otherJdk)
+        buildFile << """
+            run {
+                def someOutput = file("someOutput.txt")
+                outputs.file(someOutput)
+                doLast {
+                    someOutput.text = "output"
+                }
+            }
+        """
+
+        when:
+        withInstallations(currentJdk, otherJdk).run(":run", "--info")
+
+        then:
+        executedAndNotSkipped(":run")
+        outputContains("Command: ${otherJdk.javaHome.absolutePath}")
+
+        when:
+        withInstallations(currentJdk, otherJdk).run(":run", "--info")
+
+        then:
+        skipped(":run")
+    }
+
     private TestFile configureProjectWithApplicationPlugin(JavaVersion compileWithVersion) {
         buildFile << """
             apply plugin: "application"
@@ -203,9 +292,13 @@ class JavaExecToolchainIntegrationTest extends AbstractIntegrationSpec implement
     }
 
     private TestFile configureExecutable(Jvm jdk) {
+        configureExecutable(jdk.javaExecutable)
+    }
+
+    private TestFile configureExecutable(File javaExecutable) {
         buildFile << """
             run {
-                executable = "${TextUtil.normaliseFileSeparators(jdk.javaExecutable.absolutePath)}"
+                executable = "${TextUtil.normaliseFileSeparators(javaExecutable.absolutePath)}"
             }
         """
     }

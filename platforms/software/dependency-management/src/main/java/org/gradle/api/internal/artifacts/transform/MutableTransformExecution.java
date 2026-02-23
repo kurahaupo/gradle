@@ -19,7 +19,9 @@ package org.gradle.api.internal.artifacts.transform;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.internal.execution.InputFingerprinter;
+import org.gradle.internal.execution.InputVisitor;
 import org.gradle.internal.execution.MutableUnitOfWork;
+import org.gradle.internal.execution.history.ExecutionHistoryStore;
 import org.gradle.internal.execution.workspace.MutableWorkspaceProvider;
 import org.gradle.internal.fingerprint.CurrentFileCollectionFingerprint;
 import org.gradle.internal.operations.BuildOperationProgressEventEmitter;
@@ -28,11 +30,13 @@ import org.gradle.internal.snapshot.ValueSnapshot;
 
 import java.io.File;
 import java.util.Map;
+import java.util.Optional;
 
 class MutableTransformExecution extends AbstractTransformExecution implements MutableUnitOfWork {
     private final String rootProjectLocation;
     private final String producerBuildTreePath;
     private final MutableWorkspaceProvider workspaceProvider;
+    private final ExecutionHistoryStore history;
 
     public MutableTransformExecution(
         Transform transform,
@@ -46,15 +50,20 @@ class MutableTransformExecution extends AbstractTransformExecution implements Mu
         BuildOperationProgressEventEmitter progressEventEmitter,
         FileCollectionFactory fileCollectionFactory,
         InputFingerprinter inputFingerprinter,
-        MutableWorkspaceProvider workspaceProvider
+        MutableWorkspaceProvider workspaceProvider,
+        ExecutionHistoryStore history,
+
+        boolean disableCachingByProperty
     ) {
         super(
             transform, inputArtifact, dependencies, subject,
-            transformExecutionListener, buildOperationRunner, progressEventEmitter, fileCollectionFactory, inputFingerprinter
+            transformExecutionListener, buildOperationRunner, progressEventEmitter, fileCollectionFactory, inputFingerprinter,
+            disableCachingByProperty
         );
         this.rootProjectLocation = producerProject.getRootDir().getAbsolutePath() + File.separator;
         this.producerBuildTreePath = producerProject.getBuildTreePath();
         this.workspaceProvider = workspaceProvider;
+        this.history = history;
     }
 
     @Override
@@ -63,17 +72,22 @@ class MutableTransformExecution extends AbstractTransformExecution implements Mu
     }
 
     @Override
-    protected TransformWorkspaceIdentity createIdentity(Map<String, ValueSnapshot> identityInputs, Map<String, CurrentFileCollectionFingerprint> identityFileInputs) {
+    public Optional<ExecutionHistoryStore> getHistory() {
+        return Optional.of(history);
+    }
+
+    @Override
+    protected TransformWorkspaceIdentity createIdentity(Map<String, ValueSnapshot> scalarInputs, Map<String, CurrentFileCollectionFingerprint> fileInputs) {
         return TransformWorkspaceIdentity.createMutable(
             normalizeAbsolutePath(inputArtifact.getAbsolutePath()),
             producerBuildTreePath,
-            identityInputs.get(AbstractTransformExecution.SECONDARY_INPUTS_HASH_PROPERTY_NAME),
-            identityFileInputs.get(AbstractTransformExecution.DEPENDENCIES_PROPERTY_NAME).getHash()
+            scalarInputs.get(AbstractTransformExecution.SECONDARY_INPUTS_HASH_PROPERTY_NAME),
+            fileInputs.get(AbstractTransformExecution.DEPENDENCIES_PROPERTY_NAME).getHash()
         );
     }
 
     @Override
-    public void visitRegularInputs(InputVisitor visitor) {
+    public void visitMutableInputs(InputVisitor visitor) {
         visitInputArtifact(visitor);
     }
 
@@ -83,5 +97,12 @@ class MutableTransformExecution extends AbstractTransformExecution implements Mu
             return path.substring(rootProjectLocation.length());
         }
         return path;
+    }
+
+    @Override
+    public ExecutionBehavior getExecutionBehavior() {
+        return transform.requiresInputChanges()
+            ? ExecutionBehavior.INCREMENTAL
+            : ExecutionBehavior.NON_INCREMENTAL;
     }
 }

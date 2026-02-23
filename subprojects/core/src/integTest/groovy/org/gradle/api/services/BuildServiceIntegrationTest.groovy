@@ -16,6 +16,8 @@
 
 package org.gradle.api.services
 
+import org.gradle.api.Plugin
+import org.gradle.api.Project
 import org.gradle.api.artifacts.transform.TransformAction
 import org.gradle.api.artifacts.transform.TransformOutputs
 import org.gradle.api.artifacts.transform.TransformParameters
@@ -23,6 +25,8 @@ import org.gradle.api.file.FileSystemOperations
 import org.gradle.api.file.ProjectLayout
 import org.gradle.api.internal.AbstractTask
 import org.gradle.api.model.ObjectFactory
+import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
 import org.gradle.api.provider.ProviderFactory
 import org.gradle.api.services.internal.BuildServiceProvider
 import org.gradle.api.tasks.Input
@@ -36,20 +40,24 @@ import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectories
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
+import org.gradle.build.event.BuildEventsListenerRegistry
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.integtests.fixtures.ToBeFixedForIsolatedProjects
+import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.internal.reflect.Instantiator
 import org.gradle.process.ExecOperations
+import org.gradle.test.fixtures.dsl.GradleDsl
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
+import org.gradle.tooling.events.FinishEvent
+import org.gradle.tooling.events.OperationCompletionListener
 import org.gradle.util.internal.ToBeImplemented
 import spock.lang.Issue
 
 import javax.inject.Inject
 
-import static org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache.Skip.INVESTIGATE
 import static org.hamcrest.CoreMatchers.containsString
 
 class BuildServiceIntegrationTest extends AbstractIntegrationSpec {
@@ -82,12 +90,12 @@ class BuildServiceIntegrationTest extends AbstractIntegrationSpec {
         given:
         serviceImplementation()
         adhocTaskUsingUndeclaredService(1)
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
         executer.expectDocumentedDeprecationWarning(
             "Build service 'counter' is being used by task ':broken' without the corresponding declaration via 'Task#usesService'. " +
                 "This behavior has been deprecated. " +
-                "This will fail with an error in Gradle 9.0. " +
-                "Declare the association between the task and the build service using 'Task#usesService'. " +
+                "This will fail with an error in Gradle 10. " +
+                "Declare the association between the task by declaring the consuming property as a '@ServiceReference'. " +
                 "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_7.html#undeclared_build_service_usage"
         )
 
@@ -96,7 +104,7 @@ class BuildServiceIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("https://github.com/gradle/configuration-cache/issues/97")
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/31128")
     def "does nag when service is used indirectly via another service even if task declares service reference and feature preview is enabled"() {
         given:
         serviceImplementation()
@@ -131,12 +139,12 @@ class BuildServiceIntegrationTest extends AbstractIntegrationSpec {
                 // reference will be set by name
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
         executer.expectDocumentedDeprecationWarning(
             "Build service 'counter' is being used by task ':broken' without the corresponding declaration via 'Task#usesService'. " +
                 "This behavior has been deprecated. " +
-                "This will fail with an error in Gradle 9.0. " +
-                "Declare the association between the task and the build service using 'Task#usesService'. " +
+                "This will fail with an error in Gradle 10. " +
+                "Declare the association between the task by declaring the consuming property as a '@ServiceReference'. " +
                 "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_7.html#undeclared_build_service_usage"
         )
 
@@ -145,7 +153,7 @@ class BuildServiceIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("https://github.com/gradle/configuration-cache/issues/156")
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/31128")
     def "does nag when service is used by artifact transform parameters and feature preview is enabled"() {
         given:
         serviceImplementation()
@@ -207,13 +215,13 @@ class BuildServiceIntegrationTest extends AbstractIntegrationSpec {
         """
         file("src/main/java").createDir()
         file("src/main/java/Foo.java").createFile().text = """class Foo {}"""
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
         // should not be expected
         executer.expectDocumentedDeprecationWarning(
             "Build service 'counter' is being used by task ':compileJava' without the corresponding declaration via 'Task#usesService'. " +
                 "This behavior has been deprecated. " +
-                "This will fail with an error in Gradle 9.0. " +
-                "Declare the association between the task and the build service using 'Task#usesService'. " +
+                "This will fail with an error in Gradle 10. " +
+                "Declare the association between the task by declaring the consuming property as a '@ServiceReference'. " +
                 "Consult the upgrading guide for further information: https://docs.gradle.org/current/userguide/upgrading_version_7.html#undeclared_build_service_usage"
         )
 
@@ -247,7 +255,7 @@ service: closed with value 11
                 }
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         succeeds 'explicit'
@@ -290,7 +298,7 @@ service: closed with value 11
                 }
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         succeeds 'named'
@@ -326,7 +334,7 @@ service: closed with value 11
                 }
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         succeeds 'named'
@@ -347,7 +355,7 @@ service: closed with value 11
         ""        | "SubCountingService"
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeFixedForConfigurationCache(because = "CC doesn't restore service reference properly")
     def "cannot inject shared build service without a name when multiple services exist"() {
         given:
         serviceImplementation()
@@ -370,7 +378,7 @@ service: closed with value 11
                 }
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         fails 'ambiguous'
@@ -408,7 +416,7 @@ service: closed with value 11
                 }
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         succeeds 'unambiguous'
@@ -442,7 +450,7 @@ service: closed with value 11
                 usesService(counterProvider2)
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         succeeds 'named'
@@ -456,7 +464,6 @@ service: closed with value 10001
         """
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
     def "injection by name works at configuration time"() {
         given:
         serviceImplementation()
@@ -471,22 +478,37 @@ service: closed with value 10001
                 counter.get().increment()
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         succeeds 'named'
 
         then:
         outputDoesNotContain "'Task#usesService'"
-        outputContains """
-> Configure project :
-service: created with value = 10
-service: value is 11
+        if (GradleContextualExecuter.configCache) {
+            // Service lifecycle is different with CC
+            outputContains """
+                > Configure project :
+                service: created with value = 10
+                service: value is 11
+                service: closed with value 11
 
-> Task :named
-service: value is 12
-service: closed with value 12
-        """
+                > Task :named
+                service: created with value = 10
+                service: value is 11
+                service: closed with value 11
+            """.stripIndent(true)
+        } else {
+            outputContains """
+                > Configure project :
+                service: created with value = 10
+                service: value is 11
+
+                > Task :named
+                service: value is 12
+                service: closed with value 12
+            """.stripIndent(true)
+        }
     }
 
     def "injection by name fails validation if required service is not found, even if not used"() {
@@ -504,7 +526,7 @@ service: closed with value 12
             }
             task missingRequiredService(type: Consumer) {}
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         fails 'missingRequiredService'
@@ -533,7 +555,7 @@ service: closed with value 12
             }
             task missingOptionalService(type: Consumer) {}
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         succeeds 'missingOptionalService'
@@ -559,7 +581,7 @@ service: closed with value 12
                 // expect service to be injected by name (it won't though)
             }
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         fails 'missingService'
@@ -583,7 +605,7 @@ service: closed with value 12
             }
             task invalidServiceType(type: Consumer) {}
         """
-        enableStableConfigurationCache()
+        enableServiceUsageDeclaration()
 
         when:
         fails 'invalidServiceType'
@@ -803,7 +825,7 @@ service: closed with value 12
         outputContains("service: closed with value 11")
     }
 
-    @Requires(IntegTestPreconditions.NotConfigCached) // already covers CC behavior
+    @Requires(value = IntegTestPreconditions.NotConfigCached, reason = "already covers CC behavior")
     def "service used at configuration is discarded before execution time when used with configuration cache"() {
         serviceImplementation()
         buildFile << """
@@ -821,7 +843,6 @@ service: closed with value 12
         """
         executer.beforeExecute {
             withArgument("--configuration-cache")
-            withArgument("-Dorg.gradle.configuration-cache.internal.load-after-store=true")
         }
 
         when:
@@ -860,6 +881,8 @@ service: closed with value 12
 
     @ToBeImplemented
     @Issue("https://github.com/gradle/gradle/issues/17559")
+    // Test assumes sequential configuration :subproject1 :subproject2
+    @Requires(IntegTestPreconditions.NotIsolatedProjects)
     def "service provided by a plugin cannot be shared by subprojects with different classloaders"() {
         createDirs("plugin1", "plugin2", "subproject1", "subproject2")
         settingsFile """
@@ -871,8 +894,8 @@ service: closed with value 12
         include 'subproject2'
         """
         // plugin 1 declares a service
-        groovyFile(file("plugin1/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
-        groovyFile(file("plugin1/src/main/groovy/my.plugin1.gradle"), """
+        buildFile(file("plugin1/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
+        buildFile(file("plugin1/src/main/groovy/my.plugin1.gradle"), """
             import org.gradle.api.services.BuildService
             import org.gradle.api.services.BuildServiceParameters
             abstract class MyService implements BuildService<BuildServiceParameters.None> {
@@ -892,16 +915,16 @@ service: closed with value 12
             }
         """)
         // plugin 2
-        groovyFile(file("plugin2/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
-        groovyFile(file("plugin2/src/main/groovy/my.plugin2.gradle"), "/* no code needed */")
+        buildFile(file("plugin2/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
+        buildFile(file("plugin2/src/main/groovy/my.plugin2.gradle"), "/* no code needed */")
         // subproject1 and subproject2 apply different sets of plugins, so get different classloaders
-        groovyFile(file("subproject1/build.gradle"), """
+        buildFile(file("subproject1/build.gradle"), """
         plugins {
             id 'my.plugin1'
             id 'my.plugin2'
         }
         """)
-        groovyFile(file("subproject2/build.gradle"), """
+        buildFile(file("subproject2/build.gradle"), """
         plugins {
             // must include the plugin contributing the build service,
             // and must be a different ordered set than the other project
@@ -937,8 +960,8 @@ Hello, subproject1
         include 'subproject2'
         """
         // plugin 1 declares a service
-        groovyFile(file("plugin1/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
-        groovyFile(file("plugin1/src/main/groovy/my.plugin1.gradle"), """
+        buildFile(file("plugin1/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
+        buildFile(file("plugin1/src/main/groovy/my.plugin1.gradle"), """
             import org.gradle.api.services.BuildService
             import org.gradle.api.services.BuildServiceParameters
             abstract class MyService implements BuildService<BuildServiceParameters.None> {
@@ -971,16 +994,16 @@ Hello, subproject1
         """)
 
         // plugin 2
-        groovyFile(file("plugin2/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
-        groovyFile(file("plugin2/src/main/groovy/my.plugin2.gradle"), "/* no code needed */")
+        buildFile(file("plugin2/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
+        buildFile(file("plugin2/src/main/groovy/my.plugin2.gradle"), "/* no code needed */")
         // subproject1 and subproject2 apply different sets of plugins, so get different classloaders
-        groovyFile(file("subproject1/build.gradle"), """
+        buildFile(file("subproject1/build.gradle"), """
         plugins {
             id 'my.plugin1'
             id 'my.plugin2'
         }
         """)
-        groovyFile(file("subproject2/build.gradle"), """
+        buildFile(file("subproject2/build.gradle"), """
         plugins {
             // must include the plugin contributing the build service,
             // and must be a different ordered set than the other project
@@ -1001,6 +1024,78 @@ Hello, subproject1
 
         then:
         outputContains("Hello, subproject2")
+    }
+
+    def "service provided by a plugin shared by subprojects with different classloaders by name should give actionable error message"() {
+        createDirs("plugin1", "plugin2", "subproject1", "subproject2")
+        settingsFile """
+        pluginManagement {
+            includeBuild 'plugin1'
+            includeBuild 'plugin2'
+        }
+        include 'subproject1'
+        include 'subproject2'
+        """
+        // plugin 1 declares a service
+        buildFile(file("plugin1/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
+        buildFile(file("plugin1/src/main/groovy/my.plugin1.gradle"), """
+            import org.gradle.api.services.BuildService
+            import org.gradle.api.services.BuildServiceParameters
+            abstract class MyService implements BuildService<BuildServiceParameters.None> {
+                String hello(String message) {
+                    "Hello, \$message"
+                }
+            }
+
+            def service = gradle.sharedServices.registerIfAbsent("myService", MyService) {}
+
+            abstract class HelloTask extends DefaultTask {
+                @$Internal.name
+                abstract Property<MyService> getMyServiceReference()
+
+                @$Internal.name
+                abstract Property<String> getProjectName()
+
+                @TaskAction
+                def go() {
+                    println(myServiceReference.get().hello(projectName.get()))
+                }
+            }
+
+            project.tasks.register('hello', HelloTask) {
+                projectName = project.name
+                myServiceReference = service
+                doLast {
+                    assert MyService == myServiceReference.type
+                }
+            }
+        """)
+
+        // plugin 2
+        buildFile(file("plugin2/build.gradle"), "plugins { id 'groovy-gradle-plugin' }")
+        buildFile(file("plugin2/src/main/groovy/my.plugin2.gradle"), "/* no code needed */")
+        // subproject1 and subproject2 apply different sets of plugins, so get different classloaders
+        buildFile(file("subproject1/build.gradle"), """
+        plugins {
+            id 'my.plugin1'
+            id 'my.plugin2'
+        }
+        """)
+        buildFile(file("subproject2/build.gradle"), """
+        plugins {
+            // must include the plugin contributing the build service,
+            // and must be a different ordered set than the other project
+            // or else both subprojects are built with the same classloader
+            id 'my.plugin2'
+            id 'my.plugin1'
+        }
+        """)
+
+        when:
+        fails(":subproject1:hello", ":subproject2:hello", "-s")
+
+        then:
+        failureHasCause(~/.*Cannot set the value of task ':subproject[12]:hello' property 'myServiceReference' of type MyService loaded with .* using a provider of type MyService loaded with .*\nThis can be caused by a plugin being applied to two sibling projects and then using a shared build service. To fix this, use `@ServiceReference` or add the problematic plugin with `apply false` to the root build script./)
     }
 
     @ToBeFixedForIsolatedProjects(because = "subprojects")
@@ -1519,6 +1614,92 @@ Hello, subproject1
         }
     }
 
+    @Issue("https://github.com/gradle/gradle/issues/34667")
+    def "can use Property with #valueType value as service parameter"() {
+        buildFile """
+            abstract class PrintService implements BuildService<PrintService.Params> {
+                interface Params extends BuildServiceParameters {
+                    Property<Object> getValue()
+                }
+
+                void printValue() {
+                    println(parameters.value.get())
+                }
+            }
+
+            tasks.register("print") {
+                def serviceProvider = gradle.sharedServices.registerIfAbsent("printService", PrintService) {
+                    parameters.value = $value
+                }
+                usesService(serviceProvider)
+
+                doLast {
+                    serviceProvider.get().printValue()
+                }
+            }
+        """
+
+        when:
+        succeeds("print")
+
+        then:
+        outputContains(expectedOutput)
+
+        where:
+        valueType     | value                                 | expectedOutput
+        "String"      | "'some string'"                       | "some string"
+        "List"        | "['a'] as List<String>"               | "[a]"
+        "Set"         | "['a'] as Set<String>"                | "[a]"
+        "Map"         | "[a: 'b'] as Map<String, String>"     | "[a:b]"
+        "Directory"   | "layout.projectDirectory.dir('foo')"  | File.separator + "foo"
+        "RegularFile" | "layout.projectDirectory.file('foo')" | File.separator + "foo"
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/34667")
+    def "can use Property with #valueType value in a managed object as service parameter"() {
+        buildFile """
+            interface MyManagedObject {
+                Property<Object> getValue()
+            }
+
+            abstract class PrintService implements BuildService<PrintService.Params> {
+                interface Params extends BuildServiceParameters {
+                    Property<MyManagedObject> getManagedObject()
+                }
+
+                void printValue() {
+                    println(parameters.managedObject.get().value.get())
+                }
+            }
+
+            tasks.register("print") {
+                def serviceProvider = gradle.sharedServices.registerIfAbsent("printService", PrintService) {
+                    parameters.managedObject = objects.newInstance(MyManagedObject).tap { value = $value }
+                }
+                usesService(serviceProvider)
+
+                doLast {
+                    serviceProvider.get().printValue()
+                }
+            }
+        """
+
+        when:
+        succeeds("print")
+
+        then:
+        outputContains(expectedOutput)
+
+        where:
+        valueType     | value                                 | expectedOutput
+        "String"      | "'some string'"                       | "some string"
+        "List"        | "['a'] as List<String>"               | "[a]"
+        "Set"         | "['a'] as Set<String>"                | "[a]"
+        "Map"         | "[a: 'b'] as Map<String, String>"     | "[a:b]"
+        "Directory"   | "layout.projectDirectory.dir('foo')"  | File.separator + "foo"
+        "RegularFile" | "layout.projectDirectory.file('foo')" | File.separator + "foo"
+    }
+
     def "should not resolve providers when computing shared resources"() {
         serviceImplementation()
         buildFile """
@@ -1567,9 +1748,133 @@ Hello, subproject1
         outputContains("Resolving provider")
     }
 
-    private void enableStableConfigurationCache() {
+    @Issue("https://github.com/gradle/gradle/issues/27099")
+    def "can apply service plugin in precompiled script plugins"() {
+        given:
+        createDir("plugins") {
+            file("settings.gradle.kts") << """
+                include("service-plugin")
+                include("convention-kotlin-plugin")
+                include("convention-groovy-plugin")
+            """
+            file("service-plugin/build.gradle.kts") << """
+                plugins {
+                    id("java-gradle-plugin")
+                }
+                gradlePlugin {
+                    plugins {
+                        create("servicePlugin") {
+                            id = "com.example.servicePlugin"
+                            implementationClass = "com.example.ServicePlugin"
+                        }
+                    }
+                }
+            """
+
+            file("service-plugin/src/main/java/com/example/ServicePlugin.java") << """
+                package com.example;
+
+                import ${BuildEventsListenerRegistry.name};
+                import ${BuildService.name};
+                import ${BuildServiceParameters.name};
+                import ${BuildServiceRegistry.name};
+                import ${FinishEvent.name};
+                import ${Inject.name};
+                import ${OperationCompletionListener.name};
+                import ${Plugin.name};
+                import ${Project.name};
+                import ${Property.name};
+                import ${Provider.name};
+
+                public abstract class ServicePlugin implements Plugin<Project> {
+                    interface Params extends BuildServiceParameters {
+                        Property<Integer> getIntValue();
+                    }
+
+                    public abstract static class MyService implements BuildService<Params>, OperationCompletionListener {
+                        @Override public void onFinish(FinishEvent event) {}
+                    }
+
+                    @Inject protected abstract BuildEventsListenerRegistry getListenerRegistry();
+
+                    @Inject protected abstract BuildServiceRegistry getSharedServices();
+
+                    @Override
+                    public void apply(Project project) {
+                        Provider<MyService> sp = getSharedServices().registerIfAbsent("myService", MyService.class);
+
+                        getListenerRegistry().onTaskCompletion(sp);
+                    }
+                }
+            """
+
+            file("convention-kotlin-plugin/build.gradle.kts") << """
+                plugins {
+                    `kotlin-dsl`
+                }
+
+                repositories {
+                    ${mavenCentralRepository(GradleDsl.KOTLIN)}
+                }
+
+                dependencies {
+                    implementation(project(":service-plugin"))
+                }
+            """
+
+
+            file("convention-kotlin-plugin/src/main/kotlin/convention-kotlin-plugin.gradle.kts") << """
+                plugins {
+                    id("com.example.servicePlugin")
+                }
+            """
+
+            file("convention-groovy-plugin/build.gradle") << """
+                plugins {
+                    id("groovy-gradle-plugin")
+                }
+
+                repositories {
+                    ${mavenCentralRepository(GradleDsl.KOTLIN)}
+                }
+
+                dependencies {
+                    implementation(project(":service-plugin"))
+                }
+            """
+
+
+            file("convention-groovy-plugin/src/main/groovy/convention-groovy-plugin.gradle") << """
+                plugins {
+                    id("com.example.servicePlugin")
+                }
+            """
+        }
+
+        settingsFile """
+            includeBuild("plugins")
+        """
+
+        buildFile """
+            plugins {
+                id("convention-groovy-plugin")
+                id("convention-kotlin-plugin")
+            }
+
+            tasks.register("hello") {
+                doLast {
+                    println("Hello!")
+                }
+            }
+        """
+
+        expect:
+        succeeds("hello")
+    }
+
+    private void enableServiceUsageDeclaration() {
         settingsFile '''
-            enableFeaturePreview 'STABLE_CONFIGURATION_CACHE'
+            enableFeaturePreview "${org.gradle.api.internal.FeaturePreviews.Feature.INTERNAL_BUILD_SERVICE_USAGE}"
         '''
     }
 

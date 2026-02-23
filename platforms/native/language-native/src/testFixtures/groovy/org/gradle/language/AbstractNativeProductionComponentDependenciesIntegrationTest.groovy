@@ -16,10 +16,7 @@
 
 package org.gradle.language
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
-
 abstract class AbstractNativeProductionComponentDependenciesIntegrationTest extends AbstractNativeDependenciesIntegrationTest {
-    @ToBeFixedForConfigurationCache(bottomSpecs = ['CppLibraryDependenciesIntegrationTest', 'CppApplicationDependenciesIntegrationTest'])
     def "can define different implementation dependencies on each binary"() {
         given:
         createDirs("lib")
@@ -39,19 +36,15 @@ abstract class AbstractNativeProductionComponentDependenciesIntegrationTest exte
         run(':assembleDebug')
 
         then:
-        result.assertTasksExecuted(libDebugTasks, assembleDebugTasks, ':assembleDebug')
+        result.assertTasksScheduled(libDebugTasks, assembleDebugTasks, ':assembleDebug')
 
         when:
         run(':assembleRelease')
 
         then:
-        result.assertTasksExecuted(assembleReleaseTasks, ':assembleRelease')
+        result.assertTasksScheduled(assembleReleaseTasks, ':assembleRelease')
     }
 
-    @ToBeFixedForConfigurationCache(bottomSpecs = [
-        'CppLibraryDependenciesIntegrationTest',
-        'CppApplicationDependenciesIntegrationTest',
-    ])
     def "can define an included build implementation dependency on a binary"() {
         settingsFile << 'includeBuild "lib"'
         makeComponentWithIncludedBuildLibrary()
@@ -69,13 +62,13 @@ abstract class AbstractNativeProductionComponentDependenciesIntegrationTest exte
         run(':assembleDebug')
 
         then:
-        result.assertTasksExecuted(libDebugTasks, assembleDebugTasks, ':assembleDebug')
+        result.assertTasksScheduled(libDebugTasks, assembleDebugTasks, ':assembleDebug')
 
         when:
         run(':assembleRelease')
 
         then:
-        result.assertTasksExecuted(assembleReleaseTasks, ':assembleRelease')
+        result.assertTasksScheduled(assembleReleaseTasks, ':assembleRelease')
     }
 
     @Override

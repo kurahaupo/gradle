@@ -17,17 +17,15 @@
 package org.gradle.internal.declarativedsl.mappingToJvm
 
 import org.gradle.declarative.dsl.model.annotations.Adding
-import org.gradle.declarative.dsl.model.annotations.Configuring
-import org.gradle.declarative.dsl.model.annotations.Restricted
 import org.gradle.internal.declarativedsl.demo.resolve
 import org.gradle.internal.declarativedsl.schemaBuilder.kotlinFunctionAsConfigureLambda
 import org.gradle.internal.declarativedsl.schemaBuilder.schemaFromTypes
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.Test
 
 
-object EmptyBlocksTest {
+class EmptyBlocksTest {
     @Test
     fun `empty configuring block leads to object access`() {
         val resolution = schema.resolve(
@@ -81,7 +79,6 @@ object EmptyBlocksTest {
         val added = mutableListOf<Inner>()
 
         @Suppress("unused")
-        @Configuring
         fun configuring(block: Inner.() -> Unit = { }) {
             configuredLazy.value.block()
         }
@@ -97,7 +94,6 @@ object EmptyBlocksTest {
     }
 
     class Inner {
-        @get:Restricted
         var x: Int = 0
     }
 }

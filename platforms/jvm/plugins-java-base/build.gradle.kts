@@ -20,52 +20,47 @@ plugins {
 
 description = "Contains a basic JVM plugin used to compile, test, and assemble Java source; often applied by other JVM plugins (though named java-base, jvm-base would be a more proper name)."
 
-errorprone {
-    disabledChecks.addAll(
-        "UnusedMethod", // 1 occurrences
-    )
-}
-
 dependencies {
-    api(projects.javaLanguageExtensions)
+    api(projects.baseServices)
+    api(projects.core)
+    api(projects.coreApi)
+    api(projects.dependencyManagement)
+    api(projects.jvmCompilerWorker)
+    api(projects.languageJava)
+    api(projects.languageJvm)
+    api(projects.modelCore)
+    api(projects.platformJvm)
     api(projects.serviceProvider)
-    api(project(":base-services"))
-    api(project(":core"))
-    api(project(":core-api"))
-    api(project(":dependency-management"))
-    api(project(":language-java"))
-    api(project(":language-jvm"))
-    api(project(":model-core"))
-    api(project(":platform-jvm"))
-    api(project(":toolchains-jvm-shared"))
+    api(projects.stdlibJavaExtensions)
+    api(projects.toolchainsJvmShared)
 
     api(libs.groovy)
     api(libs.inject)
-    api(libs.jsr305)
+    api(libs.jspecify)
 
-    implementation(project(":file-collections"))
-    implementation(project(":logging"))
-    implementation(project(":platform-base"))
-    implementation(project(":reporting"))
-    implementation(project(":testing-base"))
-    implementation(project(":testing-jvm"))
-    implementation(project(":toolchains-jvm"))
+    implementation(projects.fileCollections)
+    implementation(projects.fileOperations)
+    implementation(projects.javaCompilerWorker)
+    implementation(projects.javadoc)
+    implementation(projects.jvmServices)
+    implementation(projects.logging)
+    implementation(projects.platformBase)
+    implementation(projects.reporting)
+    implementation(projects.serviceLookup)
+    implementation(projects.testingBase)
+    implementation(projects.testingJvm)
+    implementation(projects.toolchainsJvm)
 
     implementation(libs.commonsLang)
-    implementation(libs.guava)
 
-    runtimeOnly(project(":diagnostics"))
+    testImplementation(testFixtures(projects.core))
 
-    testImplementation(testFixtures(project(":core")))
+    integTestDistributionRuntimeOnly(projects.distributionsJvm)
 
-    integTestDistributionRuntimeOnly(project(":distributions-jvm"))
-
-    testFixturesImplementation(project(":internal-integ-testing"))
-    testFixturesImplementation(project(":logging"))
+    testFixturesImplementation(projects.internalIntegTesting)
+    testFixturesImplementation(projects.logging)
 }
 
 packageCycles {
     excludePatterns.add("org/gradle/api/plugins/**")
 }
-
-integTest.usesJavadocCodeSnippets.set(true)

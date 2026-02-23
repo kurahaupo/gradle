@@ -18,10 +18,11 @@ package org.gradle.internal.work;
 
 import org.gradle.internal.Factory;
 import org.gradle.internal.UncheckedException;
+import org.jspecify.annotations.Nullable;
 
 class DefaultSynchronizer implements Synchronizer {
     private final WorkerLeaseService workerLeaseService;
-    private Thread owner;
+    private @Nullable Thread owner;
 
     public DefaultSynchronizer(WorkerLeaseService workerLeaseService) {
         this.workerLeaseService = workerLeaseService;
@@ -38,7 +39,7 @@ class DefaultSynchronizer implements Synchronizer {
     }
 
     @Override
-    public <T> T withLock(Factory<T> action) {
+    public <T extends @Nullable Object> T withLock(Factory<T> action) {
         Thread previous = takeOwnership();
         try {
             return action.create();
@@ -47,6 +48,7 @@ class DefaultSynchronizer implements Synchronizer {
         }
     }
 
+    @Nullable
     private Thread takeOwnership() {
         final Thread currentThread = Thread.currentThread();
         if (!workerLeaseService.isWorkerThread()) {
@@ -78,7 +80,7 @@ class DefaultSynchronizer implements Synchronizer {
         return null;
     }
 
-    private void releaseOwnership(Thread previousOwner) {
+    private void releaseOwnership(@Nullable Thread previousOwner) {
         synchronized (this) {
             owner = previousOwner;
             this.notifyAll();

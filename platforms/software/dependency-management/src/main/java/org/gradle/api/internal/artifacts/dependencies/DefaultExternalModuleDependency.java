@@ -16,12 +16,10 @@
 
 package org.gradle.api.internal.artifacts.dependencies;
 
-import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.ExternalModuleDependency;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.MutableVersionConstraint;
-
-import javax.annotation.Nullable;
+import org.jspecify.annotations.Nullable;
 
 public class DefaultExternalModuleDependency extends AbstractExternalModuleDependency implements ExternalModuleDependency {
 
@@ -39,28 +37,9 @@ public class DefaultExternalModuleDependency extends AbstractExternalModuleDepen
 
     @Override
     public ExternalModuleDependency copy() {
-        DefaultExternalModuleDependency copiedModuleDependency = new DefaultExternalModuleDependency(getGroup(), getName(), getVersion(), getTargetConfiguration());
+        DefaultExternalModuleDependency copiedModuleDependency = new DefaultExternalModuleDependency(getModule(), new DefaultMutableVersionConstraint(getVersionConstraint()), getTargetConfiguration());
         copyTo(copiedModuleDependency);
         return copiedModuleDependency;
     }
 
-    @Override
-    public boolean contentEquals(Dependency dependency) {
-        if (this == dependency) {
-            return true;
-        }
-        if (dependency == null || getClass() != dependency.getClass()) {
-            return false;
-        }
-
-        ExternalModuleDependency that = (ExternalModuleDependency) dependency;
-        return isContentEqualsFor(that);
-
-    }
-
-    @Override
-    public String toString() {
-        return String.format("DefaultExternalModuleDependency{group='%s', name='%s', version='%s', configuration='%s'}",
-                getGroup(), getName(), getVersion(), getTargetConfiguration() != null ? getTargetConfiguration() : Dependency.DEFAULT_CONFIGURATION);
-    }
 }

@@ -68,7 +68,7 @@ abstract class AbstractJUnitTestClassDetectionIntegrationTest extends AbstractTe
     @Issue("https://issues.gradle.org/browse/GRADLE-3157")
     def "test class detection works when '-parameters' compiler option is used (JEP 118)"() {
         when:
-        buildScript """
+        buildFile """
             apply plugin: 'java'
             ${mavenCentralRepository()}
             dependencies {
@@ -107,9 +107,9 @@ abstract class AbstractJUnitTestClassDetectionIntegrationTest extends AbstractTe
         run "test"
 
         and:
-        def result = new DefaultTestExecutionResult(testDirectory)
+        def result = new DefaultTestExecutionResult(testDirectory, testFramework)
         result.testClass("TestCase").with {
-            assertTestCount(1, 0, 0)
+            assertTestCount(1, 0)
         }
     }
 }

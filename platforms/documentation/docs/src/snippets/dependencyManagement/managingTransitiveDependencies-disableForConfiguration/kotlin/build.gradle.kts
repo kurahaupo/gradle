@@ -7,13 +7,15 @@ repositories {
 }
 
 // tag::transitive-per-configuration[]
-configurations.all {
+configurations.configureEach {
     isTransitive = false
 }
 
+// tag::dependency-config[]
 dependencies {
     implementation("com.google.guava:guava:23.0")
 }
+// end::dependency-config[]
 // end::transitive-per-configuration[]
 
 tasks.register<Copy>("copyLibs") {

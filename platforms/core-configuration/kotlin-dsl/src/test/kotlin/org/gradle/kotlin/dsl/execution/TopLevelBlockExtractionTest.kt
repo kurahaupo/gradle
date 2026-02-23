@@ -124,7 +124,7 @@ class TopLevelBlockExtractionTest {
         } catch (unexpectedBlock: UnexpectedBlockOrder) {
             assertThat(unexpectedBlock.identifier, equalTo(plugins))
             assertThat(unexpectedBlock.location, equalTo(0..9))
-            assertThat(unexpectedBlock.message, equalTo("Unexpected `plugins` block found. `plugins` can not appear before `pluginManagement`."))
+            assertThat(unexpectedBlock.message, equalTo("Unexpected `plugins` block found. `plugins` cannot appear before `pluginManagement`."))
         }
     }
 
@@ -135,9 +135,9 @@ class TopLevelBlockExtractionTest {
 
     private
     fun extractBuildscriptBlockFrom(script: String) =
-        lex(script, buildscript).document.topLevelBlocks.singleBlockSectionOrNull()?.wholeRange
+        lex(script, arrayOf(buildscript)).document.topLevelBlocks.singleBlockSectionOrNull()?.wholeRange
 
     private
     fun extractPluginAndPluginManagementBlockFrom(script: String) =
-        lex(script, pluginManagement, plugins).document.topLevelBlocks
+        lex(script, arrayOf(pluginManagement, plugins)).document.topLevelBlocks
 }

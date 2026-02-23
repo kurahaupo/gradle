@@ -31,7 +31,7 @@ class CopySpecIntegrationSpec extends AbstractIntegrationSpec implements Unreada
 
     def "can use filesMatching with List"() {
         given:
-        buildScript """
+        buildFile """
             task (copy, type: Copy) {
                 from 'src'
                 into 'dest'
@@ -52,7 +52,7 @@ class CopySpecIntegrationSpec extends AbstractIntegrationSpec implements Unreada
 
     def "can use filesNotMatching with List"() {
         given:
-        buildScript """
+        buildFile """
             task (copy, type: Copy) {
                 from 'src'
                 into 'dest'
@@ -75,7 +75,7 @@ class CopySpecIntegrationSpec extends AbstractIntegrationSpec implements Unreada
     @Issue("gradle/gradle#789")
     def "can copy files with supplementary characters or surrogate pairs in file names"() {
         given:
-        buildScript """
+        buildFile """
             task(copy, type: Copy) {
                 from 'src'
                 into 'dest'
@@ -97,7 +97,7 @@ class CopySpecIntegrationSpec extends AbstractIntegrationSpec implements Unreada
         false // TODO This test can pass on Windows with proper locale, this force the test to fail, remove once fixed
     }
 
-    @Requires(UnitTestPreconditions.UnixDerivative)
+    @Requires(UnitTestPreconditions.Unix)
     @Issue("https://github.com/gradle/gradle/issues/2552")
     def "copying files to a directory with named pipes fails"() {
         def input = file("input.txt").createFile()

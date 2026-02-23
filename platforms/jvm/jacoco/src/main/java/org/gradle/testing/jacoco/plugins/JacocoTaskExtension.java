@@ -17,10 +17,11 @@
 package org.gradle.testing.jacoco.plugins;
 
 import com.google.common.base.Joiner;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.internal.provider.Providers;
 import org.gradle.api.model.ObjectFactory;
-import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.Classpath;
 import org.gradle.api.tasks.Input;
@@ -28,11 +29,12 @@ import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.LocalState;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
+import org.gradle.internal.instrumentation.api.annotations.ToBeReplacedByLazyProperty;
 import org.gradle.internal.jacoco.JacocoAgentJar;
 import org.gradle.process.JavaForkOptions;
 import org.gradle.util.internal.RelativePathUtil;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import java.io.File;
 import java.util.ArrayList;
@@ -66,7 +68,7 @@ public abstract class JacocoTaskExtension {
     private final JavaForkOptions task;
 
     private boolean enabled = true;
-    private final Property<File> destinationFile;
+    private final RegularFileProperty destinationFile;
     private List<String> includes = new ArrayList<>();
     private List<String> excludes = new ArrayList<>();
     private List<String> excludeClassLoaders = new ArrayList<>();
@@ -90,13 +92,14 @@ public abstract class JacocoTaskExtension {
     public JacocoTaskExtension(ObjectFactory objects, JacocoAgentJar agent, JavaForkOptions task) {
         this.agent = agent;
         this.task = task;
-        destinationFile = objects.property(File.class);
+        destinationFile = objects.fileProperty();
     }
 
     /**
      * Whether or not the task should generate execution data. Defaults to {@code true}.
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public boolean isEnabled() {
         return enabled;
     }
@@ -111,8 +114,9 @@ public abstract class JacocoTaskExtension {
     @Nullable
     @Optional
     @OutputFile
+    @ToBeReplacedByLazyProperty
     public File getDestinationFile() {
-        return destinationFile.getOrNull();
+        return destinationFile.getAsFile().getOrNull();
     }
 
     /**
@@ -122,10 +126,13 @@ public abstract class JacocoTaskExtension {
      * @since 4.0
      */
     public void setDestinationFile(Provider<File> destinationFile) {
-        this.destinationFile.set(destinationFile);
+        // TODO: This is a workaround for behavior in AGP.
+        // see https://github.com/gradle/gradle/issues/33389
+        // This can be removed once we've fixed RegularFileProperty.fileProvider(...) to work properly
+        this.destinationFile.fileProvider(destinationFile.flatMap(Providers::of));
     }
 
-    public void setDestinationFile(File destinationFile) {
+    public void setDestinationFile(@Nullable File destinationFile) {
         this.destinationFile.set(destinationFile);
     }
 
@@ -135,6 +142,7 @@ public abstract class JacocoTaskExtension {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public List<String> getIncludes() {
         return includes;
     }
@@ -149,6 +157,7 @@ public abstract class JacocoTaskExtension {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public List<String> getExcludes() {
         return excludes;
     }
@@ -163,6 +172,7 @@ public abstract class JacocoTaskExtension {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public List<String> getExcludeClassLoaders() {
         return excludeClassLoaders;
     }
@@ -177,6 +187,7 @@ public abstract class JacocoTaskExtension {
      * This property is only taken into account if the used JaCoCo version supports this option (JaCoCo version &gt;= 0.7.6)
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public boolean isIncludeNoLocationClasses() {
         return includeNoLocationClasses;
     }
@@ -191,6 +202,7 @@ public abstract class JacocoTaskExtension {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getSessionId() {
         return sessionId;
     }
@@ -203,6 +215,7 @@ public abstract class JacocoTaskExtension {
      * Whether or not to dump the coverage data at VM shutdown. Defaults to {@code true}.
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public boolean isDumpOnExit() {
         return dumpOnExit;
     }
@@ -215,6 +228,7 @@ public abstract class JacocoTaskExtension {
      * The type of output to generate. Defaults to {@link Output#FILE}.
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public Output getOutput() {
         return output;
     }
@@ -229,6 +243,7 @@ public abstract class JacocoTaskExtension {
     @Nullable
     @Optional
     @Input
+    @ToBeReplacedByLazyProperty
     public String getAddress() {
         return address;
     }
@@ -241,6 +256,7 @@ public abstract class JacocoTaskExtension {
      * Port to bind to for {@link Output#TCP_SERVER} or {@link Output#TCP_CLIENT}. Defaults to 6300.
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public int getPort() {
         return port;
     }
@@ -257,6 +273,7 @@ public abstract class JacocoTaskExtension {
     @Nullable
     @Optional
     @LocalState
+    @ToBeReplacedByLazyProperty
     public File getClassDumpDir() {
         return classDumpDir;
     }
@@ -276,6 +293,7 @@ public abstract class JacocoTaskExtension {
      * The configuration of the jmx property is only taken into account if the used JaCoCo version supports this option (JaCoCo version &gt;= 0.6.2)
      */
     @Input
+    @ToBeReplacedByLazyProperty
     public boolean isJmx() {
         return jmx;
     }
@@ -292,6 +310,7 @@ public abstract class JacocoTaskExtension {
      * @since 4.6
      */
     @Classpath
+    @ToBeReplacedByLazyProperty
     public FileCollection getAgentClasspath() {
         return agent.getAgentConf();
     }
@@ -302,6 +321,7 @@ public abstract class JacocoTaskExtension {
      * @return state of extension in a JVM argument
      */
     @Internal
+    @ToBeReplacedByLazyProperty
     public String getAsJvmArg() {
         StringBuilder builder = new StringBuilder();
         ArgumentAppender argument = new ArgumentAppender(builder, task.getWorkingDir());

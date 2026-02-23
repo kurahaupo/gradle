@@ -16,10 +16,7 @@
 
 package org.gradle.language
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
-
 abstract class AbstractNativeLibraryDependenciesIntegrationTest extends AbstractNativeProductionComponentDependenciesIntegrationTest {
-    @ToBeFixedForConfigurationCache(bottomSpecs = ['CppLibraryDependenciesIntegrationTest'])
     def "can define api dependencies on component"() {
         given:
         createDirs("lib")
@@ -37,6 +34,6 @@ abstract class AbstractNativeLibraryDependenciesIntegrationTest extends Abstract
         run(assembleDevBinaryTask)
 
         then:
-        result.assertTasksExecuted(libDebugTasks, assembleDevBinaryTasks, assembleDevBinaryTask)
+        result.assertTasksScheduled(libDebugTasks, assembleDevBinaryTasks, assembleDevBinaryTask)
     }
 }

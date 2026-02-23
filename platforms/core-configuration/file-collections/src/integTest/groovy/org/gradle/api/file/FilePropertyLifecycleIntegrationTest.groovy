@@ -91,7 +91,46 @@ class FilePropertyLifecycleIntegrationTest extends AbstractIntegrationSpec imple
         "@OutputDirectory" | _
     }
 
-    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/25516")
+    def "UPGRADED task #annotation file property is LENIENTLY implicitly finalized when task starts execution UNTIL NEXT MAJOR"() {
+        buildFile << """
+            import org.gradle.internal.instrumentation.api.annotations.ReplacesEagerProperty
+
+            abstract class SomeTask extends DefaultTask {
+                @ReplacesEagerProperty
+                ${annotation}
+                abstract $propertyType getProp()
+
+                @TaskAction
+                void go() {
+                    println "value: " + prop.get()
+                }
+            }
+
+            task show(type: SomeTask) {
+                prop = layout.projectDir.$fileMethod("in.$fileMethod")
+                def other = layout.projectDir.$fileMethod("other.$fileMethod")
+                doFirst {
+                    prop = other
+                }
+            }
+        """
+        file("in.file").createFile()
+        file("in.dir").createDir()
+
+        expect:
+        executer.expectDocumentedDeprecationWarning("Changing property value of task ':show' property 'prop' at execution time. This behavior has been deprecated. Starting with Gradle 11, changing property value of task ':show' property 'prop' at execution time will become an error.")
+        succeeds("show")
+        outputContains("value: " + file("other." + fileMethod))
+
+        where:
+        annotation         | propertyType          | fileMethod
+        "@InputFile"       | "RegularFileProperty" | "file"
+        "@OutputFile"      | "RegularFileProperty" | "file"
+        "@InputDirectory"  | "DirectoryProperty"   | "dir"
+        "@OutputDirectory" | "DirectoryProperty"   | "dir"
+    }
+
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/32591")
     def "task ad hoc file property registered using #registrationMethod is implicitly finalized when task starts execution"() {
         given:
         buildFile << """
@@ -123,7 +162,7 @@ task thing {
         "outputs.file"     | _
     }
 
-    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/25516")
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/32591")
     def "task ad hoc directory property registered using #registrationMethod is implicitly finalized when task starts execution"() {
         given:
         buildFile << """
@@ -210,7 +249,7 @@ task thing {
         output.count("prop = " + file("build/dir.out")) == 3
     }
 
-    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/25513")
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/32591")
     def "cannot query strict task output file property until task starts execution"() {
         taskTypeWithOutputFileProperty()
         settingsFile << "rootProject.name = 'broken'"
@@ -262,7 +301,7 @@ task thing {
         output.count("prop = " + file("build/text.out")) == 1
     }
 
-    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/25513")
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/32591")
     def "cannot query strict task output directory property until task starts execution"() {
         taskTypeWithOutputDirectoryProperty()
         settingsFile << "rootProject.name = 'broken'"
@@ -491,7 +530,7 @@ task thing {
         failureHasCause("Querying the mapped value of task ':producer' property 'output' before task ':producer' has completed is not supported")
     }
 
-    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/25513")
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/36710")
     def "cannot query strict property with upstream task output directory property until producer task starts execution"() {
         taskTypeWithOutputDirectoryProperty()
         settingsFile << "rootProject.name = 'broken'"
@@ -527,6 +566,7 @@ task thing {
                 doLast {
                     try {
                         prop.get()
+                        println("prop is accessible in 'before' task")
                     } catch(RuntimeException e) {
                         println("get from task failed: " + e.message)
                         println("get from task failed cause: " + e.cause.message)
@@ -544,7 +584,7 @@ task thing {
         output.count("prop = " + file("build/dir.out")) == 1
     }
 
-    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/25513")
+    @ToBeFixedForConfigurationCache(because = "https://github.com/gradle/gradle/issues/36710")
     def "cannot query strict property with upstream task output file property until producer task starts execution"() {
         taskTypeWithOutputFileProperty()
         settingsFile << "rootProject.name = 'broken'"
@@ -580,6 +620,7 @@ task thing {
                 doLast {
                     try {
                         prop.get()
+                        println("prop is accessible in 'before' task")
                     } catch(RuntimeException e) {
                         println("get from task failed: " + e.message)
                         println("get from task failed cause: " + e.cause.message)
@@ -649,5 +690,57 @@ task thing {
         outputContains("get from task failed: Failed to calculate the value of extension 'thing' property 'prop'.")
         outputContains("get from task failed cause: Querying the mapped value of task ':producer' property 'output' before task ':producer' has completed is not supported")
         output.count("prop = 123") == 1
+    }
+
+    /**
+     * These tests are to verify that when a property is marked as disallowChanges during configuration time,
+     * this setting is properly restored by the CC and honored at task execution time.
+     */
+    static class DisallowChangesIntegrationTests extends AbstractIntegrationSpec implements TasksWithInputsAndOutputs {
+        def "cannot update file property marked disallowChanges"() {
+            taskTypeWithOutputFileProperty()
+
+            buildFile """
+                tasks.register("producer", FileProducer) {
+                    output = layout.buildDir.file("text.out")
+                    output.disallowChanges()
+                    def other = file('ignore')
+                    doFirst {
+                        try {
+                            output = other
+                        } catch(IllegalStateException e) {
+                            println("set failed: " + e.message)
+                        }
+                    }
+                }
+            """
+
+            expect:
+            succeeds("producer")
+            outputContains("set failed: The value for task ':producer' property 'output' is final and cannot be changed any further.")
+        }
+
+        def "cannot update directory property marked disallowChanges"() {
+            taskTypeWithOutputDirectoryProperty()
+
+            buildFile """
+                tasks.register("producer", DirProducer) {
+                    output = layout.buildDir.dir("dir.out")
+                    output.disallowChanges()
+                    def other = file('ignore')
+                    doFirst {
+                        try {
+                            output = other
+                        } catch(IllegalStateException e) {
+                            println("set failed: " + e.message)
+                        }
+                    }
+                }
+            """
+
+            expect:
+            succeeds("producer")
+            outputContains("set failed: The value for task ':producer' property 'output' is final and cannot be changed any further.")
+        }
     }
 }

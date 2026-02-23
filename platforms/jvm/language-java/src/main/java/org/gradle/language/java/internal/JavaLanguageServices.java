@@ -22,17 +22,14 @@ import org.gradle.api.internal.tasks.compile.processing.AnnotationProcessorDetec
 import org.gradle.api.internal.tasks.compile.tooling.JavaCompileTaskSuccessResultPostProcessor;
 import org.gradle.api.logging.configuration.LoggingConfiguration;
 import org.gradle.api.logging.configuration.ShowStacktrace;
-import org.gradle.api.tasks.javadoc.internal.JavadocToolAdapter;
 import org.gradle.cache.internal.FileContentCacheFactory;
 import org.gradle.internal.build.event.OperationResultPostProcessorFactory;
+import org.gradle.internal.service.Provides;
 import org.gradle.internal.service.ServiceRegistration;
+import org.gradle.internal.service.ServiceRegistrationProvider;
 import org.gradle.internal.service.scopes.AbstractGradleModuleServices;
 import org.gradle.jvm.JvmLibrary;
-import org.gradle.jvm.toolchain.JavadocTool;
-import org.gradle.jvm.toolchain.internal.JavaToolchain;
-import org.gradle.jvm.toolchain.internal.ToolchainToolFactory;
 import org.gradle.language.java.artifact.JavadocArtifact;
-import org.gradle.process.internal.ExecActionFactory;
 import org.gradle.tooling.events.OperationType;
 import org.slf4j.LoggerFactory;
 
@@ -52,20 +49,17 @@ public class JavaLanguageServices extends AbstractGradleModuleServices {
     }
 
     @Override
-    public void registerProjectServices(ServiceRegistration registration) {
-        registration.addProvider(new JavaProjectScopeServices());
-    }
-
-    @Override
     public void registerBuildTreeServices(ServiceRegistration registration) {
-        registration.addProvider(new Object() {
+        registration.addProvider(new ServiceRegistrationProvider() {
+            @Provides
             public AnnotationProcessorDetector createAnnotationProcessorDetector(FileContentCacheFactory cacheFactory, LoggingConfiguration loggingConfiguration) {
                 return new AnnotationProcessorDetector(cacheFactory, LoggerFactory.getLogger(AnnotationProcessorDetector.class), loggingConfiguration.getShowStacktrace() != ShowStacktrace.INTERNAL_EXCEPTIONS);
             }
         });
     }
 
-    private static class JavaGlobalScopeServices {
+    private static class JavaGlobalScopeServices implements ServiceRegistrationProvider {
+        @Provides
         OperationResultPostProcessorFactory createJavaSubscribableBuildActionRunnerRegistration() {
             return (clientSubscriptions, consumer) -> clientSubscriptions.isRequested(OperationType.TASK)
                 ? Collections.singletonList(new JavaCompileTaskSuccessResultPostProcessor())
@@ -73,26 +67,12 @@ public class JavaLanguageServices extends AbstractGradleModuleServices {
         }
     }
 
-    private static class JavaBuildScopeServices {
+    private static class JavaBuildScopeServices implements ServiceRegistrationProvider {
+        @Provides
+        @SuppressWarnings("UnusedVariable") //registration
         public void configure(ServiceRegistration registration, ComponentTypeRegistry componentTypeRegistry) {
             componentTypeRegistry.maybeRegisterComponentType(JvmLibrary.class)
                 .registerArtifactType(JavadocArtifact.class, ArtifactType.JAVADOC);
-        }
-    }
-
-    private static class JavaProjectScopeServices {
-
-        public ToolchainToolFactory createToolFactory(ExecActionFactory generator) {
-            // TODO should we create all tools via this factory?
-            return new ToolchainToolFactory() {
-                @Override
-                public <T> T create(Class<T> toolType, JavaToolchain toolchain) {
-                    if (toolType == JavadocTool.class) {
-                        return toolType.cast(new JavadocToolAdapter(generator, toolchain));
-                    }
-                    return null;
-                }
-            };
         }
     }
 }

@@ -19,12 +19,10 @@ package org.gradle.internal.component.model;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
 import org.gradle.api.artifacts.component.ComponentSelector;
-import org.gradle.api.capabilities.Capability;
-import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.api.internal.attributes.immutable.ImmutableAttributesSchema;
+import org.jspecify.annotations.Nullable;
 
-import javax.annotation.Nullable;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
@@ -32,8 +30,9 @@ import java.util.List;
  * Information about a locally resolved dependency.
  */
 public class LocalComponentDependencyMetadata implements LocalOriginDependencyMetadata {
+
     private final ComponentSelector selector;
-    private final String dependencyConfiguration;
+    private final @Nullable String dependencyConfiguration;
     private final List<ExcludeMetadata> excludes;
     private final List<IvyArtifactName> artifactNames;
     private final boolean force;
@@ -42,7 +41,7 @@ public class LocalComponentDependencyMetadata implements LocalOriginDependencyMe
     private final boolean constraint;
     private final boolean endorsing;
     private final boolean fromLock;
-    private final String reason;
+    private final @Nullable String reason;
 
     public LocalComponentDependencyMetadata(
         ComponentSelector selector,
@@ -83,7 +82,7 @@ public class LocalComponentDependencyMetadata implements LocalOriginDependencyMe
 
     @Override
     public String toString() {
-        return "dependency: " + selector + " to-conf: " + dependencyConfiguration;
+        return selector.toString();
     }
 
     @Override
@@ -92,33 +91,24 @@ public class LocalComponentDependencyMetadata implements LocalOriginDependencyMe
     }
 
     @Override
-    public GraphVariantSelectionResult selectVariants(
+    public @Nullable List<? extends VariantGraphResolveState> overrideVariantSelection(
         GraphVariantSelector variantSelector,
         ImmutableAttributes consumerAttributes,
         ComponentGraphResolveState targetComponentState,
-        AttributesSchemaInternal consumerSchema,
-        Collection<? extends Capability> explicitRequestedCapabilities
+        ImmutableAttributesSchema consumerSchema
     ) {
-        // If a specific variant is requested by name, select it.
         if (dependencyConfiguration != null) {
-            VariantGraphResolveState selected = variantSelector.selectVariantByConfigurationName(dependencyConfiguration, consumerAttributes, targetComponentState, consumerSchema);
-            return new GraphVariantSelectionResult(Collections.singletonList(selected), false);
-        }
-
-        // Use attribute matching if it is supported.
-        if (!targetComponentState.getCandidatesForGraphVariantSelection().getVariantsForAttributeMatching().isEmpty()) {
-            VariantGraphResolveState selected = variantSelector.selectByAttributeMatching(
+            VariantGraphResolveState selected = variantSelector.selectVariantByConfigurationName(
+                dependencyConfiguration,
                 consumerAttributes,
-                explicitRequestedCapabilities, targetComponentState,
-                consumerSchema,
-                getArtifacts()
+                targetComponentState,
+                consumerSchema
             );
-            return new GraphVariantSelectionResult(Collections.singletonList(selected), true);
+
+            return Collections.singletonList(selected);
         }
 
-        // Otherwise, select the legacy configuration.
-        VariantGraphResolveState selected = variantSelector.selectLegacyVariant(consumerAttributes, targetComponentState, consumerSchema, variantSelector.getFailureHandler());
-        return new GraphVariantSelectionResult(Collections.singletonList(selected), false);
+        return null;
     }
 
     @Override
@@ -152,7 +142,7 @@ public class LocalComponentDependencyMetadata implements LocalOriginDependencyMe
     }
 
     @Override
-    public String getReason() {
+    public @Nullable String getReason() {
         return reason;
     }
 

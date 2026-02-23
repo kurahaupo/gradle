@@ -35,10 +35,10 @@ class GccToolChainDiscoveryIntegrationTest extends AbstractInstalledToolChainInt
         buildFile << """
 apply plugin: 'c'
 
-model {
     toolChains {
         ${toolChain.buildScriptConfig}
     }
+model {
     components {
         main(NativeExecutableSpec) {
             binaries.all {
@@ -54,16 +54,13 @@ model {
         helloWorldApp.library.writeSources(file("src/hello"))
     }
 
-    @ToBeFixedForConfigurationCache
     def "can build when language tools that are not required are not available"() {
         when:
         buildFile << """
-model {
-    toolChains {
-        ${toolChain.id} {
-            eachPlatform {
-                cppCompiler.executable = 'does-not-exist'
-            }
+toolChains {
+    ${toolChain.id} {
+        eachPlatform {
+            cppCompiler.executable = 'does-not-exist'
         }
     }
 }
@@ -77,7 +74,6 @@ model {
     def "does not break when compiler not available and not building"() {
         when:
         buildFile << """
-model {
     toolChains {
         ${toolChain.id} {
             eachPlatform {
@@ -87,18 +83,15 @@ model {
             }
         }
     }
-}
 """
 
         then:
         succeeds "help"
     }
 
-    @ToBeFixedForConfigurationCache
     def "tool chain is not available when no tools are available"() {
         when:
         buildFile << """
-model {
     toolChains {
         ${toolChain.id} {
             eachPlatform {
@@ -114,7 +107,6 @@ model {
             }
         }
     }
-}
 """
         fails "compileMainExecutableMainC"
 
@@ -126,11 +118,10 @@ model {
     }
 
     @Requires(IntegTestPreconditions.NotParallelExecutor)
-    @ToBeFixedForConfigurationCache
+    @ToBeFixedForConfigurationCache(because = "different failure reporting for vintage mode and storing to cache")
     def "fails when required language tool is not available but other language tools are available"() {
         when:
         buildFile << """
-model {
     toolChains {
         ${toolChain.id} {
             eachPlatform {
@@ -138,7 +129,6 @@ model {
             }
         }
     }
-}
 """
         fails "compileMainExecutableMainC"
 
@@ -147,11 +137,9 @@ model {
         failure.assertThatCause(CoreMatchers.startsWith("Could not find C compiler 'does-not-exist'"))
     }
 
-    @ToBeFixedForConfigurationCache
     def "fails when required linker tool is not available but language tool is available"() {
         when:
         buildFile << """
-model {
     toolChains {
         ${toolChain.id} {
             eachPlatform {
@@ -159,7 +147,6 @@ model {
             }
         }
     }
-}
 """
         fails "mainExecutable"
 

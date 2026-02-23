@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -59,16 +60,13 @@ public class ThrottlingOutputEventListener implements OutputEventListener {
     }
 
     private void scheduleUpdateNow() {
-        executor.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    onOutput(new UpdateNowEvent(clock.getCurrentTime()));
-                } catch (Throwable t) {
-                    // this class is used as task in a scheduled executor service, so it must not throw any throwable,
-                    // otherwise the further invocations of this task get automatically and silently cancelled
-                    LOGGER.debug("Exception while displaying output", t);
-                }
+        ScheduledFuture<?> ignored = executor.scheduleAtFixedRate(() -> {
+            try {
+                onOutput(new UpdateNowEvent(clock.getCurrentTime()));
+            } catch (Throwable t) {
+                // this class is used as task in a scheduled executor service, so it must not throw any throwable,
+                // otherwise the further invocations of this task get automatically and silently cancelled
+                LOGGER.debug("Exception while displaying output", t);
             }
         }, throttleMs, throttleMs, TimeUnit.MILLISECONDS);
     }

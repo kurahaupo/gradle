@@ -25,6 +25,9 @@ import org.gradle.integtests.tooling.fixture.ToolingApiSpecification
 import org.gradle.kotlin.dsl.tooling.models.KotlinBuildScriptModel
 import org.gradle.test.fixtures.archive.JarTestFixture
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.tooling.events.ProgressEvent
+import org.gradle.tooling.events.ProgressListener
+import org.gradle.tooling.events.lifecycle.BuildPhaseStartEvent
 import org.gradle.tooling.model.kotlin.dsl.KotlinDslScriptsModel
 import org.gradle.util.GradleVersion
 import org.hamcrest.Description
@@ -59,9 +62,6 @@ abstract class AbstractKotlinScriptModelCrossVersionTest extends ToolingApiSpeci
         if (GradleVersion.version(releasedGradleVersion) == GradleVersion.version("6.5.1")) {
             toolingApi.requireIsolatedUserHome()
         }
-        // Having this unset is now deprecated, will default to `false` in Gradle 9.0
-        // TODO remove - see https://github.com/gradle/gradle/issues/26810
-        file('gradle.properties') << 'org.gradle.kotlin.dsl.skipMetadataVersionCheck=false'
     }
 
     private String targetKotlinVersion
@@ -100,7 +100,7 @@ abstract class AbstractKotlinScriptModelCrossVersionTest extends ToolingApiSpeci
         return fetchKotlinBuildScriptModelFor(
             projectDir,
             scriptFile,
-            { selectedProjectDir -> connector().forProjectDirectory(selectedProjectDir) }
+            { selectedProjectDir -> rawConnector().forProjectDirectory(selectedProjectDir) }
         )
     }
 
@@ -237,5 +237,22 @@ abstract class AbstractKotlinScriptModelCrossVersionTest extends ToolingApiSpeci
 
     protected static void assertHasExceptionMessage(KotlinDslScriptsModel model, TestFile script, String message) {
         assertThat(model.scriptModels[script].exceptions, hasItem(containsString(message)))
+    }
+
+    protected static final class ConfigurationPhaseMonitoringListener implements ProgressListener {
+
+        boolean hasSeenSomeEvents = false
+        final List<ProgressEvent> configPhaseStartEvents = new ArrayList<>()
+
+        @Override
+        void statusChanged(ProgressEvent event) {
+            hasSeenSomeEvents = true
+            if (event instanceof BuildPhaseStartEvent) {
+                BuildPhaseStartEvent buildPhaseStartEvent = (BuildPhaseStartEvent) event
+                if (buildPhaseStartEvent.descriptor.buildPhase.startsWith("CONFIGURE")) {
+                    configPhaseStartEvents.add(event)
+                }
+            }
+        }
     }
 }

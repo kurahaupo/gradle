@@ -15,51 +15,61 @@
  */
 
 import com.google.gson.Gson
+import com.google.gson.Strictness
 import com.google.gson.reflect.TypeToken
 import com.google.gson.stream.JsonReader
 import gradlebuild.basics.repoRoot
-import gradlebuild.basics.isBundleGroovy4
-import gradlebuild.modules.extension.ExternalModulesExtension
-
-val libs = extensions.create<ExternalModulesExtension>("libs", isBundleGroovy4)
 
 applyAutomaticUpgradeOfCapabilities()
 dependencies {
+    configurations.all {
+        exclude("org.slf4j", "slf4j-simple")
+    }
     components {
         // Gradle distribution - minify: remove unused transitive dependencies
-        withLibraryDependencies<DependencyRemovalByNameRule>(libs.awsS3Core, setOf("jackson-dataformat-cbor"))
-        withLibraryDependencies<DependencyRemovalByGroupRule>(libs.jgit, setOf("com.googlecode.javaewah"))
+        applyRule<DependencyRemovalByNameRule>("com.amazonaws:aws-java-sdk-core", setOf("jackson-dataformat-cbor"))
+        applyRule<DependencyRemovalByGroupRule>("org.eclipse.jgit:org.eclipse.jgit", setOf("com.googlecode.javaewah"))
 
         // We don't need the extra annotations provided by j2objc
-        withLibraryDependencies<DependencyRemovalByNameRule>(libs.googleHttpClient, setOf("j2objc-annotations"))
+        applyRule<DependencyRemovalByNameRule>("com.google.http-client:google-http-client", setOf("j2objc-annotations"))
 
         // Read capabilities declared in capabilities.json
         readCapabilitiesFromJson()
 
-        withModule<ReplaceCglibNodepWithCglibRule>("org.spockframework:spock-core")
         // Prevent Spock from pulling in Groovy and third-party dependencies - see https://github.com/spockframework/spock/issues/899
-        withLibraryDependencies<DependencyRemovalByNameRule>(
+        applyRule<DependencyRemovalByNameRule>(
             "org.spockframework:spock-core",
             setOf("groovy-groovysh", "groovy-json", "groovy-macro", "groovy-nio", "groovy-sql", "groovy-templates", "groovy-test", "groovy-xml")
         )
-        withLibraryDependencies<DependencyRemovalByNameRule>("cglib:cglib", setOf("ant"))
+        applyRule<DependencyRemovalByNameRule>("cglib:cglib", setOf("ant"))
+
+        // We do not support running junit from Ant. Don't bundle ant-junit.
+        applyRule<DependencyRemovalByNameRule>("org.apache.groovy:groovy-ant", setOf("ant-junit"))
+
+        // GCS transitively depends on commons-logging.
+        // Ensure jcl-over-slf4j is pulled in when we use GCS so it can conflict.
+        applyRule<DependencyAdditionRule>("com.google.apis:google-api-services-storage", "org.slf4j:jcl-over-slf4j")
 
         // asciidoctorj depends on a lot of stuff, which causes `Can't create process, argument list too long` on Windows
-        withLibraryDependencies<DependencyRemovalByNameRule>("org.gradle:sample-discovery", setOf("asciidoctorj", "asciidoctorj-api"))
+        applyRule<DependencyRemovalByNameRule>("org.gradle:sample-discovery", setOf("asciidoctorj", "asciidoctorj-api"))
 
-        withModule<DowngradeXmlApisRule>("jaxen:jaxen")
-        withModule<DowngradeXmlApisRule>("jdom:jdom")
-        withModule<DowngradeXmlApisRule>("xalan:xalan")
-        withModule<DowngradeXmlApisRule>("jaxen:jaxen")
+        withModule<RemoveXmlApisRule>("jaxen:jaxen")
+        withModule<RemoveXmlApisRule>("jdom:jdom")
+        withModule<RemoveXmlApisRule>("xalan:xalan")
+        withModule<RemoveXmlApisRule>("jaxen:jaxen")
 
         // We only need "failureaccess" of Guava's dependencies
-        withLibraryDependencies<KeepDependenciesByNameRule>("com.google.guava:guava", setOf("failureaccess"))
+        applyRule<KeepDependenciesByNameRule>("com.google.guava:guava", setOf("failureaccess"))
 
         // We only need a few utility classes of this module
-        withLibraryDependencies<DependencyRemovalByNameRule>("jcifs:jcifs", setOf("servlet-api"))
+        applyRule<DependencyRemovalByNameRule>("jcifs:jcifs", setOf("servlet-api"))
+
+        // Bsh moved coordinates. Depend on the new coordinates.
+        applyRule<DependencyRemovalByGroupRule>("org.testng:testng", setOf("org.beanshell"))
+        applyRule<DependencyAdditionRule>("org.testng:testng", "org.apache-extras.beanshell:bsh")
 
         // Test dependencies - minify: remove unused transitive dependencies
-        withLibraryDependencies<DependencyRemovalByNameRule>(
+        applyRule<DependencyRemovalByNameRule>(
             "xyz.rogfam:littleproxy",
             setOf("barchart-udt-bundle", "guava", "commons-cli")
         )
@@ -67,7 +77,7 @@ dependencies {
         // TODO: Gradle profiler should use the bundled tooling API.
         //   This should actually be handled by conflict resolution, though it doesn't seem to work.
         //   See https://github.com/gradle/gradle/issues/12002.
-        withLibraryDependencies<DependencyRemovalByNameRule>(
+        applyRule<DependencyRemovalByNameRule>(
             "org.gradle.profiler:gradle-profiler",
             setOf("gradle-tooling-api")
         )
@@ -93,7 +103,7 @@ fun readCapabilitiesFromJson() {
 
 fun readCapabilities(source: File): List<CapabilitySpec> {
     JsonReader(source.reader(Charsets.UTF_8)).use { reader ->
-        reader.isLenient = true
+        reader.strictness = Strictness.LENIENT
         return Gson().fromJson(reader)
     }
 }
@@ -109,7 +119,7 @@ abstract class CapabilityRule @Inject constructor(
     override fun execute(context: ComponentMetadataContext) {
         context.details.allVariants {
             withCapabilities {
-                addCapability("org.gradle.internal.capability", name, version)
+                addCapability("org.gradle.internal.capability", name, "${version}.original.${context.details.id.version}")
             }
         }
     }
@@ -154,7 +164,7 @@ class CapabilitySpec {
     fun ComponentMetadataHandler.declareCapabilityPreference(module: String) {
         withModule<CapabilityRule>(module) {
             params(name)
-            params("${providedBy.size + 1}")
+            params("${providedBy.size}")
         }
     }
 
@@ -190,6 +200,19 @@ abstract class DependencyRemovalByNameRule @Inject constructor(
 }
 
 
+abstract class DependencyAdditionRule @Inject constructor(
+    private val coordinates: String
+) : ComponentMetadataRule {
+    override fun execute(context: ComponentMetadataContext) {
+        context.details.allVariants {
+            withDependencies {
+                add(coordinates)
+            }
+        }
+    }
+}
+
+
 abstract class DependencyRemovalByGroupRule @Inject constructor(
     private val groupsToRemove: Set<String>
 ) : ComponentMetadataRule {
@@ -217,49 +240,21 @@ abstract class KeepDependenciesByNameRule @Inject constructor(
 
 
 inline
-fun <reified T : ComponentMetadataRule> ComponentMetadataHandler.withLibraryDependencies(module: String, modulesToRemove: Set<String>) {
+fun <reified T : ComponentMetadataRule> ComponentMetadataHandler.applyRule(module: String, vararg modulesToRemove: Any) {
     withModule<T>(module) {
-        params(modulesToRemove)
+        params(*modulesToRemove)
     }
 }
 
 
-abstract class DowngradeXmlApisRule : ComponentMetadataRule {
+/**
+ * The JDK now provides these.
+ */
+abstract class RemoveXmlApisRule : ComponentMetadataRule {
     override fun execute(context: ComponentMetadataContext) {
         context.details.allVariants {
             withDependencies {
-                filter { it.group == "xml-apis" }.forEach {
-                    it.version { require("1.4.01") }
-                    it.because("Gradle has trouble with the versioning scheme and pom redirects in higher versions")
-                }
-            }
-        }
-    }
-}
-
-
-abstract class ReplaceCglibNodepWithCglibRule : ComponentMetadataRule {
-    override fun execute(context: ComponentMetadataContext) {
-        context.details.allVariants {
-            withDependencies {
-                filter { it.name == "cglib-nodep" }.forEach {
-                    add("${it.group}:cglib:3.2.7")
-                }
-                removeAll { it.name == "cglib-nodep" }
-            }
-        }
-    }
-}
-
-// https://youtrack.jetbrains.com/issue/IDEA-261387
-abstract class UnifyTrove4jVersionRule : ComponentMetadataRule {
-    override fun execute(context: ComponentMetadataContext) {
-        context.details.allVariants {
-            withDependencies {
-                if (any { it.name == "trove4j" }) {
-                    removeAll { it.name == "trove4j" }
-                    add("org.jetbrains.intellij.deps:trove4j:trove4j")
-                }
+                removeAll { it.group == "xml-apis" }
             }
         }
     }

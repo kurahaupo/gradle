@@ -17,12 +17,12 @@
 package org.gradle.api.tasks.bundling
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.archives.TestReproducibleArchives
+import org.gradle.integtests.fixtures.archives.TestFileSystemSensitiveArchives
 import org.gradle.internal.reflect.validation.ValidationMessageChecker
 import org.gradle.test.fixtures.archive.JarTestFixture
 import org.gradle.util.internal.TextUtil
 
-@TestReproducibleArchives
+@TestFileSystemSensitiveArchives
 class JarIntegrationTest extends AbstractIntegrationSpec implements ValidationMessageChecker {
     def setup() {
         expectReindentedValidationMessage()
@@ -399,19 +399,25 @@ class JarIntegrationTest extends AbstractIntegrationSpec implements ValidationMe
     }
 
     def "JAR task is skipped when compiler output is unchanged"() {
+        given:
         file("src/main/java/Main.java") << "public class Main {}\n"
         buildFile << """
             apply plugin: "java"
         """
 
+        when:
         succeeds "jar"
 
+        then:
         file("src/main/java/Main.java") << "// This should not influence compiled output"
 
         when:
         succeeds "jar"
-        then:
+
+        and:
         executedAndNotSkipped ":compileJava"
+
+        then:
         skipped ":jar"
     }
 

@@ -24,15 +24,13 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.provider.SetProperty
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.TestBuildCache
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.internal.Actions
 import org.gradle.internal.reflect.validation.ValidationMessageChecker
 import org.gradle.test.precondition.Requires
 import org.gradle.test.preconditions.IntegTestPreconditions
+import org.gradle.util.internal.ToBeImplemented
 import spock.lang.Issue
-
-import static org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache.Skip.INVESTIGATE
 
 class TaskParametersIntegrationTest extends AbstractIntegrationSpec implements ValidationMessageChecker {
 
@@ -41,8 +39,9 @@ class TaskParametersIntegrationTest extends AbstractIntegrationSpec implements V
             task foo {
                 inputs.property "a", "hello"
                 inputs.property "b", new Foo()
-                outputs.file "foo.txt"
-                doLast { file("foo.txt") << "" }
+                def outputFile = file("foo.txt")
+                outputs.file(outputFile)
+                doLast { outputFile << "" }
             }
 
             class Foo {
@@ -58,13 +57,13 @@ class TaskParametersIntegrationTest extends AbstractIntegrationSpec implements V
         failure.assertHasCause("Cannot fingerprint input property 'b': value 'xxx' cannot be serialized.")
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
     def "deals gracefully with not serializable contents of GStrings"() {
         buildFile << """
             task foo {
                 inputs.property "a", "hello \${new Foo()}"
-                outputs.file "foo.txt"
-                doLast { file("foo.txt") << "" }
+                def outputFile = file("foo.txt")
+                outputs.file(outputFile)
+                doLast { outputFile << "" }
             }
 
             class Foo {
@@ -74,7 +73,7 @@ class TaskParametersIntegrationTest extends AbstractIntegrationSpec implements V
         """
 
         expect:
-        run("foo").assertTaskNotSkipped(":foo")
+        run("foo").assertTaskExecuted(":foo")
         run("foo").assertTaskSkipped(":foo")
     }
 
@@ -92,7 +91,7 @@ class TaskParametersIntegrationTest extends AbstractIntegrationSpec implements V
                 @InputFiles FileCollection inputs1
                 @InputFiles FileCollection inputs2
 
-                @OutputDirectory File output = project.buildDir
+                @OutputDirectory File output
 
                 @TaskAction void action() {}
             }
@@ -102,6 +101,7 @@ class TaskParametersIntegrationTest extends AbstractIntegrationSpec implements V
             task test(type: TaskWithTwoFileCollectionInputs) {
                 inputs1 = files("input1.txt", "input2.txt")
                 inputs2 = files("input3.txt")
+                output = layout.buildDirectory.dir("out").get().asFile
             }
         """
 
@@ -240,20 +240,20 @@ class TaskParametersIntegrationTest extends AbstractIntegrationSpec implements V
     def "task depends on other task whose outputs are its inputs"() {
         buildFile << """
             task a {
-                outputs.file 'a.txt'
                 def outputFile = file('a.txt')
+                outputs.file(outputFile)
                 doLast {
                     outputFile << "Data"
                 }
             }
 
             task b {
-                inputs.files tasks.a.outputs.files
+                inputs.files(tasks.a.outputs.files)
             }
         """
 
         expect:
-        succeeds "b" assertTasksExecutedInOrder ":a", ":b"
+        succeeds "b" assertTasksScheduledInOrder ":a", ":b"
     }
 
     def "task is out of date when property added"() {
@@ -441,7 +441,7 @@ task someTask {
         buildFile << """
             import org.gradle.integtests.fixtures.validation.ValidationProblem
 
-            class InvalidTask extends SourceTask {
+            abstract class InvalidTask extends SourceTask {
                 @ValidationProblem File inputFile
 
                 @TaskAction void execute() {
@@ -582,7 +582,7 @@ task someTask(type: SomeTask) {
         succeeds "test"
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeImplemented("https://github.com/gradle/gradle/issues/36576")
     def "null input files registered via TaskInputs.#method are not allowed"() {
         expectReindentedValidationMessage()
         buildFile << """
@@ -594,7 +594,13 @@ task someTask(type: SomeTask) {
         expect:
         fails "test"
         failure.assertHasDescription("A problem was found with the configuration of task ':test' (type 'DefaultTask').")
-        failureDescriptionContains(missingValueMessage { property('input') })
+        def expectedMessage
+        if (GradleContextualExecuter.isConfigCache()) {
+            expectedMessage = missingNonConfigurableValueMessage { property('input') }
+        } else {
+            expectedMessage = missingValueMessage { property('input') }
+        }
+        failureDescriptionContains(expectedMessage)
 
         where:
         method << ["file", "files", "dir"]
@@ -614,7 +620,7 @@ task someTask(type: SomeTask) {
         method << ["file", "files", "dir"]
     }
 
-    @ToBeFixedForConfigurationCache(skip = INVESTIGATE)
+    @ToBeImplemented("https://github.com/gradle/gradle/issues/36576")
     def "null output files registered via TaskOutputs.#method are not allowed"() {
         expectReindentedValidationMessage()
         buildFile << """
@@ -626,8 +632,13 @@ task someTask(type: SomeTask) {
         expect:
         fails "test"
         failure.assertHasDescription("A problem was found with the configuration of task ':test' (type 'DefaultTask').")
-        failureDescriptionContains(missingValueMessage { property('output') })
-
+        def expectedMessage
+        if (GradleContextualExecuter.isConfigCache()) {
+            expectedMessage = missingNonConfigurableValueMessage { property('output') }
+        } else {
+            expectedMessage = missingValueMessage { property('output') }
+        }
+        failureDescriptionContains(expectedMessage)
         where:
         method << ["file", "files", "dir", "dirs"]
     }
@@ -705,7 +716,7 @@ task someTask(type: SomeTask) {
                 "Use a $fileType as an input",
                 "Declare the input as a ${getOppositeKind(fileType)} instead",
             ].collect { it.toString() }
-            additionalData == [
+            additionalData.asMap == [
                 'typeName': 'org.gradle.api.DefaultTask',
                 'propertyName': 'input',
             ]
@@ -746,7 +757,7 @@ task someTask(type: SomeTask) {
                 'Configure \'output\' to point to a file, not a directory',
                 'Annotate \'output\' with @OutputDirectory instead of @OutputFiles',
             ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'org.gradle.api.DefaultTask',
                 'propertyName' : 'output',
             ]
@@ -783,7 +794,7 @@ task someTask(type: SomeTask) {
             contextualLabel == "Property \'output\' is not writable because \'${outputFile.absolutePath}\' is not a directory"
             details == "Expected \'${outputFile.absolutePath}\' to be a directory but it\'s a file"
             solutions == [ 'Make sure that the \'output\' is configured to a directory' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'org.gradle.api.DefaultTask',
                 'propertyName' : 'output',
             ]
@@ -798,7 +809,7 @@ task someTask(type: SomeTask) {
     def "fileTrees with regular file roots cannot be used as output files"() {
         enableProblemsApiCheck()
         expectReindentedValidationMessage()
-        buildScript """
+        buildFile """
             task myTask {
                 inputs.file file('input.txt')
                 outputs.files(files('build/output.txt').asFileTree).withPropertyName('output')
@@ -826,7 +837,7 @@ task someTask(type: SomeTask) {
             contextualLabel == "Property \'output\' is not writable because \'${outputFile.absolutePath}\' is not a directory"
             details == "Expected the root of the file tree \'${outputFile.absolutePath}\' to be a directory but it\'s a file"
             solutions == [ 'Make sure that the root of the file tree \'output\' is configured to a directory' ]
-            additionalData == [
+            additionalData.asMap == [
                 'typeName' : 'org.gradle.api.DefaultTask',
                 'propertyName' : 'output',
             ]
@@ -898,12 +909,13 @@ task someTask(type: SomeTask) {
         failureHasCause("BOOM")
     }
 
-    @ToBeFixedForConfigurationCache
     def "input and output properties are not evaluated too often"() {
         buildFile << """
             import org.gradle.api.services.BuildServiceParameters
+            import org.gradle.tooling.events.OperationCompletionListener
+            import org.gradle.tooling.events.FinishEvent
 
-            abstract class EvaluationCountBuildService implements BuildService<BuildServiceParameters.None> {
+            abstract class EvaluationCountBuildService implements BuildService<BuildServiceParameters.None>, OperationCompletionListener {
                 int outputFileCount = 0
                 int inputFileCount = 0
                 int inputValueCount = 0
@@ -929,8 +941,10 @@ task someTask(type: SomeTask) {
                 void nestedInputValue() {
                     nestedInputValueCount++
                 }
+                void onFinish(FinishEvent finishEvent) {}
             }
             def evaluationCount = project.getGradle().getSharedServices().registerIfAbsent("evaluationCount", EvaluationCountBuildService) {}
+            services.get(BuildEventsListenerRegistry).onTaskCompletion(evaluationCount);
 
             @CacheableTask
             abstract class CustomTask extends DefaultTask {
@@ -1015,26 +1029,31 @@ task someTask(type: SomeTask) {
         succeeds("printCounts")
         then:
         executedAndNotSkipped(':myTask')
-        outputContains("outputFileCount = 2, inputFileCount = 3, inputValueCount = 1, nestedInputCount = 3, nestedInputValueCount = 1")
+        def expectedInputFileCount = 3
+        def expectedNestedInputCount = GradleContextualExecuter.isConfigCache() ? 4 : 3
+        outputContains("outputFileCount = 2, inputFileCount = ${expectedInputFileCount}, inputValueCount = 1, nestedInputCount = ${expectedNestedInputCount}, nestedInputValueCount = 1")
 
         when:
         inputFile.text = "changed"
         withBuildCache().succeeds("printCounts")
         then:
+        def expectedInputFileCount2 = GradleContextualExecuter.isConfigCache() ? 2 : 3
+        def expectedNestedInputCount2 = GradleContextualExecuter.isConfigCache() ? 1 : 3
         executedAndNotSkipped(':myTask')
-        outputContains("outputFileCount = 2, inputFileCount = 3, inputValueCount = 1, nestedInputCount = 3, nestedInputValueCount = 1")
+        outputContains("outputFileCount = 2, inputFileCount = ${expectedInputFileCount2}, inputValueCount = 1, nestedInputCount = ${expectedNestedInputCount2}, nestedInputValueCount = 1")
 
         when:
         succeeds("printCounts")
         then:
+        def expectedInputFileCount3 = GradleContextualExecuter.isConfigCache() ? 1 : 2
         skipped(':myTask')
-        outputContains("outputFileCount = 1, inputFileCount = 2, inputValueCount = 1, nestedInputCount = 3, nestedInputValueCount = 1")
+        outputContains("outputFileCount = 1, inputFileCount = ${expectedInputFileCount3}, inputValueCount = 1, nestedInputCount = ${expectedNestedInputCount2}, nestedInputValueCount = 1")
 
         when:
         file('build').deleteDir()
         withBuildCache().succeeds("printCounts")
         then:
         skipped(':myTask')
-        outputContains("outputFileCount = 1, inputFileCount = 2, inputValueCount = 1, nestedInputCount = 3, nestedInputValueCount = 1")
+        outputContains("outputFileCount = 1, inputFileCount = ${expectedInputFileCount3}, inputValueCount = 1, nestedInputCount = ${expectedNestedInputCount2}, nestedInputValueCount = 1")
     }
 }

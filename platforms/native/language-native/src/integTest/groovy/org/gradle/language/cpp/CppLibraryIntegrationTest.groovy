@@ -16,7 +16,6 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.integtests.fixtures.ToBeFixedForConfigurationCache
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
 import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraries
@@ -57,7 +56,6 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         return new CppLib()
     }
 
-    @ToBeFixedForConfigurationCache
     def "skip compile and link tasks when no source"() {
         given:
         buildFile << """
@@ -66,12 +64,11 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
         // TODO - should skip the task as NO-SOURCE
         result.assertTasksSkipped(tasks.debug.allToLink, ":assemble")
     }
 
-    @ToBeFixedForConfigurationCache
     def "build fails when compilation fails"() {
         given:
         buildFile << """
@@ -92,7 +89,6 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         failure.assertThatCause(containsText("C++ compiler failed while compiling broken.cpp"))
     }
 
-    @ToBeFixedForConfigurationCache
     def "finds C and C++ standard library headers"() {
         given:
         buildFile << """
@@ -113,7 +109,6 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         output.contains("Found all include files for ':compileDebugCpp'")
     }
 
-    @ToBeFixedForConfigurationCache
     def "sources are compiled with C++ compiler"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -127,11 +122,10 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
         sharedLibrary("build/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can build debug and release variants of library"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -141,14 +135,14 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         and:
         buildFile << """
             apply plugin: 'cpp-library'
-            library.binaries.get { it.optimized }.configure { compileTask.get().macros(WITH_FEATURE: "true") }
+            library.binaries.get { it.optimized }.configure { compileTask.get().setMacros(WITH_FEATURE: "true") }
          """
 
         expect:
         executer.withArgument("--info")
         succeeds tasks.release.assemble
 
-        result.assertTasksExecuted(tasks.release.allToLink, tasks.release.extract, tasks.release.assemble)
+        result.assertTasksScheduled(tasks.release.allToLink, tasks.release.extract, tasks.release.assemble)
         sharedLibrary("build/lib/main/release/hello").assertExists()
         sharedLibrary("build/lib/main/release/hello").assertHasStrippedDebugSymbolsFor(lib.sourceFileNamesWithoutHeaders)
         output.contains('compiling with feature enabled')
@@ -156,13 +150,12 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         executer.withArgument("--info")
         succeeds tasks.debug.assemble
 
-        result.assertTasksExecuted(tasks.debug.allToLink, tasks.debug.assemble)
+        result.assertTasksScheduled(tasks.debug.allToLink, tasks.debug.assemble)
         sharedLibrary("build/lib/main/debug/hello").assertExists()
         sharedLibrary("build/lib/main/debug/hello").assertHasDebugSymbolsFor(lib.sourceFileNamesWithoutHeaders)
         !output.contains('compiling with feature enabled')
     }
 
-    @ToBeFixedForConfigurationCache
     def "can use link file as task dependency"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -180,11 +173,10 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assembleLinkDebug"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assembleLinkDebug")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assembleLinkDebug")
         sharedLibrary("build/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can use runtime file as task dependency"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -202,11 +194,10 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assembleRuntimeDebug"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assembleRuntimeDebug")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assembleRuntimeDebug")
         sharedLibrary("build/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can use objects as task dependency"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -224,12 +215,11 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "compileDebug"
-        result.assertTasksExecuted(tasks.debug.compile, ":compileDebug")
+        result.assertTasksScheduled(tasks.debug.compile, ":compileDebug")
         objectFiles(lib.sources)*.assertExists()
         sharedLibrary("build/lib/main/debug/hello").assertDoesNotExist()
     }
 
-    @ToBeFixedForConfigurationCache
     def "build logic can change source layout convention"() {
         def lib = new CppLib()
         settingsFile << "rootProject.name = 'hello'"
@@ -254,12 +244,11 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
 
         sharedLibrary("build/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "build logic can add individual source files"() {
         def lib = new CppLib()
         settingsFile << "rootProject.name = 'hello'"
@@ -283,12 +272,11 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
 
         sharedLibrary("build/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "honors changes to buildDir"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -303,14 +291,13 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
 
         !file("build").exists()
         file("output/obj/main/debug").assertIsDir()
         sharedLibrary("output/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "honors changes to task output locations"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -332,7 +319,7 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
 
         file("build/object-files").assertIsDir()
         file("build/shared/main.bin").assertIsFile()
@@ -341,7 +328,6 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         }
     }
 
-    @ToBeFixedForConfigurationCache
     def "library can define public and implementation headers"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -358,11 +344,10 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
         sharedLibrary("build/lib/main/debug/hello").assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can compile and link against implementation and api libraries"() {
         createDirs("lib1", "lib2", "lib3")
         settingsFile << "include 'lib1', 'lib2', 'lib3'"
@@ -391,14 +376,14 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         expect:
         succeeds tasks(':lib1').debug.assemble
 
-        result.assertTasksExecuted([':lib3', ':lib2'].collect { tasks(it).debug.allToLink }, tasks(':lib1').debug.allToAssemble)
+        result.assertTasksScheduled([':lib3', ':lib2'].collect { tasks(it).debug.allToLink }, tasks(':lib1').debug.allToAssemble)
         sharedLibrary("lib1/build/lib/main/debug/lib1").assertExists()
         sharedLibrary("lib2/build/lib/main/debug/lib2").assertExists()
         sharedLibrary("lib3/build/lib/main/debug/lib3").assertExists()
 
         succeeds tasks(':lib1').release.assemble
 
-        result.assertTasksExecuted([':lib3', ':lib2'].collect { tasks(it).release.allToLink }, tasks(':lib1').release.allToAssemble)
+        result.assertTasksScheduled([':lib3', ':lib2'].collect { tasks(it).release.allToLink }, tasks(':lib1').release.allToAssemble)
         sharedLibrary("lib1/build/lib/main/release/lib1").assertExists()
         sharedLibrary("lib2/build/lib/main/release/lib2").assertExists()
         sharedLibrary("lib3/build/lib/main/release/lib3").assertExists()
@@ -408,7 +393,6 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         sharedLibrary("lib3/build/lib/main/release/lib3").strippedRuntimeFile.assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "can compile and link against static implementation and api libraries"() {
         createDirs("lib1", "lib2", "lib3")
         settingsFile << "include 'lib1', 'lib2', 'lib3'"
@@ -439,14 +423,14 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         expect:
         succeeds tasks(':lib1').debug.assemble
 
-        result.assertTasksExecuted([':lib3', ':lib2'].collect { tasks(it).debug.allToCreate }, tasks(':lib1').debug.allToAssemble)
+        result.assertTasksScheduled([':lib3', ':lib2'].collect { tasks(it).debug.allToCreate }, tasks(':lib1').debug.allToAssemble)
         sharedLibrary("lib1/build/lib/main/debug/lib1").assertExists()
         staticLibrary("lib2/build/lib/main/debug/lib2").assertExists()
         staticLibrary("lib3/build/lib/main/debug/lib3").assertExists()
 
         succeeds tasks(':lib1').release.assemble
 
-        result.assertTasksExecuted([':lib3', ':lib2'].collect { tasks(it).release.allToCreate }, tasks(':lib1').release.allToAssemble)
+        result.assertTasksScheduled([':lib3', ':lib2'].collect { tasks(it).release.allToCreate }, tasks(':lib1').release.allToAssemble)
         sharedLibrary("lib1/build/lib/main/release/lib1").assertExists()
         staticLibrary("lib2/build/lib/main/release/lib2").assertExists()
         staticLibrary("lib3/build/lib/main/release/lib3").assertExists()
@@ -454,7 +438,6 @@ class CppLibraryIntegrationTest extends AbstractCppIntegrationTest implements Cp
         sharedLibrary("lib1/build/lib/main/release/lib1").strippedRuntimeFile.assertExists()
     }
 
-    @ToBeFixedForConfigurationCache
     def "private headers are not visible to consumer"() {
         def lib = new CppLib()
 
@@ -495,7 +478,6 @@ project(':greeter') {
         succeeds(":consumer:compileDebugCpp")
     }
 
-    @ToBeFixedForConfigurationCache
     def "implementation dependencies are not visible to consumer"() {
         def app = new CppAppWithLibraries()
 
@@ -533,7 +515,6 @@ project(':greeter') {
         succeeds(":consumer:compileDebugCpp")
     }
 
-    @ToBeFixedForConfigurationCache
     def "can change default base name and successfully link against library"() {
         createDirs("lib1", "lib2")
         settingsFile << "include 'lib1', 'lib2'"
@@ -562,13 +543,12 @@ project(':greeter') {
 
         expect:
         succeeds ":lib1:assemble"
-        result.assertTasksExecuted([':lib2', ':lib1'].collect { tasks(it).debug.allToLink }, ":lib1:assemble")
+        result.assertTasksScheduled([':lib2', ':lib1'].collect { tasks(it).debug.allToLink }, ":lib1:assemble")
         sharedLibrary("lib1/build/lib/main/debug/hello").assertExists()
         sharedLibrary("lib2/build/lib/main/debug/log").assertExists()
     }
 
     @RequiresInstalledToolChain(ToolChainRequirement.GCC_COMPATIBLE)
-    @ToBeFixedForConfigurationCache
     def "system headers are not evaluated when compiler warnings are enabled"() {
         given:
         settingsFile << "rootProject.name = 'hello'"
@@ -591,7 +571,7 @@ project(':greeter') {
 
         expect:
         succeeds "assemble"
-        result.assertTasksExecuted(tasks.debug.allToLink, ":assemble")
+        result.assertTasksScheduled(tasks.debug.allToLink, ":assemble")
         sharedLibrary("build/lib/main/debug/hello").assertExists()
     }
 }

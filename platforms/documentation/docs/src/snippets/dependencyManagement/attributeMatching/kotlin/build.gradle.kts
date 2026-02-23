@@ -1,47 +1,83 @@
-plugins {
-    `java-library`
+// tag::java-configuration-example[]
+// declare a "configuration" named "implementation"
+val implementation by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = false
 }
 
 // tag::declare-configuration[]
-// declare a "configuration" named "someConfiguration"
-val someConfiguration by configurations.creating
-
 dependencies {
-    // add a project dependency to the "someConfiguration" configuration
-    someConfiguration(project(":lib"))
+    // add a project dependency to the implementation configuration
+    implementation(project(":lib"))
 }
 // end::declare-configuration[]
 
 // tag::concrete-classpath[]
 configurations {
-    // declare a configuration that is going to resolve the compile classpath of the application
-    compileClasspath {
-        extendsFrom(someConfiguration)
-    }
+    // declare a resolvable configuration that is going to resolve the compile classpath of the application
+// end::java-configuration-example[]
 
-    // declare a configuration that is going to resolve the runtime classpath of the application
-    runtimeClasspath {
-        extendsFrom(someConfiguration)
+    // Using lazy & newer API: realized only when needed
+// tag::java-configuration-example[]
+    resolvable("compileClasspath") {
+        extendsFrom(implementation)
     }
+// end::java-configuration-example[]
+    // Using lazy & older API: realized only when needed
+    register("compileClasspath-lazy") {
+        isCanBeConsumed = false
+        isCanBeDeclared = false
+        extendsFrom(implementation)
+    }
+    // Using eager & older API: realized immediately - avoid
+    create("compileClasspath-eager") {
+        isCanBeConsumed = false
+        isCanBeDeclared = false
+        extendsFrom(implementation)
+    }
+// tag::java-configuration-example[]
+// end::concrete-classpath[]
+    // declare a resolvable configuration that is going to resolve the runtime classpath of the application
+    resolvable("runtimeClasspath") {
+        extendsFrom(implementation)
+    }
+// tag::concrete-classpath[]
 }
 // end::concrete-classpath[]
 
 // tag::setup-configurations[]
 configurations {
-    // A configuration meant for consumers that need the API of this component
-    create("exposedApi") {
-        // This configuration is an "outgoing" configuration, it's not meant to be resolved
-        isCanBeResolved = false
-        // As an outgoing configuration, explain that consumers may want to consume it
-        assert(isCanBeConsumed)
+    // a consumable configuration meant for consumers that need the API of this component
+// end::java-configuration-example[]
+
+    // Using lazy & newer API: realized only when needed
+// tag::java-configuration-example[]
+    consumable("exposedApi") {
+        extendsFrom(implementation)
     }
-    // A configuration meant for consumers that need the implementation of this component
-    create("exposedRuntime") {
+// end::java-configuration-example[]
+    // Using lazy & older API: realized only when needed
+    register("exposedApi-lazy") {
         isCanBeResolved = false
-        assert(isCanBeConsumed)
+        isCanBeDeclared = false
+        extendsFrom(implementation)
     }
+    // Using eager & older API: realized immediately - avoid
+    create("exposedApi-eager") {
+        isCanBeResolved = false
+        isCanBeDeclared = false
+        extendsFrom(implementation)
+    }
+// tag::java-configuration-example[]
+// end::setup-configurations[]
+    // a consumable configuration meant for consumers that need the implementation of this component
+    consumable("exposedRuntime") {
+        extendsFrom(implementation)
+    }
+// tag::setup-configurations[]
 }
 // end::setup-configurations[]
+// end::java-configuration-example[]
 
 // tag::define_attribute[]
 // An attribute of type `String`

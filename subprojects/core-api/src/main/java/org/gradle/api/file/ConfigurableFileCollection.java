@@ -17,20 +17,22 @@ package org.gradle.api.file;
 
 import org.gradle.api.Incubating;
 import org.gradle.api.SupportsKotlinAssignmentOverloading;
-import org.gradle.api.Transformer;
-import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.model.ManagedType;
 import org.gradle.api.provider.HasConfigurableValue;
 import org.gradle.api.provider.SupportsConvention;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Set;
 
 /**
  * <p>A {@code ConfigurableFileCollection} is a mutable {@code FileCollection}.</p>
  *
- * <p>You can obtain an instance of {@code ConfigurableFileCollection} by calling {@link org.gradle.api.Project#files(Object...)} or {@link ObjectFactory#fileCollection()}.</p>
- *
  * <p><b>Note:</b> This interface is not intended for implementation by build script or plugin authors.</p>
+ *
+ * @see ManagedType Create an instance of this as a managed property (preferred).
+ * @see org.gradle.api.model.ObjectFactory#fileCollection() Create an instance of this manually.
  */
+@ManagedType
 @SupportsKotlinAssignmentOverloading
 public interface ConfigurableFileCollection extends FileCollection, HasConfigurableValue, SupportsConvention {
     /**
@@ -43,16 +45,16 @@ public interface ConfigurableFileCollection extends FileCollection, HasConfigura
     /**
      * Sets the source paths for this collection. The given paths are evaluated as per {@link org.gradle.api.Project#files(Object...)}.
      *
-     * @param paths The paths.
+     * @param paths The paths. {@code null} values are ignored.
      */
     void setFrom(Iterable<?> paths);
 
     /**
      * Sets the source paths for this collection. The given paths are evaluated as per {@link org.gradle.api.Project#files(Object...)}.
      *
-     * @param paths The paths.
+     * @param paths The paths. {@code null} values are ignored.
      */
-    void setFrom(Object... paths);
+    void setFrom(@Nullable Object... paths);
 
     /**
      * Specifies the value to use as the convention (default value) to be used when resolving this file collection,
@@ -61,7 +63,7 @@ public interface ConfigurableFileCollection extends FileCollection, HasConfigura
      * If, at the time this method is invoked, the set of source paths for this collection is empty, the convention will be used
      * to resolve this file collection.
      *
-     * @param paths The paths.
+     * @param paths The paths. {@code null} values are ignored.
      * @return this collection
      *
      * @since 8.8
@@ -76,21 +78,21 @@ public interface ConfigurableFileCollection extends FileCollection, HasConfigura
      * If, at the time this method is invoked, the set of source paths for this collection is empty, the convention will be used
      * to resolve this file collection.
      *
-     * @param paths The paths.
+     * @param paths The paths. {@code null} values are ignored.
      * @return this collection
      *
      * @since 8.8
      */
     @Incubating
-    ConfigurableFileCollection convention(Object... paths);
+    ConfigurableFileCollection convention(@Nullable Object... paths);
 
     /**
      * Adds a set of source paths to this collection. The given paths are evaluated as per {@link org.gradle.api.Project#files(Object...)}.
      *
-     * @param paths The files to add.
+     * @param paths The files to add. {@code null} values are ignored.
      * @return this
      */
-    ConfigurableFileCollection from(Object... paths);
+    ConfigurableFileCollection from(@Nullable Object... paths);
 
     /**
      * Returns the set of tasks which build the files of this collection.
@@ -114,43 +116,4 @@ public interface ConfigurableFileCollection extends FileCollection, HasConfigura
      * @return this
      */
     ConfigurableFileCollection builtBy(Object... tasks);
-
-    /**
-     * Replaces the current contents of this file collection with a one computed by the provided transformation.
-     * The transformation is applied to the file collection representing the current contents, and the returned collection is used as a new content.
-     * The current contents collection can be used to derive the new value, but doesn't have to.
-     * Returning null from the transformation empties this collection.
-     * For example, it is possible to filter out all text files from the collection:
-     * <pre class='autoTested'>
-     *     def collection = files("a.txt", "b.md")
-     *
-     *     collection.replace { it.filter { f -&gt; !f.name.endsWith(".txt") } }
-     *
-     *     println(collection.files) // ["b.md"]
-     * </pre>
-     * <p>
-     * <b>Further changes to this file collection, such as calls to {@link #setFrom(Object...)} or {@link #from(Object...)}, are not transformed, and override the replacement instead</b>.
-     * Because of this, this method inherently depends on the order of changes, and therefore must be used sparingly.
-     * <p>
-     * If this file collection consists of other mutable sources, then the current contents collection tracks changes to these sources.
-     * For example, changes to the upstream collection are visible:
-     * <pre class='autoTested'>
-     *     def upstream = files("a.txt", "b.md")
-     *     def collection = files(upstream)
-     *
-     *     collection.replace { it.filter { f -&gt; !f.name.endsWith(".txt") } }
-     *     upstream.from("c.md", "d.txt")
-     *
-     *     println(collection.files) // ["b.md", "c.md"]
-     * </pre>
-     * The provided transformation runs <b>eagerly</b>, so it can capture any objects without introducing memory leaks and without breaking configuration caching.
-     * However, transformations applied to the current contents collection (like {@link FileCollection#filter(Closure)}) are subject to the usual constraints.
-     * <p>
-     * The current contents collection inherits dependencies of this collection specified by {@link #builtBy(Object...)}.
-     *
-     * @param transformation the transformation to apply to the current value. May return null, which empties this collection.
-     * @since 8.8
-     */
-    @Incubating
-    void replace(Transformer<? extends @org.jetbrains.annotations.Nullable FileCollection, ? super FileCollection> transformation);
 }

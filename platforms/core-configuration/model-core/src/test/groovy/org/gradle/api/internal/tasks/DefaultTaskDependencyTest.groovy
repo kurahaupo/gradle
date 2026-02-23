@@ -20,8 +20,8 @@ import org.gradle.api.Task
 import org.gradle.api.internal.provider.ProviderInternal
 import org.gradle.api.internal.provider.ValueSupplier
 import org.gradle.api.tasks.TaskDependency
-import org.gradle.api.tasks.TaskProvider
 import org.gradle.internal.typeconversion.UnsupportedNotationException
+import org.gradle.util.Path
 import org.gradle.util.internal.TextUtil
 import spock.lang.Specification
 
@@ -49,7 +49,7 @@ class DefaultTaskDependencyTest extends Specification {
         def input = new StringBuilder("other")
 
         given:
-        1 * resolver.resolveTask("other") >> otherTask
+        1 * resolver.resolveTask(Path.path("other")) >> otherTask
 
         when:
         dependency.add(input)
@@ -312,7 +312,7 @@ The following types/formats are supported:
     def "reports usages of getDependencies if provided a tracker"() {
         given:
         def tracker = Mock(TaskDependencyUsageTracker)
-        def dependency = DefaultTaskDependencyFactory.forProject(resolver, tracker).configurableDependency()
+        def dependency = new DefaultTaskDependencyFactory(resolver, tracker).configurableDependency()
 
         when:
         dependency.getDependenciesForInternalUse(null)
@@ -327,8 +327,5 @@ The following types/formats are supported:
 
     static emptySet() {
         return [] as Set
-    }
-
-    interface TestTaskProvider extends ProviderInternal, TaskProvider {
     }
 }

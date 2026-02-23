@@ -29,11 +29,13 @@ import org.gradle.execution.WorkValidationWarningReporter;
 import org.gradle.execution.taskgraph.TaskExecutionGraphInternal;
 import org.gradle.initialization.BuildRequestMetaData;
 import org.gradle.internal.InternalBuildListener;
-import org.gradle.internal.deprecation.DeprecationLogger;
 import org.gradle.internal.enterprise.core.GradleEnterprisePluginManager;
 import org.gradle.internal.logging.format.TersePrettyDurationFormatter;
 import org.gradle.internal.logging.text.StyledTextOutputFactory;
+import org.gradle.internal.problems.failure.Failure;
+import org.gradle.internal.problems.failure.FailureFactory;
 import org.gradle.internal.time.Clock;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link org.gradle.BuildListener} which logs the build progress.
@@ -42,6 +44,7 @@ public class BuildLogger implements InternalBuildListener, TaskExecutionGraphLis
     private final Logger logger;
     private final BuildExceptionReporter exceptionReporter;
     private final BuildResultLogger resultLogger;
+    private final FailureFactory failureFactory;
     private String action;
 
     public BuildLogger(
@@ -52,14 +55,27 @@ public class BuildLogger implements InternalBuildListener, TaskExecutionGraphLis
         BuildStartedTime buildStartedTime,
         Clock clock,
         WorkValidationWarningReporter workValidationWarningReporter,
-        GradleEnterprisePluginManager gradleEnterprisePluginManager
+        GradleEnterprisePluginManager gradleEnterprisePluginManager,
+        FailureFactory failureFactory
     ) {
         this.logger = logger;
-        exceptionReporter = new BuildExceptionReporter(textOutputFactory, loggingConfiguration, requestMetaData.getClient(), gradleEnterprisePluginManager);
-        resultLogger = new BuildResultLogger(textOutputFactory, buildStartedTime, clock, new TersePrettyDurationFormatter(), workValidationWarningReporter);
+        this.failureFactory = failureFactory;
+        exceptionReporter = new BuildExceptionReporter(
+            textOutputFactory,
+            loggingConfiguration,
+            requestMetaData.getClient(),
+            gradleEnterprisePluginManager,
+            failureFactory
+        );
+        resultLogger = new BuildResultLogger(
+            textOutputFactory,
+            buildStartedTime,
+            clock,
+            new TersePrettyDurationFormatter(),
+            workValidationWarningReporter
+        );
     }
 
-    @SuppressWarnings("deprecation") // StartParameter.getSettingsFile() and StartParameter.getBuildFile()
     @Override
     public void beforeSettings(Settings settings) {
         StartParameter startParameter = settings.getStartParameter();
@@ -67,10 +83,6 @@ public class BuildLogger implements InternalBuildListener, TaskExecutionGraphLis
         if (logger.isDebugEnabled()) {
             logger.debug("Gradle user home: {}", startParameter.getGradleUserHomeDir());
             logger.debug("Current dir: {}", startParameter.getCurrentDir());
-            DeprecationLogger.whileDisabled(() -> {
-                logger.debug("Settings file: {}", startParameter.getSettingsFile());
-                logger.debug("Build file: {}", startParameter.getBuildFile());
-            });
         }
     }
 
@@ -113,12 +125,16 @@ public class BuildLogger implements InternalBuildListener, TaskExecutionGraphLis
     }
 
     public void logResult(Throwable buildFailure) {
+        logResult(failureFactory.create(buildFailure));
+    }
+
+    public void logResult(@Nullable Failure buildFailure) {
         if (action == null) {
             // This logger has been replaced (for example using `Gradle.useLogger()`), so don't log anything
             return;
         }
-        BuildResult buildResult = new BuildResult(action, null, buildFailure);
-        exceptionReporter.buildFinished(buildResult);
+        BuildResult buildResult = new BuildResult(action, null, buildFailure == null ? null : buildFailure.getOriginal());
+        exceptionReporter.buildFinished(buildFailure);
         resultLogger.buildFinished(buildResult);
     }
 }

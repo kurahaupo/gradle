@@ -24,7 +24,8 @@ description = "Gradle Flow API implementation"
 dependencies {
     api(projects.baseServices)
     api(projects.coreApi)
-    api(projects.javaLanguageExtensions)
+    api(projects.coreFlowServicesApi)
+    api(projects.stdlibJavaExtensions)
     api(projects.modelCore)
     api(projects.serviceProvider)
 
@@ -32,11 +33,17 @@ dependencies {
 
     implementation(projects.core)
     implementation(projects.messaging)
+    implementation(projects.modelReflect)
     implementation(projects.problemsApi)
+    implementation(projects.serviceLookup)
+    implementation(projects.serviceRegistryBuilder)
     implementation(projects.stdlibKotlinExtensions)
 
     implementation(libs.guava)
     implementation(libs.inject)
 
     integTestDistributionRuntimeOnly(projects.distributionsCore)
+}
+tasks.isolatedProjectsIntegTest {
+    enabled = false
 }

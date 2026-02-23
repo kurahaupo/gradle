@@ -15,24 +15,38 @@
  */
 package org.gradle.internal.build.event.types;
 
+import org.gradle.api.problems.internal.InternalProblem;
+import org.gradle.internal.exceptions.MultiCauseException;
+import org.gradle.internal.problems.failure.DefaultFailureFactory;
+import org.gradle.internal.problems.failure.Failure;
+import org.gradle.internal.problems.failure.FailurePrinter;
+import org.gradle.tooling.internal.protocol.InternalBasicProblemDetailsVersion3;
 import org.gradle.tooling.internal.protocol.InternalFailure;
 
-import java.io.PrintWriter;
 import java.io.Serializable;
-import java.io.StringWriter;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Stream;
+
+import static java.util.stream.Collectors.toList;
 
 public class DefaultFailure implements Serializable, InternalFailure {
 
     private final String message;
     private final String description;
-    private final InternalFailure cause;
+    private final List<? extends InternalFailure> causes;
+    private final List<InternalBasicProblemDetailsVersion3> problems;
 
-    protected DefaultFailure(String message, String description, InternalFailure cause) {
+    DefaultFailure(String message, String description, List<? extends InternalFailure> causes) {
+        this(message, description, causes, Collections.emptyList());
+    }
+
+    DefaultFailure(String message, String description, List<? extends InternalFailure> causes, List<InternalBasicProblemDetailsVersion3> problems) {
         this.message = message;
         this.description = description;
-        this.cause = cause;
+        this.causes = causes;
+        this.problems = problems;
     }
 
     @Override
@@ -47,15 +61,57 @@ public class DefaultFailure implements Serializable, InternalFailure {
 
     @Override
     public List<? extends InternalFailure> getCauses() {
-        return cause == null ? Collections.emptyList() : Collections.singletonList(cause);
+        return causes;
     }
 
-    public static InternalFailure fromThrowable(Throwable t) {
-        StringWriter out = new StringWriter();
-        PrintWriter wrt = new PrintWriter(out);
-        t.printStackTrace(wrt);
-        Throwable cause = t.getCause();
-        InternalFailure causeFailure = cause != null && cause != t ? fromThrowable(cause) : null;
-        return new DefaultFailure(t.getMessage(), out.toString(), causeFailure);
+    @Override
+    public List<InternalBasicProblemDetailsVersion3> getProblems() {
+        return problems;
+    }
+
+    public static InternalFailure fromThrowable(Throwable throwable) {
+        return fromThrowable(throwable, p -> null);
+    }
+
+    public static InternalFailure fromThrowable(Throwable t, Function<InternalProblem, InternalBasicProblemDetailsVersion3> mapper) {
+        Failure failure = DefaultFailureFactory.withDefaultClassifier().create(t);
+        return fromFailure(failure, mapper);
+    }
+
+    public static InternalFailure fromFailure(Failure buildFailure, Function<InternalProblem, InternalBasicProblemDetailsVersion3> mapper) {
+        // Iterate through the cause hierarchy and convert them to a corresponding Failure with the same cause structure. If the current failure has a
+        // corresponding problem (ie the exception was thrown via ProblemReporter.throwing()), then the problem will be also available in the new failure object.
+        String failureString = FailurePrinter.printToString(buildFailure);
+        List<InternalFailure> causeFailures = convertCausesToFailures(buildFailure.getCauses(), mapper);
+        List<InternalBasicProblemDetailsVersion3> problemDetails = buildFailure.getProblems().stream()
+            .map(mapper)
+            .collect(toList());
+
+        return new DefaultFailure(buildFailure.getMessage(), failureString, causeFailures, problemDetails);
+    }
+
+    private static List<InternalFailure> convertCausesToFailures(
+        List<Failure> causes,
+        Function<InternalProblem, InternalBasicProblemDetailsVersion3> mapper
+    ) {
+        return causes.stream()
+            // Skip multi cause exceptions - no idea why
+            // For example TaskExecutionException is a MultiCauseException and skipped, so the task that failed is not added as a context here.
+            .flatMap(cause -> cause.getOriginal() instanceof MultiCauseException
+                ? cause.getCauses().stream()
+                : Stream.of(cause))
+            .map(cause -> fromFailure(cause, mapper))
+            .collect(toList());
+    }
+
+
+    @Override
+    public String toString() {
+        return "DefaultFailure{" +
+            "message='" + message + '\'' +
+            ", description='" + description + '\'' +
+            ", causes=" + causes +
+            ", problems=" + problems +
+            '}';
     }
 }

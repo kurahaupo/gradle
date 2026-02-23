@@ -4,6 +4,15 @@ plugins {
 
 description = "Collection of test fixtures for both unit tests and integration tests, internal use only"
 
+jvmCompile {
+    compilations {
+        named("main") {
+            // These test fixtures are used by the tooling API tests, which still run on JVM 8
+            targetJvmVersion = 8
+        }
+    }
+}
+
 sourceSets {
     main {
         // Incremental Groovy joint-compilation doesn't work with the Error Prone annotation processor
@@ -12,36 +21,45 @@ sourceSets {
 }
 
 dependencies {
-    api(project(":base-services"))
-    api(project(":concurrent"))
-    api(project(":hashing"))
-    api(project(":java-language-extensions"))
-    api(project(":native"))
+    api(projects.baseServices)
+    api(projects.concurrent)
+    api(projects.hashing)
+    api(projects.serviceLookup)
+    api(projects.stdlibJavaExtensions)
+    api(projects.testingBaseInfrastructure)
 
     api(libs.groovy)
     api(libs.groovyXml)
-    api(libs.hamcrest)
-    api(libs.hamcrestCore)
-    api(libs.junit)
-    api(libs.junit5JupiterApi)
-    api(libs.spock)
-    api(libs.spockJUnit4)
+    api(libs.guava)
+    api(testLibs.hamcrest)
+    api(libs.jspecify)
+    api(libs.jsr305)
+    api(testLibs.junit)
+    api(testLibs.junit5JupiterApi)
+    api(testLibs.spock)
 
-    implementation(project(":build-operations"))
-    implementation(project(":functional"))
-    implementation(project(":serialization"))
+    implementation(projects.baseAsm)
+    implementation(projects.buildOperations)
+    implementation(projects.buildProcessServices)
+    implementation(projects.functional)
+    implementation(projects.native)
+    implementation(projects.serialization)
+    implementation(projects.testingBase)
+    implementation(projects.time)
 
     implementation(libs.ant)
     implementation(libs.asm)
     implementation(libs.commonsCompress)
     implementation(libs.commonsIo)
     implementation(libs.commonsLang)
-    implementation(libs.guava)
     implementation(libs.jsoup)
-    implementation(libs.jsr305)
+    implementation(libs.kotlinCompilerEmbeddable)
     implementation(libs.slf4jApi)
-    implementation(libs.testcontainers)
+    implementation(testLibs.testcontainers)
+    implementation(testLibs.dockerJavaApi)
+
+    compileOnly(libs.kotlinStdlib)
 
     runtimeOnly(libs.groovyJson)
-    runtimeOnly(libs.bytebuddy)
+    runtimeOnly(testLibs.bytebuddy)
 }
