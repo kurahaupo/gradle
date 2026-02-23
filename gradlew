@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #
-# Copyright © 2015 the original authors.
+# Copyright © 2025-2026 the original authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@
 #       Darwin, MinGW, and NonStop.
 #
 #   (3) This script was generated from the Groovy template
-#       https://github.com/gradle/gradle/blob//platforms/jvm/plugins-application/src/main/resources/org/gradle/api/internal/plugins/unixStartScript.txt
+#       https://github.com/gradle/gradle/blob/HEAD/platforms/jvm/plugins-application/src/main/resources/org/gradle/api/internal/plugins/unixStartScript.txt
 #       within the Gradle project.
 #
 #       You can find Gradle at https://github.com/gradle/gradle/.
@@ -97,8 +97,6 @@ then
         }
 
     realpath() {
-        # Resolve all symlinks in $0, and then use the containing directory of the
-        # resulting path.
         path=$1
 
         #   Resolve symlink as last component of path; repeat until it's not a symlink.
@@ -106,12 +104,13 @@ then
             # Get dirname of $path, with a trailing / or empty if no leading path
             dir=${path%"${path##*/}"}
             # Is it a symlink? If so, rewrite it and try again
+            [ -h "$path" ] &&
             link=$( readlink "$path" )
         do
             case $link in                       #(
               '' | "$path")  break ;;           #(
               /*)             path=$link ;;     #(
-              *)              path=$dir$link ;;
+              *)              path=$dir$link
             esac
         done
 
@@ -128,6 +127,9 @@ then
         printf '%s\n' "$dir${path##*/}"
     }
 fi
+
+# Resolve all symlinks in $0, and then use the containing directory of the
+# resulting path.
 
 app_path=$( realpath "$0" ) || exit
 APP_HOME=${app_path%"${app_path##*/}"}
@@ -150,6 +152,13 @@ die () {
     exit 1
 } >&2
 
+# Stop when "xargs" is not available. (xargs is required by POSIX, see
+# https://pubs.opengroup.org/onlinepubs/9799919799/utilities/xargs.html)
+if ! command -v xargs >/dev/null 2>&1
+then
+    die "'xargs' is not available"
+fi
+
 # OS specific support (must be 'true' or 'false').
 cygwin=false
 msys=false
@@ -161,11 +170,8 @@ case "$( uname )" in                                                            
   CYGWIN* )         cygwin=true  can_increase_fd=false need_windows_paths=true ;; #(
   Darwin* )         darwin=true  can_increase_fd=false                         ;; #(
   MSYS* | MINGW* )  msys=true                          need_windows_paths=true ;; #(
-  NONSTOP* )        nonstop=true can_increase_fd=false                         ;;
+  NONSTOP* )        nonstop=true can_increase_fd=false
 esac
-
-CLASSPATH=gradle/wrapper/gradle-wrapper.jar
-MODULE_PATH=
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
@@ -213,75 +219,36 @@ fi
 
 # Collect all arguments for the java command, stacking in reverse order:
 #   * args from the command line
-#   * the main class name
-#   * -classpath
-#   * -D...appname settings
+#   * the main class name (or failing that, the entryPointArgs Gradle template parameter)
+#   * -Dapp_prop=app_name
+#   * -classpath (only if needed)
 #   * --module-path (only if needed)
 #   * the expanded defaultJvmOpts template parameter
 #   * the expanded JAVA_OPTS and GRADLE_OPTS environment variables.
 
-# For Cygwin or MSYS, switch paths to Windows format before running java
-if "$need_windows_paths" ; then
-    APP_HOME=${APP_HOME:+$( cygpath --path --mixed "$APP_HOME" )}
-    CLASSPATH=${CLASSPATH:+$( cygpath --path --mixed "$CLASSPATH" )}
-    MODULE_PATH=
-    JAVACMD=$( cygpath --unix "$JAVACMD" )
+set -- -jar "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" "$@"
 
-    # Now convert the arguments - kludge to limit ourselves to /bin/sh
-    for arg do
-        if
-            case $arg in                                #(
-              -*)   false ;;                            # don't mess with options #(
-              /?*)  t=${arg#/} t=/${t%%/*}              # looks like a POSIX filepath
-                    [ -e "$t" ] ;;                      #(
-              *)    false ;;
-            esac
-        then
-            arg=$( cygpath --path --ignore --mixed "$arg" )
-        fi
-        # Roll the args list around exactly as many times as the number of
-        # args, so each arg winds up back in the position where it started, but
-        # possibly modified.
-        #
-        # NB: a `for` loop captures its iteration list before it begins, so
-        # changing the positional parameters here affects neither the number of
-        # iterations, nor the values presented in `arg`.
-        shift                   # remove old arg
-        set -- "$@" "$arg"      # push replacement arg
-    done
-fi
+case $1 in
+    --module)
+        MODULE_PATH=
+        set -- --module-path "$MODULE_PATH" "$@"
+esac
 
-# Define default_jvm_opts here, from the Gradle defaultJvmOpts template parameter, to
-# allow it to include the Windows-path version of APP_HOME (for Cygwin & MSYS).
-# You can also use JAVA_OPTS and GRADLE_OPTS
-# to pass JVM options to this script.
-default_jvm_opts='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
+CLASSPATH=
+case $CLASSPATH in
+    ?*)
+        set -- -classpath "$CLASSPATH" "$@"
+esac
 
-# Collect all arguments for the java command;
-#
-#     The inherited environment variables JAVA_OPTS and GRADLE_OPTS,
-#     and the Gradle defaultJvmOpts template parameter (as the shell variable
-#     default_jvm_opts) need special treatment because they can comprise
-#     multiple shell words separated by spaces, adjusted by quotes and
-#     backslashes.
+set -- "-Dorg.gradle.appname=$APP_BASE_NAME" "$@"
 
-set -- \
-        "-Dorg.gradle.appname=$APP_BASE_NAME" \
-
-        ${CLASSPATH:+   -classpath    "$CLASSPATH"   } \
-        ${MODULE_PATH:+ --module-path "$MODULE_PATH" } \
-        org.gradle.wrapper.GradleWrapperMain \
-        "$@"
+# The inherited environment variables JAVA_OPTS and GRADLE_OPTS need
+# careful handling because they can comprise multiple shell words separated by
+# spaces, adjusted by quotes and backslashes.
 
 # For each word accumulated thus far, perform word-splitting. Quotes and
 # backslashes may be used to change word boundaries, but other all other shell
 # metacharacters are taken literally, including $ < > | & ; ( )
-
-# Stop when "xargs" is not available.
-if ! command -v xargs >/dev/null 2>&1
-then
-    die "xargs is not available"
-fi
 
 # Use "xargs" to parse quoted args.
 #
@@ -302,11 +269,50 @@ fi
 # This will of course break if any of these variables contains a newline or
 # an unmatched quote.
 
+# Define default_jvm_opts here, from the Gradle defaultJvmOpts template parameter, to
+# allow it to include expansions of shell variables such as APP_HOME.
+# Gradle takes care of ensuring this value is quoted, usually but not
+# necessarily using single quotes. Later "$default_jvm_opts" will be
+# correctly expanded by the shell, but we must NOT quote it here.
+
+default_jvm_opts='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
+
+# You can also use the JAVA_OPTS and GRADLE_OPTS
+# environment variables to pass JVM options to this script.
+
 eval "set -- $(
         printf '%s\n' "$default_jvm_opts $JAVA_OPTS $GRADLE_OPTS" |
         xargs -n1 |
         sed ' s~[^-[:alnum:]+,./:=@_]~\\&~g; ' |
         tr '\n' ' '
     )" '"$@"'
+
+# For Cygwin or MSYS, switch paths to Windows format before running java
+if "$need_windows_paths" ; then
+    JAVACMD=$( cygpath --unix "$JAVACMD" )
+
+    # Now convert the arguments - kludge to limit ourselves to /bin/sh
+    for arg do
+        if
+            case $arg in                                #(
+              -*)   false ;;                            # don't mess with options #(
+              /?*)  t=${arg#/} t=/${t%%/*}              # looks like a POSIX filepath
+                    [ -e "$t" ] ;;                      #(
+              *)    false
+            esac
+        then
+            arg=$( cygpath --path --ignore --mixed "$arg" )
+        fi
+        # Roll the args list around exactly as many times as the number of
+        # args, so each arg winds up back in the position where it started, but
+        # possibly modified.
+        #
+        # NB: a `for` loop captures its iteration list before it begins, so
+        # changing the positional parameters here affects neither the number of
+        # iterations, nor the values presented in `arg`.
+        shift                   # remove old arg
+        set -- "$@" "$arg"      # push replacement arg
+    done
+fi
 
 exec "$JAVACMD" "$@"
